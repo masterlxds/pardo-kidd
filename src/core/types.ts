@@ -29,12 +29,15 @@ export const Tile = {
   BlockItem: 6,
   /** plataforma atravessável por baixo (sólida só no topo) */
   OneWay: 7,
+  /** água de rio (Fase 2) — não sólida; tocar = afunda e perde vida (como espinho, com splash) */
+  Water: 8,
 } as const;
 export type TileId = (typeof Tile)[keyof typeof Tile];
 
 export interface Camera { x: number; y: number }
 
-export type Scene = 'title' | 'playing' | 'paused' | 'dying' | 'gameover' | 'winning' | 'win';
+/** 'intro' = cartão "FASE N · NOME" (~2.2s) antes de cada fase; o mundo já está montado por trás. */
+export type Scene = 'title' | 'intro' | 'playing' | 'paused' | 'dying' | 'gameover' | 'winning' | 'win';
 
 export interface GameState {
   scene: Scene;
@@ -51,18 +54,26 @@ export interface GameState {
   /** bônus de tempo calculado ao vencer (já somado em score) */
   timeBonus: number;
   muted: boolean;
+  /** índice (0-based) da fase atual em LEVELS (src/game/levels.ts) */
+  levelIndex: number;
 }
+
+/** Tema visual/sonoro de uma fase. */
+export type LevelTheme = 'sertao' | 'amazonia';
+export type MusicTrack = LevelTheme;
 
 export type SfxName =
   | 'jump' | 'punch' | 'hit' | 'break' | 'coin' | 'water' | 'hurt' | 'die'
-  | 'crumble' | 'land' | 'start' | 'win' | 'gameover' | 'checkpoint' | 'squawk' | 'boing';
+  | 'crumble' | 'land' | 'start' | 'win' | 'gameover' | 'checkpoint' | 'squawk' | 'boing'
+  // Fase 2
+  | 'splash' | 'roar' | 'hiss' | 'chomp' | 'deliver';
 
 export interface AudioApi {
   /** Chamar no primeiro gesto do usuário (cria/resume o AudioContext). Idempotente. */
   unlock(): void;
   play(name: SfxName): void;
-  /** Música tema em loop. Idempotente. */
-  startMusic(): void;
+  /** Música da faixa em loop (padrão 'sertao'). Idempotente para a mesma faixa; trocar de faixa reinicia. */
+  startMusic(track?: MusicTrack): void;
   stopMusic(): void;
   setMuted(muted: boolean): void;
   readonly muted: boolean;
@@ -118,9 +129,16 @@ export interface Entity extends Body {
   onTouchPlayer?(world: World): void;
 }
 
-export type EnemyKind = 'calango' | 'carcara' | 'palma' | 'tatu';
+export type EnemyKind = 'calango' | 'carcara' | 'palma' | 'tatu'
+  // Fase 2 — Amazônia
+  | 'onca' | 'jacare' | 'cobra' | 'tucano';
 
 export interface Level {
+  /** índice (0-based) em LEVELS */
+  readonly index: number;
+  /** nome exibido no cartão de introdução, ex.: 'TRILHA DOS MONÓLITOS' */
+  readonly name: string;
+  readonly theme: LevelTheme;
   readonly cols: number;
   readonly rows: number;
   readonly widthPx: number;
@@ -167,7 +185,7 @@ export interface World {
   /** Partículas. dir opcional orienta o espalhamento. */
   fx(kind: FxKind, x: number, y: number, dir?: 1 | -1): void;
   shake(intensity: number, duration?: number): void;
-  /** Pardo tocou a Caneca Esmaltada → inicia sequência de vitória. */
+  /** Pardo tocou o objetivo (Caneca Esmaltada / alien com a mamadeira) → inicia sequência de vitória. */
   win(): void;
 }
 

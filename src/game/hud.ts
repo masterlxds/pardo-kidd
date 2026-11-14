@@ -1,7 +1,7 @@
 import type { World } from '../core/types';
 import { VIEW_H, VIEW_W } from '../core/constants';
 import { PALETTE as P } from '../gfx/palette';
-import { drawText } from '../gfx/font';
+import { drawText, textWidth } from '../gfx/font';
 
 const pad6 = (n: number): string => String(Math.max(0, Math.floor(n))).padStart(6, '0');
 const blink = (t: number, period = 0.5): boolean => Math.floor(t / period) % 2 === 0;
@@ -16,8 +16,8 @@ function spr(ctx: CanvasRenderingContext2D, world: World, name: string, frame: n
   ctx.restore();
 }
 
-function veil(ctx: CanvasRenderingContext2D, alpha: number): void {
-  ctx.fillStyle = `rgba(26,20,35,${alpha})`;
+function veil(ctx: CanvasRenderingContext2D, alpha: number, rgb = '26,20,35'): void {
+  ctx.fillStyle = `rgba(${rgb},${alpha})`;
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 }
 
@@ -87,6 +87,12 @@ export function drawTitle(ctx: CanvasRenderingContext2D, world: World): void {
   drawText(ctx, 'FASE 1 - TRILHA DOS MONÓLITOS', 160, 149, { color: P.B, align: 'center' });
   if (blink(t)) drawText(ctx, 'PRESSIONE ENTER OU TOQUE', 160, 159, { color: P.r, align: 'center', shadow: P.R });
   drawText(ctx, 'SETAS/WASD MOVER  ESPAÇO/Z SOCAR', 160, 168, { color: P.G, align: 'center' });
+
+  // atalho de teste (discreto, canto inferior esquerdo)
+  if (new URLSearchParams(location.search).get('fase') === '2') {
+    drawText(ctx, 'MODO TESTE:', 5, 149, { color: P.G });
+    drawText(ctx, 'FASE 2', 5, 157, { color: P.G });
+  }
 }
 
 export function drawPaused(ctx: CanvasRenderingContext2D, _world: World): void {
@@ -106,48 +112,160 @@ export function drawGameOver(ctx: CanvasRenderingContext2D, world: World): void 
   }
 }
 
-/** "FASE 1 CONCLUÍDA" com pontuação, bônus de tempo e "jogar novamente". */
+/** Quebra o nome da fase em até 2 linhas, por palavras, cabendo em maxW. */
+function wrapWords(text: string, scale: number, maxW: number): string[] {
+  const lines: string[] = [];
+  let cur = '';
+  for (const word of text.split(' ')) {
+    const cand = cur ? `${cur} ${word}` : word;
+    if (!cur || textWidth(cand, scale) <= maxW) cur = cand;
+    else {
+      lines.push(cur);
+      cur = word;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+/** Maior escala (3 em 1 linha, depois 2 em até 2 linhas) que caiba. */
+function layoutName(text: string, maxW: number): { scale: number; lines: string[] } {
+  const one = wrapWords(text, 3, maxW);
+  if (one.length === 1) return { scale: 3, lines: one };
+  const two = wrapWords(text, 2, maxW);
+  return { scale: 2, lines: two };
+}
+
+/** Cartão de abertura de fase ("FASE N" + nome) sobre véu escuro. */
+export function drawIntro(ctx: CanvasRenderingContext2D, world: World): void {
+  const st = world.state;
+  const t = st.sceneTime;
+  const amazon = world.level.theme === 'amazonia';
+
+  // cores por tema
+  const veilRgb = amazon ? '10,26,12' : '26,20,35';
+  const panelBg = amazon ? '#d4efb8' : P.p;
+  const grid = amazon ? 'rgba(47,107,30,0.3)' : 'rgba(201,120,46,0.35)';
+  const border = amazon ? P.d : P.T;
+  const titleCol = amazon ? P.d : P.t;
+  const titleSh = amazon ? P.j : P.T;
+  const nameCol = amazon ? P.E : P.r;
+  const nameSh = amazon ? P.J : P.R;
+  const divider = amazon ? P.I : P.O;
+
+  // entrada: desliza de cima nos primeiros 0.4s; véu surge junto
+  const ease = Math.min(1, t / 0.4);
+  const eased = 1 - (1 - ease) * (1 - ease) * (1 - ease);
+  const slide = Math.round((1 - eased) * -60);
+  veil(ctx, 0.72 * Math.min(1, t / 0.3), veilRgb);
+
+  ctx.save();
+  ctx.translate(0, slide);
+
+  const px = 24, py = 20, pw = 272, ph = 140;
+  ctx.fillStyle = P.k;
+  ctx.fillRect(px - 1, py - 1, pw + 2, ph + 2);
+  ctx.fillStyle = panelBg;
+  ctx.fillRect(px, py, pw, ph);
+  ctx.fillStyle = grid;
+  for (let x = px + 8; x < px + pw; x += 8) ctx.fillRect(x, py, 1, ph);
+  for (let y = py + 8; y < py + ph; y += 8) ctx.fillRect(px, y, pw, 1);
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px + 1, py + 1, pw - 2, ph - 2);
+
+  // "FASE N" e nome da fase
+  const cx = 160;
+  drawText(ctx, `FASE ${world.level.index + 1}`, cx, py + 12, {
+    scale: 2, color: titleCol, align: 'center', shadow: titleSh,
+  });
+  const name = layoutName(world.level.name, pw - 32);
+  name.lines.forEach((line, i) => {
+    const y = py + 34 + i * (8 * name.scale + 2);
+    drawText(ctx, line, cx, y, { scale: name.scale, color: nameCol, align: 'center', shadow: nameSh });
+  });
+
+  // divisor
+  ctx.fillStyle = divider;
+  ctx.fillRect(px + 16, py + 70, pw - 32, 1);
+
+  // rodapé: Pardo animado + ícone de vida ×N, centralizados
+  const lifeTxt = `×${st.lives}`;
+  const groupW = 40 + 14 + 16 + 6 + textWidth(lifeTxt, 2);
+  const gx = Math.round(cx - groupW / 2);
+  const footY = py + 76;
+  spr(ctx, world, 'pardo_idle', Math.floor(t * 2) % 2, gx, footY, 2);
+  spr(ctx, world, 'icon_life', 0, gx + 40 + 14, footY + 16, 2);
+  drawText(ctx, lifeTxt, gx + 40 + 14 + 16 + 6, footY + 17, { scale: 2, color: P.k, shadow: P.W });
+
+  ctx.restore();
+}
+
+/** "FASE N CONCLUÍDA" com pontuação, bônus de tempo e "jogar novamente". */
 export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
   const st = world.state;
   const t = st.sceneTime;
+  const phase2 = world.level.index === 1;
   veil(ctx, Math.min(0.55, t * 1.5));
   const ease = Math.min(1, t / 0.5);
   const slide = Math.round((1 - ease * (2 - ease)) * -170);
   ctx.save();
   ctx.translate(0, slide);
   const px = 28, py = 12, pw = 264, ph = 156;
+  const bg = phase2 ? '#d4efb8' : P.W;
+  const grid = phase2 ? 'rgba(47,107,30,0.3)' : 'rgba(159,224,255,0.75)';
+  const edge = phase2 ? P.d : P.B;
+  const ink = phase2 ? P.d : P.B;
   ctx.fillStyle = P.k;
   ctx.fillRect(px - 1, py - 1, pw + 2, ph + 2);
-  ctx.fillStyle = P.W;
+  ctx.fillStyle = bg;
   ctx.fillRect(px, py, pw, ph);
-  ctx.fillStyle = 'rgba(159,224,255,0.75)';
+  ctx.fillStyle = grid;
   for (let x = px + 8; x < px + pw; x += 8) ctx.fillRect(x, py, 1, ph);
   for (let y = py + 8; y < py + ph; y += 8) ctx.fillRect(px, y, pw, 1);
-  ctx.strokeStyle = P.B;
+  ctx.strokeStyle = edge;
   ctx.lineWidth = 2;
   ctx.strokeRect(px + 1, py + 1, pw - 2, ph - 2);
 
-  drawText(ctx, 'FASE 1', 160, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
+  if (phase2) {
+    drawText(ctx, 'FASE 2', 160, py + 8, { scale: 2, color: P.d, align: 'center', shadow: P.j });
+  } else {
+    drawText(ctx, 'FASE 1', 160, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
+  }
   drawText(ctx, 'CONCLUÍDA!', 160, py + 27, { scale: 3, color: P.r, align: 'center', shadow: P.R });
 
-  spr(ctx, world, 'pardo_drink', Math.floor(t * 3) % 2, px + 16, py + 54, 2);
-  spr(ctx, world, 'mug', 0, px + 58, py + 76, 2);
+  if (phase2) {
+    // Pardo bebendo, alien (virado para o Pardo) segurando a mamadeira no meio
+    spr(ctx, world, 'pardo_drink_bottle', Math.floor(t * 3) % 2, px + 6, py + 50, 2);
+    spr(ctx, world, 'bottle', Math.floor(t * 4) % 2, px + 72, py + 62, 2);
+    spr(ctx, world, 'alien', Math.floor(t * 2) % 2, px + 84, py + 50, 2, true);
+  } else {
+    spr(ctx, world, 'pardo_drink', Math.floor(t * 3) % 2, px + 16, py + 54, 2);
+    spr(ctx, world, 'mug', 0, px + 58, py + 76, 2);
+  }
 
   const k = Math.max(0, Math.min(1, (t - 0.6) / 1.2));
   const cnt = (v: number): number => Math.floor(v * k);
-  const lx = px + 100, rx = px + pw - 12;
+  // na Fase 2 os rótulos ficam mais à direita para caber o alien à esquerda
+  const lx = phase2 ? px + 128 : px + 100, rx = px + pw - 12;
   const row = (label: string, value: string, y: number, col: string): void => {
-    drawText(ctx, label, lx, y, { color: P.B });
+    drawText(ctx, label, lx, y, { color: ink });
     drawText(ctx, value, rx, y, { color: col, align: 'right', shadow: P.W });
   };
   row('PONTOS', pad6(cnt(st.score)), py + 56, P.k);
   row('MOEDAS', `×${String(cnt(st.coins)).padStart(2, '0')}`, py + 68, P.Y);
   row('BÔNUS DE TEMPO', `+${cnt(st.timeBonus)}`, py + 80, P.R);
 
-  drawText(ctx, 'O PARDO MATOU A SEDE', 160, py + 104, { color: P.N, align: 'center' });
-  drawText(ctx, 'NA CAPELA DO HORIZONTE.', 160, py + 114, { color: P.N, align: 'center' });
+  if (phase2) {
+    drawText(ctx, 'PARDO SE HIDRATOU', 160, py + 104, { color: P.d, align: 'center' });
+    drawText(ctx, 'MAMANDO O ÍNDIO', 160, py + 114, { color: P.d, align: 'center' });
+  } else {
+    drawText(ctx, 'O PARDO MATOU A SEDE', 160, py + 104, { color: P.N, align: 'center' });
+    drawText(ctx, 'NA CAPELA DO HORIZONTE.', 160, py + 114, { color: P.N, align: 'center' });
+  }
   if (t > 2 && blink(t)) {
-    drawText(ctx, 'ENTER OU TOQUE PARA JOGAR NOVAMENTE', 160, py + 138, { color: P.r, align: 'center' });
+    const msg = phase2 ? 'ENTER OU TOQUE PARA JOGAR NOVAMENTE' : 'ENTER OU TOQUE PARA A FASE 2';
+    drawText(ctx, msg, 160, py + 138, { color: P.r, align: 'center' });
   }
   ctx.restore();
 }

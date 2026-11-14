@@ -1,4 +1,5 @@
 import type { Entity, Player, PlayerState, Rect, World } from '../core/types';
+import { Tile } from '../core/types';
 import { PHYS, PLAYER_H, PLAYER_W, TILE } from '../core/constants';
 import { moveBody } from '../core/physics';
 import type { Input } from '../core/input';
@@ -32,6 +33,8 @@ export const FEEL = {
   knockbackY: 170,
   /** salto de morte */
   deathVy: 280,
+  /** afundando na água (px/s) */
+  sinkVy: 26,
   /** sequência de vitória */
   drinkWalk: 50,
   drinkSip: 1.8,
@@ -44,6 +47,8 @@ const SPR_W = 20;
 const SPR_H = 24;
 
 type DrinkPhase = 'walk' | 'sip' | 'done';
+/** O que o Pardo bebe na vitória: caneca (Fase 1) ou mamadeira do alien (Fase 2). */
+export type DrinkItem = 'mug' | 'bottle';
 
 /** Pardo — implementa a interface `Player` com a máquina de estados do PLAN §4. */
 export class PardoPlayer implements Player {
@@ -75,6 +80,10 @@ export class PardoPlayer implements Player {
   private drinkPhase: DrinkPhase = 'done';
   private drinkX = 0;
   private drinkT = 0;
+  private drinkItem: DrinkItem = 'mug';
+  private drinkFace: 1 | -1 = 1;
+  /** y da superfície da água em que está afundando (morte por água), senão null */
+  private sinkY: number | null = null;
 
   constructor(x: number, y: number) {
     this.respawn(x, y);
@@ -102,6 +111,13 @@ export class PardoPlayer implements Player {
     this.animT = 0;
     this.standingOn = null;
     this.drinkPhase = 'done';
+    this.drinkItem = 'mug';
+    this.sinkY = null;
+  }
+
+  /** Fase da sequência de vitória (lida pelo alien para esconder a mamadeira da mão). */
+  get drinkStage(): DrinkPhase {
+    return this.drinkPhase;
   }
 
   get centerX(): number {
@@ -132,16 +148,27 @@ export class PardoPlayer implements Player {
     world.shake(2, 0.15);
   }
 
-  kill(world: World): void {
+  /** Morte imediata. waterY (opcional) = superfície da água → afunda com splash em vez do salto de morte. */
+  kill(world: World, waterY?: number): void {
     if (this.dead || this.state === 'drink') return;
     this.dead = true;
     this.vx = 0;
-    this.vy = -FEEL.deathVy;
     this.onGround = false;
     this.standingOn = null;
     this.punchT = 0;
     this.invuln = 0;
     this.setState('dead');
+    if (waterY !== undefined) {
+      this.sinkY = waterY;
+      this.vy = FEEL.sinkVy;
+      world.audio.play('splash');
+      world.fx('splash', this.centerX - 3, waterY, -1);
+      world.fx('splash', this.centerX + 3, waterY, 1);
+      world.shake(1.5, 0.15);
+      return;
+    }
+    this.sinkY = null;
+    this.vy = -FEEL.deathVy;
     world.audio.play('die');
     world.shake(3, 0.25);
   }
@@ -154,10 +181,15 @@ export class PardoPlayer implements Player {
   }
 
   // ── Extras usados por game.ts ──────────────────────────────────────────────
-  /** Inicia a sequência de vitória: anda até targetX (centro) e bebe. */
-  startDrink(targetX: number): void {
+  /**
+   * Inicia a sequência de vitória: anda até targetX (centro) e bebe.
+   * item: 'mug' (pardo_drink) ou 'bottle' (pardo_drink_bottle); face: para onde olha ao beber.
+   */
+  startDrink(targetX: number, item: DrinkItem = 'mug', face: 1 | -1 = 1): void {
     if (this.dead) return;
     this.drinkX = targetX;
+    this.drinkItem = item;
+    this.drinkFace = face;
     this.drinkPhase = 'walk';
     this.drinkT = 0;
     this.drinkDone = false;
@@ -186,6 +218,11 @@ export class PardoPlayer implements Player {
     if (this.invuln > 0) this.invuln = Math.max(0, this.invuln - dt);
 
     if (this.dead) {
+      if (this.sinkY !== null) {
+        // afundando na água
+        this.y += this.vy * dt;
+        return;
+      }
       // salto de morte: sem colisão
       this.vy = Math.min(this.vy + PHYS.gravity * dt, PHYS.maxFall);
       this.y += this.vy * dt;
@@ -265,8 +302,9 @@ export class PardoPlayer implements Player {
     this.physics(dt, world);
 
     // perigos
-    if (this.touchesHazard(world) || this.y > world.level.heightPx + 32) {
-      this.kill(world);
+    const hz = this.touchedHazard(world);
+    if (hz !== null || this.y > world.level.heightPx + 32) {
+      this.kill(world, hz !== null && hz >= 0 ? hz : undefined);
       return;
     }
 
@@ -342,16 +380,29 @@ export class PardoPlayer implements Player {
     }
   }
 
-  private touchesHazard(world: World): boolean {
+  /**
+   * Perigo tocado: null = nenhum; -1 = espinho/outro; ≥0 = água (y da superfície da coluna).
+   * Água tem prioridade (splash).
+   */
+  private touchedHazard(world: World): number | null {
     const lv = world.level;
     const x0 = Math.floor((this.x + 2) / TILE);
     const x1 = Math.floor((this.x + this.w - 2) / TILE);
     const y0 = Math.floor((this.y + 4) / TILE);
     const y1 = Math.floor((this.y + this.h - 0.01) / TILE);
+    let hit: number | null = null;
     for (let ty = y0; ty <= y1; ty++) {
-      for (let tx = x0; tx <= x1; tx++) if (lv.isHazard(tx, ty)) return true;
+      for (let tx = x0; tx <= x1; tx++) {
+        if (!lv.isHazard(tx, ty)) continue;
+        if (lv.tileAt(tx, ty) === Tile.Water) {
+          let top = ty;
+          while (top > 0 && lv.tileAt(tx, top - 1) === Tile.Water) top--;
+          return top * TILE;
+        }
+        hit = -1;
+      }
     }
-    return false;
+    return hit;
   }
 
   private updateDrink(dt: number, world: World): void {
@@ -362,7 +413,7 @@ export class PardoPlayer implements Player {
         this.vx = 0;
         this.drinkPhase = 'sip';
         this.drinkT = 0;
-        this.facing = 1;
+        this.facing = this.drinkFace;
       } else if (this.onGround) {
         this.facing = d > 0 ? 1 : -1;
         this.vx = Math.sign(d) * Math.min(FEEL.drinkWalk, Math.abs(d) / dt);
@@ -425,10 +476,22 @@ export class PardoPlayer implements Player {
         } else if (this.drinkPhase === 'walk') {
           name = this.onGround ? 'pardo_idle' : 'pardo_fall';
         } else {
-          name = 'pardo_drink';
+          name = this.drinkItem === 'bottle' && spr.has('pardo_drink_bottle') ? 'pardo_drink_bottle' : 'pardo_drink';
           frame = Math.floor(this.drinkT * 3);
         }
         break;
+    }
+    if (this.sinkY !== null) {
+      // afundando: só a parte acima da superfície aparece
+      const clipH = Math.round(this.sinkY) - sy;
+      if (clipH <= 0) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(sx - 4, sy, SPR_W + 8, clipH);
+      ctx.clip();
+      if (spr.has(name)) spr.draw(ctx, name, frame, sx, sy, flip);
+      ctx.restore();
+      return;
     }
     if (spr.has(name)) spr.draw(ctx, name, frame, sx, sy, flip);
 

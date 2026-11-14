@@ -50,4 +50,15 @@ export const PALETTE: Record<string, string> = {
   j: '#8fd45a', // verde claro (brilho de cacto)
   A: '#ffb86b', // laranja claro
   V: '#f08a8a', // vermelho claro / rosado
+  // ── extensão Fase 2 — Amazônia
+  F: '#e0a43a', // dourado da onça
+  I: '#5a9a2a', // verde folha médio
+  J: '#173a17', // verde floresta muito escuro
+  U: '#c2452d', // terra vermelha amazônica
+  X: '#6a3fa0', // roxo açaí
+  Z: '#ff5ab4', // rosa (cobra coral, helicônia)
+  '1': '#a8f070', // verde alien claro
+  '2': '#4caf50', // verde alien
+  '3': '#1e6b8a', // água de rio profunda
+  '4': '#f06a1a', // laranja bico de tucano
 };

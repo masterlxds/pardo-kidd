@@ -1,23 +1,56 @@
-import type { Entity, Level, TileId, Vec2, World } from '../core/types';
+import type { Entity, Level, LevelTheme, TileId, Vec2, World } from '../core/types';
 import { Tile } from '../core/types';
 import { PLAYER_H, PLAYER_W, TILE, VIEW_H, VIEW_W } from '../core/constants';
 import { SPRITE_SPEC } from '../gfx/spec';
 import { createEnemy } from './enemies';
 import {
-  createCoin, createCrumblePlatform, createDrop, createMovingPlatform, createMug, createPopCoin, createWaterCactus,
+  createAlienGoal, createCoin, createCrumblePlatform, createDrop, createMovingPlatform, createMug, createPopCoin,
+  createVineWater, createWaterCactus,
 } from './objects';
 import { LEVEL1_MOVERS, LEVEL1_ROWS } from './level1';
+import { LEVEL2_MOVERS, LEVEL2_ROWS } from './level2';
 
-const TILE_CHARS: Record<string, TileId> = {
-  '=': Tile.GroundTop, '#': Tile.Ground, 'R': Tile.Rock, '^': Tile.Spike,
-  'B': Tile.Block, '?': Tile.BlockItem, 'W': Tile.BlockItem, '-': Tile.OneWay,
-};
+type SpriteName = keyof typeof SPRITE_SPEC;
 
-const DECOR_SPRITE: Record<string, keyof typeof SPRITE_SPEC> = {
-  s: 'sign', k: 'skull', f: 'fence', T: 'deadtree', b: 'bush', o: 'pebbles', j: 'mandacaru', H: 'chapel', D: 'pedestal',
-};
+export interface Marker { ch: string; col: number; row: number }
 
-interface Marker { ch: string; col: number; row: number }
+/** Contexto passado ao handler de marcadores (posição da célula em px + parâmetros de movers). */
+export interface MarkerCtx {
+  /** canto sup. esq. da célula */
+  left: number;
+  top: number;
+  /** centro horizontal da célula */
+  cx: number;
+  /** parâmetros de plataforma móvel desta célula (ou padrão) */
+  mover: { range: number; speed: number };
+}
+
+/** Descrição de dados de uma fase para `buildLevel`. */
+export interface LevelDef {
+  index: number;
+  name: string;
+  theme: LevelTheme;
+  rows: string[];
+  movers: Record<string, { range: number; speed: number }>;
+  /** caractere → tile */
+  tileChars: Record<string, TileId>;
+  /** caracteres de BlockItem que soltam gota (em vez de moeda) */
+  dropBlockChars: string;
+  /** caractere → sprite de decoração (base na base da célula, alinhado à esquerda) */
+  decor: Record<string, SpriteName>;
+  /** caracteres de decoração centralizados horizontalmente na célula */
+  decorCentered?: string;
+  /** sprite de cada tile (Water é tratado à parte: tile_water_top / tile_water) */
+  tileSprites: Partial<Record<TileId, SpriteName>>;
+  /** tiles com 2 variações (frame escolhido por hash da posição) */
+  tileVariants: TileId[];
+  /** cores da sombra de abismo [borda, meio, fundo] */
+  pitColors: [string, string, string];
+  /** cores da bandeira de checkpoint [não alcançado, alcançado] */
+  flagColors: [string, string];
+  /** cria a entidade de um marcador (P/K já são tratados); null = ignora */
+  marker(ch: string, m: MarkerCtx): Entity | null;
+}
 
 function hash(x: number, y: number): number {
   let h = (x * 374761393 + y * 668265263) | 0;
@@ -25,24 +58,26 @@ function hash(x: number, y: number): number {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
-export function createLevel1(): Level {
-  const rowsSrc = LEVEL1_ROWS;
+/** Constrói um Level genérico a partir de dados. */
+export function buildLevel(def: LevelDef): Level {
+  const rowsSrc = def.rows;
   const rows = rowsSrc.length;
-  const cols = rowsSrc[0].length;
+  const cols = rowsSrc[0]?.length ?? 0;
   const grid = new Uint8Array(cols * rows);
   const original = new Uint8Array(cols * rows);
   const waterBlocks = new Set<number>(); // índices de BlockItem que soltam gota
   const markers: Marker[] = [];
   const decor: Marker[] = [];
+  const centered = def.decorCentered ?? '';
 
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
-      const ch = rowsSrc[y][x];
-      const t = TILE_CHARS[ch];
+      const ch = rowsSrc[y]?.[x] ?? '.';
+      const t = def.tileChars[ch];
       if (t !== undefined) {
         original[y * cols + x] = t;
-        if (ch === 'W') waterBlocks.add(y * cols + x);
-      } else if (ch in DECOR_SPRITE) decor.push({ ch, col: x, row: y });
+        if (def.dropBlockChars.includes(ch)) waterBlocks.add(y * cols + x);
+      } else if (ch in def.decor) decor.push({ ch, col: x, row: y });
       else if (ch !== '.') markers.push({ ch, col: x, row: y });
     }
   }
@@ -62,8 +97,21 @@ export function createLevel1(): Level {
     const t = tileAt(tx, ty);
     return t === Tile.GroundTop || t === Tile.Ground || t === Tile.Rock || t === Tile.Block || t === Tile.BlockItem;
   };
+  const isOpen = (t: number): boolean => t === Tile.Empty || t === Tile.Spike;
+
+  // colunas com água a partir da linha do chão: sem sombra de abismo
+  const waterCol = new Uint8Array(cols);
+  for (let x = 0; x < cols; x++) {
+    for (let y = 0; y < rows; y++) if (original[y * cols + x] === Tile.Water) { waterCol[x] = 1; break; }
+  }
+
+  const [pitEdge, pitMid, pitDeep] = def.pitColors;
+  const [flagOff, flagOn] = def.flagColors;
 
   const level: Level = {
+    index: def.index,
+    name: def.name,
+    theme: def.theme,
     cols,
     rows,
     widthPx: cols * TILE,
@@ -77,7 +125,10 @@ export function createLevel1(): Level {
     },
     isSolid,
     isOneWay: (tx, ty) => tileAt(tx, ty) === Tile.OneWay,
-    isHazard: (tx, ty) => tileAt(tx, ty) === Tile.Spike,
+    isHazard: (tx, ty) => {
+      const t = tileAt(tx, ty);
+      return t === Tile.Spike || t === Tile.Water;
+    },
     punchTile(tx, ty, world) {
       const t = tileAt(tx, ty);
       if (t !== Tile.Block && t !== Tile.BlockItem) return false;
@@ -98,24 +149,11 @@ export function createLevel1(): Level {
     createEntities() {
       const out: Entity[] = [];
       for (const m of markers) {
-        const left = m.col * TILE, top = m.row * TILE, cx = left + TILE / 2;
-        switch (m.ch) {
-          case 'c': out.push(createCoin(left + 4, top + 4)); break;
-          case 'l': out.push(createEnemy('calango', cx, top + TILE)); break;
-          case 'p': out.push(createEnemy('palma', cx, top + TILE)); break;
-          case 't': out.push(createEnemy('tatu', cx, top + TILE)); break;
-          case 'v': out.push(createEnemy('carcara', cx, top + TILE / 2)); break;
-          case 'C': out.push(createWaterCactus(cx - 12, top + TILE - 32)); break;
-          case 'd': out.push(createCrumblePlatform(left, top)); break;
-          case 'm':
-          case 'M': {
-            const p = LEVEL1_MOVERS[`${m.col},${m.row}`] ?? { range: 4, speed: 30 };
-            out.push(createMovingPlatform(left, top, m.ch === 'm' ? 'x' : 'y', p.range * TILE, p.speed));
-            break;
-          }
-          case 'G': out.push(createMug(left, top + TILE - 14)); break;
-          default: break;
-        }
+        if (m.ch === 'P' || m.ch === 'K') continue;
+        const left = m.col * TILE, top = m.row * TILE;
+        const mover = def.movers[`${m.col},${m.row}`] ?? { range: 4, speed: 30 };
+        const e = def.marker(m.ch, { left, top, cx: left + TILE / 2, mover });
+        if (e) out.push(e);
       }
       return out;
     },
@@ -125,28 +163,29 @@ export function createLevel1(): Level {
       const y0 = Math.max(0, Math.floor(camY / TILE)), y1 = Math.min(rows - 1, Math.floor((camY + VIEW_H) / TILE));
       const sp = world.sprites;
 
-      // sombra dos abismos: colunas sem chão até a base ficam escuras (senão a areia do
-      // parallax faz o buraco parecer chão)
+      // sombra dos abismos: colunas sem chão até a base ficam escuras (senão o chão do
+      // parallax faz o buraco parecer chão). Nunca em colunas de água.
       const pitTop = 11 * TILE;
       for (let tx = x0; tx <= x1; tx++) {
-        const bottom = grid[(rows - 1) * cols + tx];
-        if (bottom !== Tile.Empty && bottom !== Tile.Spike) continue;
+        if (waterCol[tx]) continue;
+        if (!isOpen(grid[(rows - 1) * cols + tx] ?? 0)) continue;
         // topo da sombra = primeira linha vazia contínua acima da base, limitada à linha do chão
         let top = rows - 1;
-        while (top > 11 && (grid[(top - 1) * cols + tx] === Tile.Empty || grid[(top - 1) * cols + tx] === Tile.Spike)) top--;
+        while (top > 11 && isOpen(grid[(top - 1) * cols + tx] ?? 0)) top--;
         const y = Math.max(pitTop, top * TILE);
-        ctx.fillStyle = '#7a3418';
+        ctx.fillStyle = pitEdge;
         ctx.fillRect(tx * TILE, y, TILE, 6);
-        ctx.fillStyle = '#4a2416';
+        ctx.fillStyle = pitMid;
         ctx.fillRect(tx * TILE, y + 6, TILE, 10);
-        ctx.fillStyle = '#2a1620';
+        ctx.fillStyle = pitDeep;
         ctx.fillRect(tx * TILE, y + 16, TILE, rows * TILE - y - 16);
       }
       // decoração (atrás dos tiles), ancorada pela base da célula
       for (const d of decor) {
-        const name = DECOR_SPRITE[d.ch];
+        const name = def.decor[d.ch];
+        if (!name) continue;
         const [w, h] = SPRITE_SPEC[name];
-        const px = d.col * TILE + (d.ch === 'o' ? (TILE - w) / 2 : 0);
+        const px = d.col * TILE + (centered.includes(d.ch) ? (TILE - w) / 2 : 0);
         if (px + w < camX || px > camX + VIEW_W) continue;
         sp.draw(ctx, name, 0, px, (d.row + 1) * TILE - h);
       }
@@ -160,31 +199,117 @@ export function createLevel1(): Level {
         ctx.fillStyle = '#3a2a18';
         ctx.fillRect(Math.round(cx) - 2, by - 2, 4, 2);
         const wave = reached ? Math.round(Math.sin(world.time * 6)) : 0;
-        ctx.fillStyle = reached ? '#4fc65a' : '#c9c1a9';
+        ctx.fillStyle = reached ? flagOn : flagOff;
         ctx.fillRect(Math.round(cx) + 1, by - 24, 8, 3);
         ctx.fillRect(Math.round(cx) + 1, by - 21, 6 + wave, 3);
         ctx.fillRect(Math.round(cx) + 1, by - 18, 4 + wave, 2);
       }
       // tiles
+      const time = world.time;
       for (let ty = y0; ty <= y1; ty++) {
         for (let tx = x0; tx <= x1; tx++) {
-          const t = grid[ty * cols + tx];
+          const t = grid[ty * cols + tx] as TileId;
           if (t === Tile.Empty) continue;
-          const f = hash(tx, ty) & 1;
           const px = tx * TILE, py = ty * TILE;
-          switch (t) {
-            case Tile.GroundTop: sp.draw(ctx, 'tile_ground_top', f, px, py); break;
-            case Tile.Ground: sp.draw(ctx, 'tile_ground', f, px, py); break;
-            case Tile.Rock: sp.draw(ctx, 'tile_rock', f, px, py); break;
-            case Tile.Spike: sp.draw(ctx, 'tile_spike', 0, px, py); break;
-            case Tile.Block: sp.draw(ctx, 'tile_block', 0, px, py); break;
-            case Tile.BlockItem: sp.draw(ctx, 'tile_block_item', 0, px, py); break;
-            case Tile.OneWay: sp.draw(ctx, 'tile_oneway', 0, px, py); break;
-            default: break;
+          if (t === Tile.Water) {
+            const surface = ty === 0 || grid[(ty - 1) * cols + tx] !== Tile.Water;
+            if (surface) sp.draw(ctx, 'tile_water_top', Math.floor(time * 6 + tx * 0.5) & 3, px, py);
+            else sp.draw(ctx, 'tile_water', Math.floor(time * 3 + (tx + ty) * 0.5) & 1, px, py);
+            continue;
           }
+          const name = def.tileSprites[t];
+          if (!name) continue;
+          const f = def.tileVariants.includes(t) ? hash(tx, ty) & 1 : 0;
+          sp.draw(ctx, name, f, px, py);
         }
       }
     },
   };
   return level;
+}
+
+// ── Fase 1 — Trilha dos Monólitos (sertão) ───────────────────────────────────
+export function createLevel1(): Level {
+  return buildLevel({
+    index: 0,
+    name: 'TRILHA DOS MONÓLITOS',
+    theme: 'sertao',
+    rows: LEVEL1_ROWS,
+    movers: LEVEL1_MOVERS,
+    tileChars: {
+      '=': Tile.GroundTop, '#': Tile.Ground, 'R': Tile.Rock, '^': Tile.Spike,
+      'B': Tile.Block, '?': Tile.BlockItem, 'W': Tile.BlockItem, '-': Tile.OneWay,
+    },
+    dropBlockChars: 'W',
+    decor: {
+      s: 'sign', k: 'skull', f: 'fence', T: 'deadtree', b: 'bush', o: 'pebbles', j: 'mandacaru', H: 'chapel', D: 'pedestal',
+    },
+    decorCentered: 'o',
+    tileSprites: {
+      [Tile.GroundTop]: 'tile_ground_top', [Tile.Ground]: 'tile_ground', [Tile.Rock]: 'tile_rock',
+      [Tile.Spike]: 'tile_spike', [Tile.Block]: 'tile_block', [Tile.BlockItem]: 'tile_block_item',
+      [Tile.OneWay]: 'tile_oneway',
+    },
+    tileVariants: [Tile.GroundTop, Tile.Ground, Tile.Rock],
+    pitColors: ['#7a3418', '#4a2416', '#2a1620'],
+    flagColors: ['#c9c1a9', '#4fc65a'],
+    marker(ch, { left, top, cx, mover }) {
+      switch (ch) {
+        case 'c': return createCoin(left + 4, top + 4);
+        case 'l': return createEnemy('calango', cx, top + TILE);
+        case 'p': return createEnemy('palma', cx, top + TILE);
+        case 't': return createEnemy('tatu', cx, top + TILE);
+        case 'v': return createEnemy('carcara', cx, top + TILE / 2);
+        case 'C': return createWaterCactus(cx - 12, top + TILE - 32);
+        case 'd': return createCrumblePlatform(left, top);
+        case 'm':
+        case 'M': return createMovingPlatform(left, top, ch === 'm' ? 'x' : 'y', mover.range * TILE, mover.speed);
+        case 'G': return createMug(left, top + TILE - 14);
+        default: return null;
+      }
+    },
+  });
+}
+
+// ── Fase 2 — Coração da Amazônia ─────────────────────────────────────────────
+export function createLevel2(): Level {
+  return buildLevel({
+    index: 1,
+    name: 'CORAÇÃO DA AMAZÔNIA',
+    theme: 'amazonia',
+    rows: LEVEL2_ROWS,
+    movers: LEVEL2_MOVERS,
+    tileChars: {
+      '=': Tile.GroundTop, '#': Tile.Ground, 'R': Tile.Rock, '^': Tile.Spike,
+      'B': Tile.Block, '?': Tile.BlockItem, 'W': Tile.BlockItem, '-': Tile.OneWay, '~': Tile.Water,
+    },
+    dropBlockChars: 'W',
+    decor: {
+      s: 'jsign', O: 'oca', h: 'heliconia', f: 'fern', F: 'bamboo_fence', q: 'canoe', t: 'totem',
+    },
+    tileSprites: {
+      [Tile.GroundTop]: 'tile_jg_top', [Tile.Ground]: 'tile_jg_ground', [Tile.Rock]: 'tile_jg_rock',
+      [Tile.Spike]: 'tile_jg_spike', [Tile.Block]: 'tile_jg_block', [Tile.BlockItem]: 'tile_jg_block_item',
+      [Tile.OneWay]: 'tile_jg_oneway',
+    },
+    tileVariants: [Tile.GroundTop, Tile.Ground, Tile.Rock],
+    pitColors: ['#5a2414', '#3a160e', '#200c0a'],
+    flagColors: ['#c9c1a9', '#ffd23f'],
+    marker(ch, { left, top, cx, mover }) {
+      switch (ch) {
+        case 'c': return createCoin(left + 4, top + 4);
+        case 'o': return createEnemy('onca', cx, top + TILE);
+        case 'j': return createEnemy('jacare', cx, top + TILE);
+        case 'n': return createEnemy('cobra', cx, top + TILE);
+        case 'u': return createEnemy('tucano', cx, top + TILE / 2);
+        case 'V': return createVineWater(left, top + TILE - 32);
+        case 'd': return createCrumblePlatform(left, top, 'platform_lily');
+        case 'm':
+        case 'M':
+          return createMovingPlatform(left, top, ch === 'm' ? 'x' : 'y', mover.range * TILE, mover.speed, 'platform_log');
+        case 'A': return createAlienGoal(cx, top + TILE);
+        default: return null;
+      }
+    },
+  });
 }
