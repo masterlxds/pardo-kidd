@@ -5,13 +5,17 @@ import { moveBody } from '../core/physics';
 const GRAV = 900;
 const MAX_FALL = 360;
 
-interface SpriteRef { name: string; frame: number; flip: boolean }
+interface SpriteRef { name: string; frame: number; flip: boolean; hide?: boolean }
 
 interface Ai {
   update(e: Entity, dt: number, world: World): void;
   sprite(): SpriteRef;
   /** pode ser derrotado por soco agora? */
   vulnerable(): boolean;
+  /** se definido, decide o efeito do soco (substitui `vulnerable`): 'kill' derrota, 'absorb' conecta sem matar, 'miss' não conecta */
+  onHit?(e: Entity, dir: 1 | -1, world: World): 'kill' | 'absorb' | 'miss';
+  /** true → não causa dano ao toque agora */
+  harmless?(): boolean;
 }
 
 interface Thrown { rot: number; spin: number; dir: 1 | -1 }
@@ -43,6 +47,7 @@ function build(kind: EnemyKind, centerX: number, bottom: number, w: number, h: n
     },
     draw(ctx, world) {
       const s = ai.sprite();
+      if (s.hide) return;
       const size = world.sprites.size(s.name);
       const sx = e.x + e.w / 2 - size.w / 2;
       const sy = e.y + e.h - size.h;
@@ -57,7 +62,12 @@ function build(kind: EnemyKind, centerX: number, bottom: number, w: number, h: n
       }
     },
     onPunch(world, dir) {
-      if (thrown || !ai.vulnerable()) return false;
+      if (thrown) return false;
+      if (ai.onHit) {
+        const r = ai.onHit(e, dir, world);
+        if (r === 'miss') return false;
+        if (r === 'absorb') { world.audio.play('hit'); return true; }
+      } else if (!ai.vulnerable()) return false;
       thrown = { rot: 0, spin: dir * 12, dir };
       e.vx = dir * 150;
       e.vy = -210;
@@ -66,7 +76,7 @@ function build(kind: EnemyKind, centerX: number, bottom: number, w: number, h: n
       return true;
     },
     onTouchPlayer(world) {
-      if (thrown) return;
+      if (thrown || ai.harmless?.()) return;
       world.player.hurt(world, cx(e));
     },
   };
@@ -298,10 +308,223 @@ function tatuAi(e: Entity): Ai {
   };
 }
 
+// ── Onça: patrulha, agacha e dá bote em arco; 2 socos ───────────────────────────────
+function oncaAi(e: Entity): Ai {
+  type S = 'patrol' | 'crouch' | 'pounce' | 'rest' | 'stun';
+  let state: S = 'patrol';
+  let dir: 1 | -1 = -1;
+  let t = 0;
+  let timer = 0;
+  let hits = 0;
+  return {
+    update(_e, dt, world) {
+      t += dt;
+      const p = world.player;
+      if (state === 'patrol') {
+        e.vx = dir * 30;
+        const c = fall(e, dt, world);
+        if (c.left || c.right) dir = c.left ? 1 : -1;
+        else if (c.bottom && !groundAhead(e, dir, world)) dir = (dir * -1) as 1 | -1;
+        const dx = p.x + p.w / 2 - cx(e);
+        const dy = (p.y + p.h) - (e.y + e.h);
+        if (c.bottom && !p.dead && dx * dir > 0 && Math.abs(dx) <= 7 * TILE && Math.abs(dy) <= TILE) {
+          state = 'crouch';
+          timer = 0.4;
+          e.vx = 0;
+        }
+      } else if (state === 'crouch') {
+        e.vx = 0;
+        fall(e, dt, world);
+        timer -= dt;
+        if (timer <= 0) {
+          state = 'pounce';
+          timer = 0.1;
+          e.vx = dir * 150;
+          e.vy = -220;
+          e.y -= 1;
+          world.audio.play('roar');
+        }
+      } else if (state === 'pounce') {
+        timer -= dt;
+        const c = fall(e, dt, world);
+        if (timer <= 0 && c.bottom) { state = 'rest'; timer = 0.8; e.vx = 0; }
+      } else if (state === 'rest') {
+        e.vx = 0;
+        fall(e, dt, world);
+        timer -= dt;
+        if (timer <= 0) state = 'patrol';
+      } else {
+        e.vx *= Math.max(0, 1 - 6 * dt);
+        fall(e, dt, world);
+        timer -= dt;
+        if (timer <= 0) { state = 'patrol'; e.vx = 0; }
+      }
+      guardDead(e, world);
+    },
+    sprite() {
+      if (state === 'stun') return { name: 'onca_crouch', frame: 0, flip: dir < 0, hide: Math.floor(t / 0.07) % 2 === 0 };
+      if (state === 'crouch') return { name: 'onca_crouch', frame: 0, flip: dir < 0 };
+      if (state === 'pounce') return { name: 'onca_pounce', frame: 0, flip: dir < 0 };
+      return { name: 'onca', frame: state === 'patrol' ? Math.floor(t / 0.25) % 2 : 0, flip: dir < 0 };
+    },
+    vulnerable: () => true,
+    onHit(_e, pdir) {
+      if (hits === 0) {
+        hits = 1;
+        state = 'stun';
+        timer = 1.0;
+        e.vx = pdir * 70;
+        e.vy = -60;
+        dir = (pdir * -1) as 1 | -1; // vira para o Pardo
+        return 'absorb';
+      }
+      return 'kill';
+    },
+    harmless: () => state === 'stun',
+  };
+}
+
+// ── Jacaré: boca fechada (vulnerável) / aberta (rebate o soco) ──────────────────────
+function jacareAi(e: Entity): Ai {
+  let open = false;
+  let timer = 1.6;
+  let dir: 1 | -1 = -1;
+  return {
+    update(_e, dt, world) {
+      fall(e, dt, world);
+      timer -= dt;
+      if (timer <= 0) {
+        open = !open;
+        timer = open ? 0.9 : 1.6;
+        if (!open && onScreen(e, world)) world.audio.play('chomp');
+      }
+      if (!open) dir = world.player.x + world.player.w / 2 >= cx(e) ? 1 : -1;
+      guardDead(e, world);
+    },
+    sprite: () => ({ name: 'jacare', frame: open ? 1 : 0, flip: dir < 0 }),
+    vulnerable: () => !open,
+  };
+}
+
+// ── Cobra: enrolada; hiss, telegrafa, bote, recolhe ─────────────────────────────────
+function cobraAi(e: Entity): Ai {
+  type S = 'coil' | 'tele' | 'strike' | 'recoil' | 'cool';
+  let state: S = 'coil';
+  let face: 1 | -1 = -1;
+  let t = 0;
+  let timer = 0;
+  const W = 12, W_STRIKE = 24;
+  const setW = (w: number) => {
+    // mantém o lado da cauda fixo
+    if (face > 0) e.w = w;
+    else { const r = e.x + e.w; e.w = w; e.x = r - w; }
+  };
+  return {
+    update(_e, dt, world) {
+      t += dt;
+      const p = world.player;
+      fall(e, dt, world);
+      const dx = p.x + p.w / 2 - cx(e);
+      if (state === 'coil' || state === 'cool' || state === 'recoil') {
+        if (Math.abs(dx) > 2) face = dx >= 0 ? 1 : -1;
+      }
+      timer -= dt;
+      if (state === 'coil') {
+        const dy = (p.y + p.h) - (e.y + e.h);
+        if (!p.dead && dx * face > 0 && Math.abs(dx) <= 3 * TILE && Math.abs(dy) <= 10) {
+          state = 'tele';
+          timer = 0.25;
+          world.audio.play('hiss');
+        }
+      } else if (state === 'tele') {
+        if (timer <= 0) { state = 'strike'; timer = 0.3; setW(W_STRIKE); }
+      } else if (state === 'strike') {
+        if (timer <= 0) { setW(W); state = 'recoil'; timer = 0.6; }
+      } else if (state === 'recoil') {
+        if (timer <= 0) { state = 'cool'; timer = 1.0; }
+      } else if (timer <= 0) state = 'coil';
+      guardDead(e, world);
+    },
+    sprite() {
+      if (state === 'strike') return { name: 'cobra_strike', frame: 0, flip: face < 0 };
+      const fr = state === 'tele' ? Math.floor(t / 0.06) % 2 : Math.floor(t / 0.4) % 2;
+      return { name: 'cobra', frame: fr, flip: face < 0 };
+    },
+    vulnerable: () => state !== 'strike',
+  };
+}
+
+// ── Fruto do tucano ─────────────────────────────────────────────────────────────────
+function createFruit(x: number, y: number): Entity {
+  let t = 0;
+  const e: Entity = {
+    kind: 'fruit', dead: false, x: x - 3, y: y - 3, w: 6, h: 6, vx: 0, vy: 0,
+    update(dt, world) {
+      t += dt;
+      e.vy = Math.min(e.vy + GRAV * dt, MAX_FALL);
+      const c = moveBody(e, world.level, dt);
+      if (c.bottom) {
+        world.fx('dust', e.x + e.w / 2, e.y + e.h);
+        e.dead = true;
+      } else if (e.y > world.level.heightPx + 60) e.dead = true;
+    },
+    draw(ctx, world) {
+      world.sprites.draw(ctx, 'fruit', Math.floor(t / 0.1) % 2, e.x, e.y);
+    },
+    onPunch(world) {
+      if (e.dead) return false;
+      e.dead = true;
+      world.audio.play('hit');
+      world.addScore(10, e.x, e.y);
+      return true;
+    },
+    onTouchPlayer(world) {
+      if (e.dead) return;
+      e.dead = true;
+      world.player.hurt(world, e.x + e.w / 2);
+    },
+  };
+  return e;
+}
+
+// ── Tucano: voa senoidal até o Pardo e solta frutos ─────────────────────────────────
+function tucanoAi(e: Entity): Ai {
+  const baseY = e.y;
+  let active = false;
+  let t = 0;
+  let face: 1 | -1 = -1;
+  let drop = 1.2;
+  return {
+    update(_e, dt, world) {
+      if (!active) {
+        if (onScreen(e, world)) active = true; else return;
+      }
+      t += dt;
+      drop -= dt;
+      const p = world.player;
+      const dx = p.x + p.w / 2 - cx(e);
+      if (Math.abs(dx) > 4) face = dx >= 0 ? 1 : -1;
+      e.x += face * 45 * dt;
+      e.y = baseY + 10 * Math.sin(t * 3);
+      const dy = p.y + p.h / 2 - (e.y + e.h / 2);
+      if (drop <= 0 && !p.dead && dy > 12 && Math.abs(dx) < 50) {
+        drop = 2.2;
+        world.audio.play('squawk');
+        world.spawn(createFruit(cx(e), e.y + e.h));
+      }
+      const c = world.camera;
+      if (e.x + e.w < c.x - 160 || e.x > c.x + VIEW_W + 160) e.dead = true;
+    },
+    sprite: () => ({ name: 'tucano', frame: Math.floor(t / 0.15) % 2, flip: face < 0 }),
+    vulnerable: () => true,
+  };
+}
+
 /**
  * Cria um inimigo com a BASE (pés) apoiada em `footY` e centro horizontal em `centerX`
  * (para o carcará, footY é a base da hitbox na altitude média de voo).
- * Hitboxes: calango 16x10, carcará 20x11, palma 12x17 (14 agachada), tatu 14x10 (bola 10x10).
+ * Hitboxes: calango 16x10, carcará 20x11, palma 12x17 (14 agachada), tatu 14x10 (bola 10x10),
+ * onça 24x12, jacaré 32x10, cobra 12x12 (24 de largura no bote), tucano 18x10 (footY = base na altitude média de voo).
  */
 export function createEnemy(kind: EnemyKind, centerX: number, footY: number): Entity {
   switch (kind) {
@@ -309,5 +532,9 @@ export function createEnemy(kind: EnemyKind, centerX: number, footY: number): En
     case 'carcara': return build(kind, centerX, footY, 20, 11, 400, carcaraAi);
     case 'palma': return build(kind, centerX, footY, 12, 17, 300, palmaAi);
     case 'tatu': return build(kind, centerX, footY, 14, 10, 500, tatuAi);
+    case 'onca': return build(kind, centerX, footY, 24, 12, 600, oncaAi);
+    case 'jacare': return build(kind, centerX, footY, 32, 10, 400, jacareAi);
+    case 'cobra': return build(kind, centerX, footY, 12, 12, 300, cobraAi);
+    case 'tucano': return build(kind, centerX, footY, 18, 10, 400, tucanoAi);
   }
 }

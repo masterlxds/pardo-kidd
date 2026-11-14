@@ -106,14 +106,23 @@ export function createDrop(cx: number, cy: number, vx = 0, vy = -120): Entity {
 
 /** Cacto d'água 24x32 (x,y = canto sup. esq.). Solta até 3 gotas a socos, depois seca. */
 export function createWaterCactus(x: number, y: number): Entity {
+  return createWaterSource('cactus_water', x, y, 24, 32);
+}
+
+/** Cipó-d'água 16x32 (x,y = canto sup. esq.). Mesmo comportamento do cacto d'água. */
+export function createVineWater(x: number, y: number): Entity {
+  return createWaterSource('vine_water', x, y, 16, 32);
+}
+
+function createWaterSource(sprite: string, x: number, y: number, w: number, h: number): Entity {
   let drops = 0;
   let shake = 0;
   const e: Entity = {
-    ...base('cactus_water', x, y, 24, 32),
+    ...base(sprite, x, y, w, h),
     update(dt) { if (shake > 0) shake = Math.max(0, shake - dt); },
     draw(ctx, world) {
       const off = shake > 0 ? (Math.floor(shake * 60) % 2 ? 1 : -1) : 0;
-      world.sprites.draw(ctx, 'cactus_water', drops >= 3 ? 1 : 0, e.x + off, e.y);
+      world.sprites.draw(ctx, sprite, drops >= 3 ? 1 : 0, e.x + off, e.y);
     },
     onPunch(world, dir) {
       if (drops >= 3) return false;
@@ -129,11 +138,13 @@ export function createWaterCactus(x: number, y: number): Entity {
 }
 
 /** Plataforma móvel 32x10. Vai-e-vem senoidal de (x,y) até +range px no eixo dado. */
-export function createMovingPlatform(x: number, y: number, axis: 'x' | 'y', range: number, speed: number): Entity {
+export function createMovingPlatform(
+  x: number, y: number, axis: 'x' | 'y', range: number, speed: number, sprite = 'platform_rock',
+): Entity {
   let phase = 0;
   const omega = (Math.PI * speed) / range;
   const e: Entity = {
-    ...base('platform_rock', x, y, 32, 10),
+    ...base(sprite, x, y, 32, 10),
     platform: true,
     dx: 0,
     dy: 0,
@@ -149,18 +160,18 @@ export function createMovingPlatform(x: number, y: number, axis: 'x' | 'y', rang
       e.x = nx;
       e.y = ny;
     },
-    draw(ctx, world) { world.sprites.draw(ctx, 'platform_rock', 0, e.x, e.y); },
+    draw(ctx, world) { world.sprites.draw(ctx, sprite, 0, e.x, e.y); },
   };
   return e;
 }
 
 /** Plataforma que desmorona: treme ~0.5s após o Pardo pisar, cai, e reaparece após ~3s. */
-export function createCrumblePlatform(x: number, y: number): Entity {
+export function createCrumblePlatform(x: number, y: number, sprite = 'platform_crumble'): Entity {
   type S = 'idle' | 'shaking' | 'falling' | 'gone';
   let state: S = 'idle';
   let timer = 0;
   const e: Entity = {
-    ...base('platform_crumble', x, y, 32, 10),
+    ...base(sprite, x, y, 32, 10),
     platform: true,
     dx: 0,
     dy: 0,
@@ -193,7 +204,7 @@ export function createCrumblePlatform(x: number, y: number): Entity {
       if (state === 'gone') return;
       let ox = 0;
       if (state === 'shaking') ox = Math.floor(timer * 60) % 2 ? 1 : -1;
-      world.sprites.draw(ctx, 'platform_crumble', state === 'idle' ? 0 : 1, e.x + ox, e.y);
+      world.sprites.draw(ctx, sprite, state === 'idle' ? 0 : 1, e.x + ox, e.y);
     },
   };
   return e;
@@ -227,6 +238,62 @@ export function createMug(x: number, y: number): Entity {
       if (won) return;
       won = true;
       world.win();
+    },
+  };
+  return e;
+}
+
+/** Fase atual da sequência de bebida do Pardo (exposta por PardoPlayer.drinkStage). */
+function drinkStage(world: World): string | undefined {
+  return (world.player as Partial<{ drinkStage: string }>).drinkStage;
+}
+
+/**
+ * Objetivo da Fase 2: alien verde com a mamadeira do índio. (centerX, footY) = centro da base.
+ * Olha para a esquerda (o Pardo vem da esquerda). Tocar → world.win(); na cena 'winning'
+ * estende a mamadeira (alien_give) e a entrega quando o Pardo começa a beber.
+ */
+export function createAlienGoal(centerX: number, footY: number): Entity {
+  const HW = 14, HH = 22;
+  let won = false;
+  let delivered = false;
+  const e: Entity = {
+    ...base('goal', centerX - HW / 2, footY - HH, HW, HH),
+    update(_dt, world) {
+      if (won && !delivered && world.state.scene === 'winning') {
+        delivered = true;
+        world.audio.play('deliver');
+      }
+    },
+    draw(ctx, world) {
+      const t = world.time;
+      const sp = world.sprites;
+      const left = Math.round(centerX - 10);
+      const top = footY - 24;
+      const giving = won && (world.state.scene === 'winning' || world.state.scene === 'win');
+      const stage = drinkStage(world);
+      const handed = giving && (stage === 'sip' || stage === 'done');
+      if (!giving) {
+        // brilho suave de objetivo
+        ctx.save();
+        ctx.globalAlpha = 0.16 + 0.07 * Math.sin(t * 4);
+        ctx.fillStyle = '#fff4a0';
+        ctx.beginPath();
+        ctx.arc(left - 2, top + 15, 9 + Math.sin(t * 4) * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        sp.draw(ctx, 'alien', Math.floor(t * 2) & 1, left, top, true);
+        sp.draw(ctx, 'bottle', Math.floor(t * 3) & 1, left - 4, top + 9);
+      } else {
+        // alien_give 24 de largura: o braço extra fica à esquerda quando espelhado
+        sp.draw(ctx, 'alien_give', 0, left - 4, top, true);
+        if (!handed) sp.draw(ctx, 'bottle', Math.floor(t * 4) & 1, left - 10, top + 8);
+      }
+    },
+    onTouchPlayer(world) {
+      if (won) return;
+      world.win();
+      won = world.state.scene === 'winning';
     },
   };
   return e;

@@ -9,10 +9,12 @@ import { PARDO } from '../src/gfx/art/pardo.ts';
 import { ENEMIES } from '../src/gfx/art/enemies.ts';
 import { WORLD } from '../src/gfx/art/world.ts';
 import { DECOR } from '../src/gfx/art/decor.ts';
+import { ENEMIES2 } from '../src/gfx/art/enemies2.ts';
+import { AMAZON } from '../src/gfx/art/amazon.ts';
 
 const out = process.argv[2] ?? 'art-preview.png';
 const filter = process.argv[3] ?? '';
-const art = { ...PARDO, ...ENEMIES, ...WORLD, ...DECOR };
+const art = { ...PARDO, ...ENEMIES, ...WORLD, ...DECOR, ...ENEMIES2, ...AMAZON };
 const D = 2; // arte em alta resolução = D× o tamanho lógico do spec
 const lowres = [];
 const errors = [];

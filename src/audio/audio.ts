@@ -1,4 +1,4 @@
-import type { AudioApi, SfxName } from '../core/types';
+import type { MusicTrack, AudioApi, SfxName } from '../core/types';
 
 /**
  * Áudio 100% Web Audio API (sem arquivos externos).
@@ -30,7 +30,7 @@ const SFX_GAIN = 0.8;
 const MUSIC_GAIN = 0.25;
 
 const BPM = 120;
-/** colcheia de semicolcheia (16avo) em segundos */
+/** semicolcheia (16avo) em segundos */
 const STEP = 60 / BPM / 4;
 const STEPS_PER_BAR = 16;
 const BARS_PER_LOOP = 8;
@@ -132,12 +132,13 @@ function noise(
   filter: BiquadFilterType,
   f0: number,
   f1?: number,
+  q = 0.8,
 ): void {
   const src = g.ctx.createBufferSource();
   src.buffer = g.noise;
   const flt = g.ctx.createBiquadFilter();
   flt.type = filter;
-  flt.Q.value = 0.8;
+  flt.Q.value = q;
   flt.frequency.setValueAtTime(f0, t);
   if (f1 !== undefined) flt.frequency.exponentialRampToValueAtTime(f1, t + dur);
   const amp = g.ctx.createGain();
@@ -248,6 +249,51 @@ function boing(g: Graph, t: number): void {
   o.stop(t + dur + 0.02);
 }
 
+function roar(g: Graph, t: number): void {
+  const { ctx } = g;
+  const dur = 0.55;
+  const o = ctx.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(95, t);
+  o.frequency.exponentialRampToValueAtTime(55, t + dur);
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = 26;
+  const depth = ctx.createGain();
+  depth.gain.value = 12;
+  lfo.connect(depth);
+  depth.connect(o.frequency);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 900;
+  const amp = ctx.createGain();
+  envelope(amp, t, 0.3, dur);
+  o.connect(lp);
+  lp.connect(amp);
+  amp.connect(g.sfx);
+  o.start(t);
+  lfo.start(t);
+  o.stop(t + dur + 0.04);
+  lfo.stop(t + dur + 0.04);
+  noise(g, g.sfx, t, dur, 0.3, 'bandpass', 420, 220, 1.4);
+}
+
+function splash(g: Graph, t: number): void {
+  noise(g, g.sfx, t, 0.4, 0.35, 'bandpass', 3200, 500, 0.9);
+  noise(g, g.sfx, t, 0.15, 0.2, 'highpass', 5000);
+  for (let i = 0; i < 4; i++) {
+    const at = t + 0.08 + i * 0.06 + Math.random() * 0.03;
+    const f = 400 + Math.random() * 500;
+    osc(g, g.sfx, 'sine', f, at, 0.07, 0.16, f * 2.2);
+  }
+}
+
+function chomp(g: Graph, t: number): void {
+  for (const dt of [0, 0.1]) {
+    osc(g, g.sfx, 'square', 200, t + dt, 0.06, 0.28, 70);
+    noise(g, g.sfx, t + dt, 0.05, 0.3, 'lowpass', 1200, 300);
+  }
+}
+
 const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
   // pulo: sweep ascendente curto
   jump: (g, t) => osc(g, g.sfx, 'square', 220, t, 0.14, 0.2, 660),
@@ -339,6 +385,26 @@ const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
   squawk: (g, t) => squawk(g, t),
   // mola: sine com sweep sobe-desce
   boing: (g, t) => boing(g, t),
+  // mergulho: respingo de ruído + bolhas
+  splash: (g, t) => splash(g, t),
+  // rugido de onça
+  roar: (g, t) => roar(g, t),
+  // sibilo de cobra
+  hiss: (g, t) => noise(g, g.sfx, t, 0.3, 0.3, 'highpass', 5500, 7500),
+  // mordida: estalo duplo grave
+  chomp: (g, t) => chomp(g, t),
+  // entrega: fanfarra alegre de 5 notas (Dó maior)
+  deliver: (g, t) => {
+    const top: Tone[] = [
+      tone(523.25, 0.1, 0.16),
+      tone(659.25, 0.1, 0.16),
+      tone(783.99, 0.1, 0.16),
+      tone(1046.5, 0.16, 0.16),
+      tone(1318.51, 0.5, 0.18),
+    ];
+    seq(g, t, top);
+    seq(g, t, top.map((n) => tone(n.f / 2, n.d, 0.22, 'triangle')));
+  },
 };
 
 /* ----------------------------------------------------------------------------
@@ -376,7 +442,7 @@ function melodyNote(g: Graph, midi: number, t: number, steps: number): void {
   o.stop(t + dur + 0.02);
 }
 
-function scheduleStep(g: Graph, step: number, t: number): void {
+function scheduleSertao(g: Graph, step: number, t: number): void {
   const bar = Math.floor(step / STEPS_PER_BAR);
   const s = step % STEPS_PER_BAR;
   const root = BASS_ROOTS[bar % BASS_ROOTS.length] ?? 38;
@@ -397,6 +463,168 @@ function scheduleStep(g: Graph, step: number, t: number): void {
   const note = MELODY[step];
   if (note) melodyNote(g, note[0], t, note[1]);
 }
+
+/* ----------------------------------------------------------------------------
+ * Faixa "Carimbó da Mata" — Sol mixolídio (G A B C D E F), ~120 BPM, 16 compassos.
+ * Parte A (cc. 1–8): pergunta/resposta; parte B (cc. 9–16): mais aguda e rítmica.
+ * Curimbó (tambor grave), maracas, baixo sincopado, banjo arpejado e pássaros.
+ * ------------------------------------------------------------------------- */
+
+const AMZ_BARS = 16;
+const AMZ_LOOP_STEPS = STEPS_PER_BAR * AMZ_BARS;
+
+const AMZ_MELODY_BARS: readonly (readonly Note[])[] = [
+  // A — pergunta
+  [[67, 2], [71, 2], [74, 4], [72, 2], [71, 2], [69, 4]],
+  [[71, 2], [69, 2], [67, 4], [0, 4], [67, 2], [69, 2]],
+  [[72, 2], [69, 2], [77, 4], [76, 2], [74, 2], [72, 4]],
+  [[72, 2], [69, 2], [65, 4], [0, 8]],
+  // A — resposta
+  [[76, 2], [72, 2], [79, 4], [76, 2], [74, 2], [72, 4]],
+  [[74, 2], [72, 2], [69, 4], [72, 2], [74, 2], [76, 4]],
+  [[74, 3], [72, 1], [69, 4], [74, 4], [0, 4]],
+  [[71, 2], [74, 2], [79, 4], [74, 2], [71, 2], [67, 4]],
+  // B
+  [[79, 1], [79, 1], [0, 2], [79, 2], [76, 2], [72, 4], [76, 4]],
+  [[77, 2], [76, 2], [74, 4], [72, 2], [74, 2], [76, 2], [0, 2]],
+  [[74, 2], [79, 2], [79, 2], [74, 2], [71, 4], [74, 4]],
+  [[76, 2], [74, 2], [71, 2], [69, 2], [67, 8]],
+  [[77, 2], [77, 2], [72, 4], [77, 2], [76, 2], [74, 4]],
+  [[72, 2], [74, 2], [76, 4], [77, 4], [0, 4]],
+  [[74, 2], [74, 2], [69, 2], [74, 2], [72, 2], [69, 2], [67, 4]],
+  [[69, 4], [71, 2], [72, 2], [74, 4], [0, 4]],
+];
+
+/** Raiz do baixo (G2 = 43): G G F F C C D G | C C G G F F D D */
+const AMZ_ROOTS: readonly number[] = [43, 43, 41, 41, 36, 36, 38, 43, 36, 36, 43, 43, 41, 41, 38, 38];
+
+/** Baixo sincopado: [semicolcheia, intervalo, duração] */
+const AMZ_BASS: readonly (readonly [number, number, number])[] = [
+  [0, 0, 3],
+  [3, 7, 2],
+  [6, 0, 2],
+  [8, 0, 2],
+  [11, 7, 2],
+  [14, 12, 2],
+];
+
+/** Passos do banjo nos contratempos e síncopes, com índice do arpejo. */
+const AMZ_BANJO: readonly (readonly [number, number])[] = [
+  [2, 0], [5, 1], [7, 2], [10, 1], [13, 2], [15, 1],
+];
+const TRIAD = [12, 16, 19, 24] as const;
+
+const AMZ_MELODY: (Note | undefined)[] = new Array<Note | undefined>(AMZ_LOOP_STEPS).fill(undefined);
+{
+  let pos = 0;
+  for (const bar of AMZ_MELODY_BARS) {
+    for (const [midi, steps] of bar) {
+      if (midi > 0) AMZ_MELODY[pos] = [midi, steps];
+      pos += steps;
+    }
+  }
+}
+
+function curimbo(g: Graph, t: number, level: number): void {
+  osc(g, g.music, 'sine', 140, t, 0.2, 0.55 * level, 48);
+  noise(g, g.music, t, 0.04, 0.12 * level, 'lowpass', 500);
+}
+
+function maraca(g: Graph, t: number, peak: number): void {
+  noise(g, g.music, t, 0.04, peak, 'highpass', 6500);
+}
+
+function banjo(g: Graph, midi: number, t: number): void {
+  const { ctx } = g;
+  const o = ctx.createOscillator();
+  o.setPeriodicWave(g.pulse);
+  o.frequency.setValueAtTime(midiToHz(midi), t);
+  const amp = ctx.createGain();
+  envelope(amp, t, 0.2, 0.11);
+  o.connect(amp);
+  amp.connect(g.music);
+  o.start(t);
+  o.stop(t + 0.14);
+}
+
+function lead(g: Graph, midi: number, t: number, steps: number): void {
+  const { ctx } = g;
+  const dur = steps * STEP;
+  const o = ctx.createOscillator();
+  o.type = 'square';
+  o.frequency.setValueAtTime(midiToHz(midi), t);
+  // vibrato leve nas notas longas
+  if (steps >= 4) {
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 5.5;
+    const d = ctx.createGain();
+    d.gain.value = midiToHz(midi) * 0.01;
+    lfo.connect(d);
+    d.connect(o.frequency);
+    lfo.start(t);
+    lfo.stop(t + dur + 0.02);
+  }
+  const amp = ctx.createGain();
+  const peak = 0.17;
+  amp.gain.setValueAtTime(FLOOR, t);
+  amp.gain.exponentialRampToValueAtTime(peak, t + ATTACK);
+  amp.gain.exponentialRampToValueAtTime(peak * 0.55, t + dur * 0.7);
+  amp.gain.exponentialRampToValueAtTime(FLOOR, t + dur * 0.95);
+  o.connect(amp);
+  amp.connect(g.music);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+}
+
+/** Piado: 2–3 glissandos rápidos de seno, bem baixo. */
+function birdChirp(g: Graph, t: number): void {
+  const base = 2200 + Math.random() * 1600;
+  const n = 2 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < n; i++) {
+    const at = t + i * 0.09;
+    const up = Math.random() < 0.5;
+    osc(g, g.music, 'sine', up ? base : base * 1.4, at, 0.07, 0.05, up ? base * 1.4 : base);
+  }
+}
+
+function scheduleAmazonia(g: Graph, step: number, t: number): void {
+  const bar = Math.floor(step / STEPS_PER_BAR);
+  const s = step % STEPS_PER_BAR;
+  const root = AMZ_ROOTS[bar % AMZ_ROOTS.length] ?? 43;
+
+  for (const [bs, interval, len] of AMZ_BASS) {
+    if (bs === s) bassNote(g, root + interval, t, len);
+  }
+
+  // curimbó: acento no 1, síncopes no 4 e 7, resposta fraca no 9 e 15
+  if (s === 0) curimbo(g, t, 1);
+  else if (s === 3 || s === 6) curimbo(g, t, 0.6);
+  else if (s === 8 || s === 14) curimbo(g, t, 0.4);
+
+  // maracas em todas as semicolcheias, acentos alternados
+  maraca(g, t, s % 4 === 2 ? 0.1 : s % 2 === 0 ? 0.07 : 0.04);
+
+  for (const [bs, idx] of AMZ_BANJO) {
+    if (bs === s) banjo(g, root + 12 + (TRIAD[idx] ?? 12), t);
+  }
+
+  const note = AMZ_MELODY[step];
+  if (note) lead(g, note[0], t, note[1]);
+
+  // pássaros ocasionais (a cada poucos compassos, em volume baixo)
+  if (s === 9 && bar % 2 === 1 && Math.random() < 0.45) birdChirp(g, t);
+}
+
+interface Track {
+  readonly stepDur: number;
+  readonly loopSteps: number;
+  readonly scheduleStep: (g: Graph, step: number, t: number) => void;
+}
+
+const TRACKS: Record<MusicTrack, Track> = {
+  sertao: { stepDur: STEP, loopSteps: LOOP_STEPS, scheduleStep: scheduleSertao },
+  amazonia: { stepDur: STEP, loopSteps: AMZ_LOOP_STEPS, scheduleStep: scheduleAmazonia },
+};
 
 function makeNoise(ctx: AudioContext): AudioBuffer {
   const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
@@ -437,6 +665,7 @@ export function createAudio(): AudioApi {
   let graph: Graph | null = null;
   let muted = false;
   let musicWanted = false;
+  let current: MusicTrack = 'sertao';
   let timer: number | null = null;
   let nextStep = 0;
   let nextTime = 0;
@@ -473,10 +702,11 @@ export function createAudio(): AudioApi {
     const g = graph;
     if (!g) return;
     const horizon = g.ctx.currentTime + LOOKAHEAD_S;
+    const tr = TRACKS[current];
     while (nextTime < horizon) {
-      scheduleStep(g, nextStep, nextTime);
-      nextTime += STEP;
-      nextStep = (nextStep + 1) % LOOP_STEPS;
+      tr.scheduleStep(g, nextStep, nextTime);
+      nextTime += tr.stepDur;
+      nextStep = (nextStep + 1) % tr.loopSteps;
     }
   }
 
@@ -496,6 +726,16 @@ export function createAudio(): AudioApi {
     }
   }
 
+  function silenceMusic(): void {
+    stopScheduler();
+    const g = graph;
+    if (g) {
+      // desconecta o barramento: notas já agendadas são silenciadas na hora
+      g.music.disconnect();
+      g.music = makeMusicBus(g.ctx, g.master);
+    }
+  }
+
   return {
     unlock(): void {
       const g = ensureGraph();
@@ -512,20 +752,17 @@ export function createAudio(): AudioApi {
       SFX[name](g, g.ctx.currentTime + 0.01);
     },
 
-    startMusic(): void {
+    startMusic(track: MusicTrack = 'sertao'): void {
+      if (musicWanted && current === track) return;
+      if (musicWanted) silenceMusic();
+      current = track;
       musicWanted = true;
       startScheduler();
     },
 
     stopMusic(): void {
       musicWanted = false;
-      stopScheduler();
-      const g = graph;
-      if (g) {
-        // desconecta o barramento: notas já agendadas são silenciadas na hora
-        g.music.disconnect();
-        g.music = makeMusicBus(g.ctx, g.master);
-      }
+      silenceMusic();
     },
 
     setMuted(m: boolean): void {

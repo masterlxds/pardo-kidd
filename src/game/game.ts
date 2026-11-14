@@ -1,5 +1,6 @@
 import type {
   AudioApi,
+  LevelTheme,
   Background,
   Camera,
   Entity,
@@ -15,9 +16,10 @@ import { MAX_HYDRATION, RENDER_SCALE, START_LIVES, TILE, VIEW_H, VIEW_W } from '
 import { overlaps } from '../core/physics';
 import type { Input } from '../core/input';
 import { createPlayer, type PardoPlayer } from './player';
-import { createLevel1 } from './level';
-import { drawGameOver, drawHud, drawPaused, drawTitle, drawWin } from './hud';
+import { LEVEL_COUNT, LEVELS } from './levels';
+import { drawGameOver, drawHud, drawIntro, drawPaused, drawTitle, drawWin } from './hud';
 import { createBackground } from '../gfx/background';
+import { createAmazonBackground } from '../gfx/background2';
 import { createAtlas } from '../gfx/atlas';
 import { createAudio } from '../audio/audio';
 import { drawText } from '../gfx/font';
@@ -34,6 +36,12 @@ const CAM_ANCHOR_Y = 0.58;
 const ACTIVE_MARGIN = VIEW_W * 1.5;
 const DYING_TIME = 1.8;
 const END_CONFIRM_DELAY = 0.8;
+/** Duração do cartão "FASE N" antes de cada fase. */
+const INTRO_TIME = 2.2;
+/** Tempo mínimo no cartão antes de aceitar Enter/toque para pular. */
+const INTRO_SKIP_DELAY = 0.25;
+/** Distância (px) entre o centro do Pardo e o centro do alien ao receber a mamadeira. */
+const GOAL_STAND_OFF = 14;
 const TIME_BONUS_PAR = 300;
 const TIME_BONUS_RATE = 10;
 const POPUP_LIFE = 0.9;
@@ -70,16 +78,24 @@ export interface Game {
   onHidden(): void;
 }
 
+export interface GameOptions {
+  /** índice (0-based) da fase em que o primeiro jogo começa (ex.: ?fase=2 → 1) */
+  startLevel?: number;
+}
+
 export class GameWorld implements World {
-  readonly level: Level;
+  level: Level;
   readonly player: PardoPlayer;
   readonly entities: Entity[] = [];
   readonly camera: Camera = { x: 0, y: 0 };
   readonly state: GameState;
   readonly audio: AudioApi;
   readonly sprites: SpriteAtlas;
-  readonly background: Background;
+  background: Background;
   time = 0;
+  /** fase do primeiro "jogar" a partir do título (depois sempre volta à fase 0) */
+  private startLevel: number;
+  private backgrounds = new Map<LevelTheme, Background>();
 
   readonly particles: Particle[] = [];
   readonly popups: Popup[] = [];
@@ -96,11 +112,13 @@ export class GameWorld implements World {
   constructor(
     private readonly ctx: CanvasRenderingContext2D,
     private readonly input: Input,
+    opts: GameOptions = {},
   ) {
     this.sprites = createAtlas();
     this.audio = createAudio();
-    this.background = createBackground();
-    this.level = createLevel1();
+    this.startLevel = clampLevel(opts.startLevel ?? 0);
+    this.level = makeLevel(this.startLevel);
+    this.background = this.backgroundFor(this.level.theme);
     this.state = {
       scene: 'title',
       sceneTime: 0,
@@ -112,6 +130,7 @@ export class GameWorld implements World {
       elapsed: 0,
       timeBonus: 0,
       muted: false,
+      levelIndex: this.startLevel,
     };
     const sp = this.level.playerSpawn;
     this.player = createPlayer(sp.x, sp.y);
@@ -189,18 +208,25 @@ export class GameWorld implements World {
 
   win(): void {
     if (this.state.scene !== 'playing' || this.player.dead) return;
-    let target = this.player.centerX;
+    const px = this.player.centerX;
+    let goal: Entity | null = null;
     let best = Infinity;
     for (const e of this.entities) {
-      if (e.kind !== 'mug') continue;
-      const cx = e.x + e.w / 2;
-      const d = Math.abs(cx - this.player.centerX);
+      if (e.dead || (e.kind !== 'mug' && e.kind !== 'goal')) continue;
+      const d = Math.abs(e.x + e.w / 2 - px);
       if (d < best) {
         best = d;
-        target = cx;
+        goal = e;
       }
     }
-    this.player.startDrink(target);
+    if (goal && goal.kind === 'goal') {
+      // alien: o Pardo para um pouco antes, do lado de onde veio, e olha para ele
+      const cx = goal.x + goal.w / 2;
+      const side: 1 | -1 = px <= cx ? -1 : 1;
+      this.player.startDrink(cx + side * GOAL_STAND_OFF, 'bottle', side === -1 ? 1 : -1);
+    } else {
+      this.player.startDrink(goal ? goal.x + goal.w / 2 : px, 'mug');
+    }
     this.audio.stopMusic();
     this.audio.play('win');
     this.setScene('winning');
@@ -212,21 +238,52 @@ export class GameWorld implements World {
     this.state.sceneTime = 0;
   }
 
-  /** Começo do zero (título, game over ou vitória → jogar). */
-  newGame(): void {
+  /** Começo do zero (título, game over ou fim do jogo → jogar) na fase `index`. */
+  newGame(index = 0): void {
     const st = this.state;
     st.score = 0;
     st.lives = START_LIVES;
     st.coins = 0;
-    st.hydration = st.maxHydration;
+    this.loadLevel(index);
+    this.setScene('intro');
+    this.audio.play('start');
+    this.audio.startMusic(this.level.theme);
+  }
+
+  /**
+   * Monta a fase `index` (level, cenário por tema, entidades, câmera). Mantém pontos/vidas/moedas;
+   * zera hidratação (cheia), tempo, bônus e checkpoint.
+   */
+  loadLevel(index: number): void {
+    const i = clampLevel(index);
+    const st = this.state;
+    if (i !== this.level.index) {
+      this.level = makeLevel(i);
+      this.background = this.backgroundFor(this.level.theme);
+    }
+    st.levelIndex = i;
     st.elapsed = 0;
     st.timeBonus = 0;
     this.checkpoint = -1;
     this.time = 0;
     this.respawnAt(this.level.playerSpawn.x, this.level.playerSpawn.y);
-    this.setScene('playing');
+  }
+
+  private backgroundFor(theme: LevelTheme): Background {
+    let bg = this.backgrounds.get(theme);
+    if (!bg) {
+      bg = theme === 'amazonia' ? createAmazonBackground() : createBackground();
+      this.backgrounds.set(theme, bg);
+    }
+    return bg;
+  }
+
+  /** Vitória → próxima fase, mantendo pontos/vidas/moedas. */
+  private nextLevel(): void {
+    this.loadLevel(this.state.levelIndex + 1);
+    this.setScene('intro');
     this.audio.play('start');
-    this.audio.startMusic();
+    this.audio.startMusic(this.level.theme);
   }
 
   private respawnAt(x: number, y: number): void {
@@ -278,7 +335,22 @@ export class GameWorld implements World {
       case 'title':
         this.time += dt;
         this.updateParticles(dt);
-        if (input.pressed('confirm') || input.pressed('start')) this.newGame();
+        if (input.pressed('confirm') || input.pressed('start')) {
+          this.newGame(this.startLevel);
+          this.startLevel = 0;
+        }
+        break;
+
+      case 'intro':
+        // mundo parado por trás do cartão (sem simular o Pardo)
+        this.time += dt;
+        this.updateParticles(dt);
+        if (
+          st.sceneTime >= INTRO_TIME ||
+          (st.sceneTime >= INTRO_SKIP_DELAY && (input.pressed('confirm') || input.pressed('start')))
+        ) {
+          this.setScene('playing');
+        }
         break;
 
       case 'playing':
@@ -300,7 +372,7 @@ export class GameWorld implements World {
       case 'paused':
         if (input.pressed('pause') || input.pressed('start')) {
           this.setScene('playing');
-          this.audio.startMusic();
+          this.audio.startMusic(this.level.theme);
         }
         break;
 
@@ -314,7 +386,7 @@ export class GameWorld implements World {
           if (st.lives > 0) {
             this.respawnAtCheckpoint();
             this.setScene('playing');
-            this.audio.startMusic();
+            this.audio.startMusic(this.level.theme);
           } else {
             this.setScene('gameover');
             this.audio.play('gameover');
@@ -343,7 +415,8 @@ export class GameWorld implements World {
         this.updateParticles(dt);
         this.updatePopups(dt);
         if (st.sceneTime >= END_CONFIRM_DELAY && (input.pressed('confirm') || input.pressed('start'))) {
-          this.newGame();
+          if (st.scene === 'win' && st.levelIndex + 1 < LEVEL_COUNT) this.nextLevel();
+          else this.newGame(0);
         }
         break;
     }
@@ -589,6 +662,9 @@ export class GameWorld implements World {
       case 'title':
         drawTitle(ctx, this);
         break;
+      case 'intro':
+        drawIntro(ctx, this);
+        break;
       case 'playing':
       case 'dying':
       case 'winning':
@@ -626,6 +702,16 @@ export class GameWorld implements World {
   }
 }
 
+function clampLevel(i: number): number {
+  return Number.isFinite(i) ? clamp(Math.floor(i), 0, LEVEL_COUNT - 1) : 0;
+}
+
+function makeLevel(i: number): Level {
+  const make = LEVELS[clampLevel(i)] ?? LEVELS[0];
+  if (!make) throw new Error('nenhuma fase definida');
+  return make();
+}
+
 function rand(a: number, b: number): number {
   return a + Math.random() * (b - a);
 }
@@ -641,8 +727,8 @@ function intersect(a: Rect, b: Rect): Rect {
 }
 
 /** Cria o jogo completo (atlas, áudio, cenário, level, Pardo) sobre o contexto 320x180. */
-export function createGame(ctx: CanvasRenderingContext2D, input: Input): Game {
-  const world = new GameWorld(ctx, input);
+export function createGame(ctx: CanvasRenderingContext2D, input: Input, opts: GameOptions = {}): Game {
+  const world = new GameWorld(ctx, input, opts);
   return {
     world,
     state: world.state,

@@ -18,6 +18,16 @@ declare global {
   }
 }
 
+/** `?fase=N` (1-based) → índice inicial da fase (atalho de teste). */
+function startLevelFromUrl(): number {
+  try {
+    const n = Number.parseInt(new URLSearchParams(window.location.search).get('fase') ?? '', 10);
+    return Number.isFinite(n) && n >= 1 ? n - 1 : 0;
+  } catch {
+    return 0;
+  }
+}
+
 function boot(): void {
   const canvas = document.getElementById('game');
   if (!(canvas instanceof HTMLCanvasElement)) throw new Error('canvas #game não encontrado');
@@ -29,7 +39,7 @@ function boot(): void {
 
   const input = createInput(canvas);
   try {
-    const game = createGame(ctx, input);
+    const game = createGame(ctx, input, { startLevel: startLevelFromUrl() });
     window.__pk = { world: game.world, state: game.state, input };
     const loop = createLoop({
       update: (dt) => game.update(dt),
