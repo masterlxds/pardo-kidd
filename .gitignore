@@ -1,0 +1,9 @@
+node_modules
+dist
+.vercel
+art-preview*.png
+*.log
+.claude/settings.local.json
+PLAN.md
+prompt.md
+lore.md

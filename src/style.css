@@ -1,0 +1,217 @@
+/* Pardo Kidd in Quixadá World — layout responsivo e controles touch.
+ * Não renomear ids: #stage, #game, #touch, #btn-left, #btn-right, #btn-jump, #btn-punch, #btn-mute.
+ */
+
+:root {
+  --bg: #1a1423;
+  --grid: rgba(255, 255, 255, 0.025);
+  --sun: #ffd23f;
+  --terra: #b5532a;
+  --azul: #3b6fd6;
+  --creme: #fff8e7;
+  --pad-size: 72px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 16px 16px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Canvas 16:9 no maior tamanho que couber, centralizado, nítido. */
+#game {
+  display: block;
+  width: min(100vw, calc(100vh * 16 / 9));
+  width: min(100vw, calc(100dvh * 16 / 9));
+  aspect-ratio: 16 / 9;
+  height: auto;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+  background: #000;
+  outline: none;
+}
+
+@media (min-width: 720px) and (min-height: 480px) {
+  #game {
+    box-shadow:
+      0 0 0 2px #0d0912,
+      0 0 0 4px #3a2d4a,
+      0 10px 36px rgba(0, 0, 0, 0.55);
+  }
+}
+
+/* Retrato (celular em pé): canvas no topo, controles embaixo. */
+@media (orientation: portrait) {
+  #stage {
+    justify-content: flex-start;
+    padding-top: max(var(--safe-top), 10px);
+  }
+}
+
+/* Botão de mudo: canto superior direito, discreto. */
+#btn-mute {
+  position: fixed;
+  top: max(var(--safe-top), 8px);
+  right: max(var(--safe-right), 8px);
+  z-index: 10;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(255, 210, 63, 0.6);
+  border-radius: 6px;
+  background: rgba(26, 20, 35, 0.55);
+  color: var(--sun);
+  font: 700 18px/1 ui-monospace, Menlo, Consolas, monospace;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+#btn-mute:hover,
+#btn-mute:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+
+#btn-mute.muted {
+  opacity: 0.45;
+  color: var(--terra);
+  border-color: rgba(181, 83, 42, 0.6);
+}
+
+#btn-mute.muted::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 50%;
+  height: 2px;
+  background: var(--terra);
+  transform: rotate(-45deg);
+}
+
+/* Controles touch: escondidos por padrão. */
+#touch {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  padding:
+    0
+    max(var(--safe-right), 12px)
+    max(var(--safe-bottom), 12px)
+    max(var(--safe-left), 12px);
+  justify-content: space-between;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+@media (pointer: coarse) {
+  #touch {
+    display: flex;
+  }
+}
+
+body.touch #touch {
+  display: flex;
+}
+
+.pad {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+#touch button {
+  width: var(--pad-size);
+  height: var(--pad-size);
+  min-width: 64px;
+  min-height: 64px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 3px solid var(--c);
+  border-radius: 50%;
+  background: rgba(26, 20, 35, 0.5);
+  color: var(--c);
+  font: 700 14px/1 ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
+  box-shadow:
+    inset 0 -5px 0 rgba(0, 0, 0, 0.3),
+    0 3px 0 rgba(0, 0, 0, 0.35);
+  opacity: 0.78;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  cursor: pointer;
+}
+
+#btn-left,
+#btn-right {
+  --c: var(--sun);
+  font-size: 22px;
+}
+
+#btn-punch {
+  --c: var(--creme);
+  background: rgba(181, 83, 42, 0.65);
+  border-color: var(--terra);
+}
+
+#btn-jump {
+  --c: var(--creme);
+  background: rgba(59, 111, 214, 0.65);
+  border-color: var(--azul);
+}
+
+#touch button:active {
+  opacity: 1;
+  transform: translateY(2px) scale(0.94);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.3);
+  filter: brightness(1.25);
+}
+
+#touch button:focus {
+  outline: none;
+}
