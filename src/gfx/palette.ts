@@ -62,9 +62,9 @@ export const PALETTE: Record<string, string> = {
   '3': '#1e6b8a', // água de rio profunda
   '4': '#f06a1a', // laranja bico de tucano
   // ── extensão Fase 2 — redesenho dos inimigos (contraste contra a mata)
-  '5': '#b9bc5a', // oliva claro (escamas do jacaré)
-  '6': '#7c8232', // oliva (couro do jacaré)
-  '7': '#454a1c', // oliva escuro
-  '8': '#b3246f', // magenta escuro (sombra da cobra)
-  '9': '#ffa8d6', // rosa claro (brilho da cobra / do fruto)
+  '$': '#b9bc5a', // oliva claro (escamas do jacaré)
+  '=': '#7c8232', // oliva (couro do jacaré)
+  '~': '#454a1c', // oliva escuro
+  '^': '#b3246f', // magenta escuro (sombra da cobra)
+  ':': '#ffa8d6', // rosa claro (brilho da cobra / do fruto)
 };
