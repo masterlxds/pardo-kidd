@@ -1,4 +1,5 @@
 import type { EnemyKind, Entity, World } from '../core/types';
+import { Tile } from '../core/types';
 import { TILE, VIEW_H, VIEW_W } from '../core/constants';
 import { moveBody } from '../core/physics';
 
@@ -463,8 +464,12 @@ function createFruit(x: number, y: number): Entity {
       t += dt;
       e.vy = Math.min(e.vy + GRAV * dt, MAX_FALL);
       const c = moveBody(e, world.level, dt);
+      const mx = e.x + e.w / 2;
       if (c.bottom) {
-        world.fx('dust', e.x + e.w / 2, e.y + e.h);
+        world.fx('dust', mx, e.y + e.h);
+        e.dead = true;
+      } else if (world.level.tileAt(Math.floor(mx / TILE), Math.floor((e.y + e.h) / TILE)) === Tile.Water) {
+        world.fx('splash', mx, e.y + e.h);
         e.dead = true;
       } else if (e.y > world.level.heightPx + 60) e.dead = true;
     },
@@ -487,35 +492,247 @@ function createFruit(x: number, y: number): Entity {
   return e;
 }
 
-// ── Tucano: voa senoidal até o Pardo e solta frutos ─────────────────────────────────
+// ── Tucano: bombardeiro territorial ─────────────────────────────────────────────────
+// Casa = onde nasce. Paira ali até o Pardo chegar a 7 tiles; então repete o ciclo
+//   alerta (squawk, empina) → passada por cima soltando 1 fruto → meia-volta com 2º squawk →
+//   RASANTE na altura do soco (janela para matar) → sobe → respira → alerta…
+// Nunca passa de 10 tiles de casa; se o Pardo sair desse raio (ou morrer) ele volta para casa.
 function tucanoAi(e: Entity): Ai {
-  const baseY = e.y;
-  let active = false;
-  let t = 0;
+  type S = 'home' | 'alert' | 'pass' | 'setup' | 'windup' | 'dive' | 'skim' | 'climb' | 'rest' | 'return';
+  const homeX = cx(e);
+  const homeY = e.y;
+  const TRIGGER = 7 * TILE;    // Pardo a ≤112px de casa (em x) → acorda
+  const LEASH = 10 * TILE;     // raio do território em x, para o tucano e para o Pardo
+  const PATROL = 20;           // vai-e-vem em casa (±px)
+  const ALERT_T = 0.45;        // aviso antes da passada
+  const PASS_SPEED = 90;       // mais lento que a corrida do Pardo (110)
+  const OVERSHOOT = 64;        // a passada termina 4 tiles além do Pardo
+  const MIN_SEP = 48;          // distância mínima ao Pardo para armar o rasante
+  const WINDUP_T = 0.4;        // aviso antes do rasante
+  const DIVE_T = 0.5;          // duração da descida
+  const DIVE_VY = 200;         // teto da velocidade de descida
+  const LAND_AHEAD = 28;       // nivela esta distância antes do Pardo
+  const SKIM_SPEED = 85;       // rasante horizontal (mais lento que a corrida do Pardo)
+  const SKIM_PAST = 40;        // o rasante segue até aqui além de onde o Pardo estava
+  const CLIMB_VX = 55;
+  const CLIMB_VY = 110;
+  const REST_T = 0.7;
+  const RETURN_SPEED = 70;
+
+  let state: S = 'home';
+  let t = 0;                   // animação
+  let st = 0;                  // tempo no estado atual
   let face: 1 | -1 = -1;
-  let drop = 1.2;
+  let dir: 1 | -1 = -1;        // direção da passada / do rasante
+  let targetX = 0;             // centro-x alvo (passada, reposicionamento)
+  let dropped = false;
+  let fruit: Entity | null = null;
+  let lockX = 0;               // centro-x do Pardo ao iniciar o rasante
+  let skimY = 0;
+  let baseY = homeY;           // referência do balanço ao pairar
+  let wantY = 0;               // altura de rasante pretendida (para saber se o terreno atrapalhou)
+  let retry = false;           // rasante frustrado → tenta de novo pelo outro lado, sem passada
+  let wasRetry = false;
+
+  const lo = homeX - LEASH - e.w / 2;
+  const hi = homeX + LEASH - e.w / 2;
+  const go = (s: S) => { state = s; st = 0; };
+
+  const blocked = (world: World, x: number, y: number): boolean => {
+    const tx0 = Math.floor(x / TILE), tx1 = Math.floor((x + e.w - 0.001) / TILE);
+    const ty0 = Math.floor(y / TILE), ty1 = Math.floor((y + e.h - 0.001) / TILE);
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) if (world.level.isSolid(tx, ty)) return true;
+    }
+    return false;
+  };
+  /** Desloca por eixos sem entrar em tile sólido nem sair da coleira. */
+  const move = (world: World, dx: number, dy: number, ghost = false) => {
+    const r = { hitX: false, hitY: false };
+    if (dx !== 0) {
+      const nx = Math.max(lo, Math.min(hi, e.x + dx));
+      if (nx === e.x || (!ghost && blocked(world, nx, e.y))) r.hitX = true; else e.x = nx;
+    }
+    if (dy !== 0) {
+      if (!ghost && blocked(world, e.x, e.y + dy)) r.hitY = true; else e.y += dy;
+    }
+    return r;
+  };
+  const approach = (v: number, target: number, step: number) =>
+    v < target ? Math.min(target, v + step) : Math.max(target, v - step);
+  /** Topo do chão (sólido/one-way) sob o Pardo, ou null se não houver (abismo/água). */
+  const floorUnder = (world: World): number | null => {
+    const p = world.player;
+    const tx = Math.floor((p.x + p.w / 2) / TILE);
+    const ty0 = Math.floor((p.y + p.h - 0.001) / TILE);
+    for (let ty = ty0; ty <= ty0 + 5; ty++) {
+      if (world.level.isSolid(tx, ty) || world.level.isOneWay(tx, ty)) return ty * TILE;
+    }
+    return null;
+  };
+
   return {
     update(_e, dt, world) {
-      if (!active) {
-        if (onScreen(e, world)) active = true; else return;
-      }
       t += dt;
-      drop -= dt;
+      st += dt;
       const p = world.player;
-      const dx = p.x + p.w / 2 - cx(e);
-      if (Math.abs(dx) > 4) face = dx >= 0 ? 1 : -1;
-      e.x += face * 45 * dt;
-      e.y = baseY + 10 * Math.sin(t * 3);
-      const dy = p.y + p.h / 2 - (e.y + e.h / 2);
-      if (drop <= 0 && !p.dead && dy > 12 && Math.abs(dx) < 50) {
-        drop = 2.2;
-        world.audio.play('squawk');
-        world.spawn(createFruit(cx(e), e.y + e.h));
+      const pcx = p.x + p.w / 2;
+      const dx = pcx - cx(e);
+      const facePlayer = () => { if (Math.abs(dx) > 4) face = dx >= 0 ? 1 : -1; };
+      if (fruit?.dead) fruit = null;
+
+      // coleira: Pardo fora do território (ou morto) → desiste e volta
+      if (state !== 'home' && state !== 'return' && (p.dead || Math.abs(pcx - homeX) > LEASH)) go('return');
+
+      switch (state) {
+        case 'home': {
+          const s = Math.sin(st * 1.2);
+          e.x = homeX - e.w / 2 + PATROL * s;
+          e.y = homeY + 3 * Math.sin(st * 4);
+          face = Math.cos(st * 1.2) >= 0 ? 1 : -1;
+          if (!p.dead && Math.abs(pcx - homeX) <= TRIGGER) {
+            go('alert');
+            world.audio.play('squawk');
+          }
+          break;
+        }
+        case 'alert': {
+          // para, encara o Pardo e empina 5px: aviso da passada
+          facePlayer();
+          e.y = approach(e.y, homeY - 5, 30 * dt);
+          if (st >= ALERT_T) {
+            dir = Math.abs(dx) > 4 ? (dx >= 0 ? 1 : -1) : face;
+            face = dir;
+            targetX = Math.max(homeX - LEASH, Math.min(homeX + LEASH, pcx + dir * OVERSHOOT));
+            dropped = false;
+            go('pass');
+          }
+          break;
+        }
+        case 'pass': {
+          const r = move(world, dir * PASS_SPEED * dt, approach(e.y, homeY, 40 * dt) - e.y);
+          // bombardeio com mira: solta quando cruza o ponto onde o Pardo estará ao fim da queda
+          const h = p.y - (e.y + e.h);
+          if (!dropped && h > 12) {
+            const pred = pcx + p.vx * Math.sqrt((2 * h) / GRAV);
+            const over = (cx(e) - pred) * dir;
+            if (over >= 0) {
+              dropped = true;
+              if (over <= 10 && !fruit) {
+                fruit = createFruit(cx(e), e.y + e.h + 3);
+                world.spawn(fruit);
+              }
+            }
+          }
+          if (r.hitX || (cx(e) - targetX) * dir >= 0 || st > 4) {
+            // perto demais do Pardo para o rasante (coleira/parede cortou a passada)? reposiciona
+            const sep = Math.abs(pcx - cx(e));
+            if (sep >= MIN_SEP) { go('windup'); world.audio.play('squawk'); }
+            else {
+              const side = r.hitX ? -dir : (cx(e) >= pcx ? 1 : -1);
+              let tx = pcx + side * OVERSHOOT;
+              if (tx < homeX - LEASH || tx > homeX + LEASH) tx = pcx - side * OVERSHOOT;
+              targetX = Math.max(homeX - LEASH, Math.min(homeX + LEASH, tx));
+              go('setup');
+            }
+          }
+          break;
+        }
+        case 'setup': {
+          const d = targetX - cx(e);
+          const sdir = d >= 0 ? 1 : -1;
+          face = sdir;
+          const step = Math.min(Math.abs(d), PASS_SPEED * dt);
+          const r = move(world, sdir * step, approach(e.y, homeY, 40 * dt) - e.y);
+          if (r.hitX || Math.abs(targetX - cx(e)) < 1 || st > 2.2) { go('windup'); world.audio.play('squawk'); }
+          break;
+        }
+        case 'windup': {
+          // segundo aviso: encara o Pardo, sobe 6px batendo asa rápido, recolhe as asas no fim
+          facePlayer();
+          move(world, 0, approach(e.y, homeY - 6, 20 * dt) - e.y);
+          if (st >= WINDUP_T) {
+            dir = Math.abs(dx) > 2 ? (dx >= 0 ? 1 : -1) : (homeX >= cx(e) ? 1 : -1);
+            face = dir;
+            lockX = pcx;
+            // altura do soco: hitbox (10px) dentro da caixa do soco (p.y+4 .. p.y+16) com o Pardo no chão
+            const fl = floorUnder(world);
+            skimY = Math.max(e.y, (fl !== null ? fl - p.h : p.y) + 5);
+            wantY = skimY;
+            const T = Math.max(DIVE_T, (skimY - e.y) / DIVE_VY);
+            const dist = (lockX - dir * LAND_AHEAD - cx(e)) * dir;
+            e.vx = dir * Math.max(20, Math.min(110, dist / T));
+            e.vy = (skimY - e.y) / T;
+            go('dive');
+          }
+          break;
+        }
+        case 'dive': {
+          const r = move(world, e.vx * dt, e.vy * dt);
+          if (r.hitX) { skimY = e.y; go('climb'); }      // parede: arremete
+          else if (r.hitY) { skimY = e.y; go('skim'); }  // chão/plataforma no caminho: nivela acima
+          else if (e.y >= skimY) { e.y = skimY; go('skim'); }
+          break;
+        }
+        case 'skim': {
+          const r = move(world, dir * SKIM_SPEED * dt, 0);
+          if (r.hitX || (cx(e) - lockX) * dir >= SKIM_PAST || st > 2.5) go('climb');
+          break;
+        }
+        case 'climb': {
+          const ghost = st > 3;
+          const r = move(world, dir * CLIMB_VX * dt, -Math.min(CLIMB_VY * dt, e.y - homeY), ghost);
+          if (r.hitY) move(world, -dir * CLIMB_VX * 2 * dt, 0); // teto: recua para sair de baixo
+          if (e.y <= homeY) {
+            e.y = homeY; baseY = homeY;
+            // o terreno impediu de chegar à altura do soco: a próxima investida vem do lado em que ele está agora
+            retry = !wasRetry && skimY < wantY - 4;
+            go('rest');
+          }
+          break;
+        }
+        case 'rest': {
+          facePlayer();
+          e.y = baseY + 3 * Math.sin(st * 4);
+          if (st >= REST_T) {
+            wasRetry = retry;
+            if (retry && Math.abs(dx) >= MIN_SEP) { retry = false; go('windup'); } else { retry = false; go('alert'); }
+            world.audio.play('squawk');
+          }
+          break;
+        }
+        case 'return': {
+          const ghost = st > 6;
+          const tx = homeX - e.w / 2;
+          const ddx = tx - e.x;
+          const ddy = homeY - e.y;
+          const d = Math.hypot(ddx, ddy);
+          const step = RETURN_SPEED * dt;
+          if (Math.abs(ddx) > 1) face = ddx >= 0 ? 1 : -1;
+          if (d <= step) {
+            e.x = tx; e.y = homeY;
+            go('home');
+          } else {
+            const r = move(world, (ddx / d) * step, (ddy / d) * step, ghost);
+            if (r.hitX && Math.abs(ddx) > 1) move(world, 0, -step); // obstáculo: passa por cima
+            // o Pardo voltou e já estou na altitude de casa → reativa de onde estiver
+            if (!p.dead && Math.abs(pcx - homeX) <= TRIGGER && Math.abs(e.y - homeY) < 1) {
+              e.y = homeY;
+              go('alert');
+              world.audio.play('squawk');
+            }
+          }
+          break;
+        }
       }
-      const c = world.camera;
-      if (e.x + e.w < c.x - 160 || e.x > c.x + VIEW_W + 160) e.dead = true;
     },
-    sprite: () => ({ name: 'tucano', frame: Math.floor(t / 0.15) % 2, flip: face < 0 }),
+    sprite() {
+      if (state === 'dive' || state === 'skim' || (state === 'windup' && st > WINDUP_T - 0.12)) {
+        return { name: 'tucano_dive', frame: 0, flip: face < 0 };
+      }
+      const rate = state === 'alert' || state === 'windup' ? 0.07 : 0.15;
+      return { name: 'tucano', frame: Math.floor(t / rate) % 2, flip: face < 0 };
+    },
     vulnerable: () => true,
   };
 }
@@ -524,7 +741,8 @@ function tucanoAi(e: Entity): Ai {
  * Cria um inimigo com a BASE (pés) apoiada em `footY` e centro horizontal em `centerX`
  * (para o carcará, footY é a base da hitbox na altitude média de voo).
  * Hitboxes: calango 16x10, carcará 20x11, palma 12x17 (14 agachada), tatu 14x10 (bola 10x10),
- * onça 24x12, jacaré 32x10, cobra 12x12 (24 de largura no bote), tucano 18x10 (footY = base na altitude média de voo).
+ * onça 24x12, jacaré 32x10, cobra 12x12 (24 de largura no bote), tucano 18x10 (footY = base da hitbox na altitude de CASA;
+ * centerX = x de casa: ele patrulha ±20px ali e nunca passa de 10 tiles de distância em x).
  */
 export function createEnemy(kind: EnemyKind, centerX: number, footY: number): Entity {
   switch (kind) {
@@ -536,5 +754,6 @@ export function createEnemy(kind: EnemyKind, centerX: number, footY: number): En
     case 'jacare': return build(kind, centerX, footY, 32, 10, 400, jacareAi);
     case 'cobra': return build(kind, centerX, footY, 12, 12, 300, cobraAi);
     case 'tucano': return build(kind, centerX, footY, 18, 10, 400, tucanoAi);
+    default: throw new Error(`inimigo ${kind} não é deste módulo (Fase 3: src/game/enemies3.ts)`);
   }
 }

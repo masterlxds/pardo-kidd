@@ -294,7 +294,202 @@ function chomp(g: Graph, t: number): void {
   }
 }
 
+/** Berimbau: corda dedilhada com "wah" (passa-banda que abre e fecha), leve bend inicial e vibrato. */
+function berimbau(g: Graph, dest: AudioNode, midi: number, t: number, dur: number, peak: number): void {
+  const { ctx } = g;
+  const f = midiToHz(midi);
+  const o = ctx.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(f * 1.04, t);
+  o.frequency.exponentialRampToValueAtTime(f, t + 0.04);
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = 6;
+  const depth = ctx.createGain();
+  depth.gain.value = f * 0.012;
+  lfo.connect(depth);
+  depth.connect(o.frequency);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.Q.value = 4;
+  bp.frequency.setValueAtTime(450, t);
+  bp.frequency.exponentialRampToValueAtTime(1900, t + dur * 0.35);
+  bp.frequency.exponentialRampToValueAtTime(650, t + dur * 0.95);
+  const amp = ctx.createGain();
+  envelope(amp, t, peak * 2, dur);
+  o.connect(bp);
+  bp.connect(amp);
+  amp.connect(dest);
+  o.start(t);
+  lfo.start(t);
+  o.stop(t + dur + 0.03);
+  lfo.stop(t + dur + 0.03);
+}
+
+function agogo(g: Graph, dest: AudioNode, t: number, high: boolean, level: number): void {
+  const f = high ? 1568 : 1175;
+  osc(g, dest, 'square', f, t, 0.08, 0.07 * level);
+  osc(g, dest, 'sine', f * 2.76, t, 0.05, 0.035 * level);
+}
+
+function atabaque(g: Graph, dest: AudioNode, t: number, level: number, f: number): void {
+  osc(g, dest, 'sine', f, t, 0.14, 0.4 * level, f * 0.6);
+  noise(g, dest, t, 0.03, 0.1 * level, 'bandpass', 1800);
+}
+
+function surdo(g: Graph, dest: AudioNode, t: number, level: number): void {
+  osc(g, dest, 'sine', 100, t, 0.28, 0.55 * level, 42);
+  noise(g, dest, t, 0.05, 0.1 * level, 'lowpass', 400);
+}
+
+function bubbles(g: Graph, dest: AudioNode, t: number, n: number, peak: number): void {
+  for (let i = 0; i < n; i++) {
+    const at = t + i * (0.05 + Math.random() * 0.04);
+    const f = 500 + Math.random() * 700;
+    osc(g, dest, 'sine', f, at, 0.07, peak, f * 2);
+  }
+}
+
 const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
+  // braçada: "blub" curto e suave (toca muito, volume baixo)
+  swim: (g, t) => {
+    const f = 260 + Math.random() * 60;
+    osc(g, g.sfx, 'sine', f, t, 0.09, 0.1, f * 1.8);
+    noise(g, g.sfx, t, 0.07, 0.04, 'lowpass', 900, 300);
+  },
+  // ar: bolha grande estoura + respiro aliviado + arpejo suave
+  air: (g, t) => {
+    osc(g, g.sfx, 'sine', 380, t, 0.12, 0.3, 1500);
+    noise(g, g.sfx, t + 0.1, 0.03, 0.2, 'highpass', 4500);
+    noise(g, g.sfx, t + 0.14, 0.4, 0.14, 'bandpass', 1800, 700, 0.9);
+    seq(g, t + 0.16, [
+      tone(523.25, 0.09, 0.14, 'triangle'),
+      tone(659.25, 0.09, 0.14, 'triangle'),
+      tone(783.99, 0.28, 0.16, 'triangle'),
+    ]);
+  },
+  // contagem: bip de alerta tenso (dois tons levemente dissonantes)
+  countdown: (g, t) => {
+    osc(g, g.sfx, 'square', 880, t, 0.1, 0.18);
+    osc(g, g.sfx, 'square', 932, t, 0.1, 0.1);
+    osc(g, g.sfx, 'sine', 110, t, 0.12, 0.2, 80);
+  },
+  // afogamento: glissando descendente borbulhante
+  drown: (g, t) => {
+    const { ctx } = g;
+    const dur = 1.1;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(420, t);
+    o.frequency.exponentialRampToValueAtTime(55, t + dur);
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 14;
+    const depth = ctx.createGain();
+    depth.gain.value = 40;
+    lfo.connect(depth);
+    depth.connect(o.frequency);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(1500, t);
+    lp.frequency.exponentialRampToValueAtTime(200, t + dur);
+    const amp = ctx.createGain();
+    envelope(amp, t, 0.2, dur);
+    o.connect(lp);
+    lp.connect(amp);
+    amp.connect(g.sfx);
+    o.start(t);
+    lfo.start(t);
+    o.stop(t + dur + 0.04);
+    lfo.stop(t + dur + 0.04);
+    for (let i = 0; i < 6; i++) {
+      const at = t + 0.1 + i * 0.14 + Math.random() * 0.05;
+      const f = 300 + Math.random() * 500;
+      osc(g, g.sfx, 'sine', f, at, 0.08, 0.14, f * 2.2);
+    }
+  },
+  // atordoado: pancada + "piu-piu" de tontura
+  stun: (g, t) => {
+    osc(g, g.sfx, 'triangle', 170, t, 0.14, 0.45, 50);
+    noise(g, g.sfx, t, 0.08, 0.3, 'lowpass', 1800, 300);
+    for (let i = 0; i < 4; i++) {
+      const up = i % 2 === 0;
+      osc(g, g.sfx, 'sine', up ? 1400 : 2100, t + 0.16 + i * 0.08, 0.07, 0.14, up ? 2100 : 1400);
+    }
+  },
+  // choque elétrico curto
+  zap: (g, t) => {
+    osc(g, g.sfx, 'sawtooth', 2000, t, 0.2, 0.2, 180);
+    osc(g, g.sfx, 'square', 95, t, 0.2, 0.14, 70);
+    noise(g, g.sfx, t, 0.15, 0.25, 'highpass', 5000, 2500);
+    osc(g, g.sfx, 'square', 1200, t + 0.06, 0.06, 0.12, 600);
+  },
+  // fitinha rara: arpejo brilhante ascendente com brilho agudo
+  ribbon: (g, t) => {
+    const notes = [1046.5, 1318.51, 1567.98, 2093, 2637];
+    notes.forEach((f, i) => {
+      const last = i === notes.length - 1;
+      const at = t + i * 0.07;
+      osc(g, g.sfx, 'square', f, at, last ? 0.5 : 0.1, 0.13);
+      osc(g, g.sfx, 'sine', f * 2, at, last ? 0.4 : 0.08, 0.06);
+    });
+    osc(g, g.sfx, 'triangle', 523.25, t, 0.5, 0.2);
+  },
+  // fanfarra baiana (~3.6s): lead + berimbau com wah + agogô e atabaque (Fá lídio)
+  fanfare: (g, t) => {
+    const U = 0.14;
+    const lead: readonly Note[] = [
+      [65, 2], [69, 2], [72, 2], [77, 3], [76, 1], [74, 2], [72, 2], [74, 2], [77, 2], [81, 2], [84, 6],
+    ];
+    let pos = 0;
+    for (const [m, u] of lead) {
+      const at = t + pos * U;
+      const d = u * U;
+      const o = g.ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.setValueAtTime(midiToHz(m), at);
+      if (u >= 3) {
+        const lfo = g.ctx.createOscillator();
+        lfo.frequency.value = 6;
+        const dp = g.ctx.createGain();
+        dp.gain.value = midiToHz(m) * 0.012;
+        lfo.connect(dp);
+        dp.connect(o.frequency);
+        lfo.start(at);
+        lfo.stop(at + d + 0.03);
+      }
+      const amp = g.ctx.createGain();
+      envelope(amp, at, 0.15, d * 0.97);
+      o.connect(amp);
+      amp.connect(g.sfx);
+      o.start(at);
+      o.stop(at + d + 0.03);
+      pos += u;
+    }
+    // berimbau: raiz e segunda, em ostinato
+    const bass: readonly (readonly [number, number, number])[] = [
+      [0, 53, 3], [3, 55, 2], [6, 53, 2], [8, 60, 3], [11, 55, 2], [14, 53, 2], [16, 60, 3], [19, 57, 2],
+    ];
+    for (const [u, m, du] of bass) berimbau(g, g.sfx, m, t + u * U, du * U, 0.12);
+    // agogô (3-3-2) e atabaque
+    [0, 3, 6, 8, 11, 14, 16, 19, 22].forEach((u, i) => agogo(g, g.sfx, t + u * U, i % 3 !== 1, 1.3));
+    [0, 6, 8, 14, 16, 22].forEach((u) => atabaque(g, g.sfx, t + u * U, 1, 200));
+    [0, 8, 16, 20].forEach((u) => surdo(g, g.sfx, t + u * U, 0.9));
+    // acorde final (F A C) + rufada
+    for (const m of [65, 69, 72]) osc(g, g.sfx, 'triangle', midiToHz(m), t + 20 * U, 6 * U, 0.18);
+    for (let u = 20; u < 24; u++) noise(g, g.sfx, t + u * U, 0.05, 0.12, 'highpass', 6500);
+  },
+  // lambida: slurp cômico
+  lick: (g, t) => {
+    osc(g, g.sfx, 'sine', 250, t, 0.13, 0.28, 800);
+    osc(g, g.sfx, 'sine', 800, t + 0.13, 0.12, 0.26, 300);
+    noise(g, g.sfx, t, 0.22, 0.1, 'bandpass', 1500, 700, 2);
+    bubbles(g, g.sfx, t + 0.18, 2, 0.08);
+  },
+  // fala: blip curtíssimo com altura aleatória
+  talk: (g, t) => {
+    const f = 300 + Math.random() * 140;
+    osc(g, g.sfx, 'square', f, t, 0.045, 0.1, f * 1.05);
+  },
+
   // pulo: sweep ascendente curto
   jump: (g, t) => osc(g, g.sfx, 'square', 220, t, 0.14, 0.2, 660),
   // soco: whoosh de ruído + thump grave
@@ -378,6 +573,10 @@ const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
     ]);
   },
   // checkpoint: duas notas alegres
+  // vida extra: arpejo ascendente alegre
+  oneup: (g, t) => {
+    seq(g, t, [tone(659.25, 0.08, 0.18), tone(783.99, 0.08, 0.18), tone(1318.51, 0.08, 0.18), tone(1046.5, 0.08, 0.18), tone(1174.66, 0.08, 0.18), tone(1567.98, 0.24, 0.18)]);
+  },
   checkpoint: (g, t) => {
     seq(g, t, [tone(784, 0.1, 0.18), tone(1046.5, 0.22, 0.18)]);
   },
@@ -615,6 +814,166 @@ function scheduleAmazonia(g: Graph, step: number, t: number): void {
   if (s === 9 && bar % 2 === 1 && Math.random() < 0.45) birdChirp(g, t);
 }
 
+/* ----------------------------------------------------------------------------
+ * Faixa "Sonho de Maré" — Fá lídio (F G A B C D E), ~104 BPM, 16 compassos.
+ * Levada de ijexá: agogô 3-3-2 (dois tons), atabaque, surdo, afoxé (chocalho),
+ * linha de berimbau com wah; melodia onírica (pulso 25% suave + eco) e pad aquático.
+ * Acordes: F G Am C | F G Dm C || Dm C F G | Am Dm G C
+ * ------------------------------------------------------------------------- */
+
+const BAH_STEP = 60 / 104 / 4;
+const BAH_BARS = 16;
+const BAH_LOOP_STEPS = STEPS_PER_BAR * BAH_BARS;
+
+const BAH_MELODY_BARS: readonly (readonly Note[])[] = [
+  // A
+  [[69, 3], [72, 1], [77, 4], [76, 2], [72, 2], [69, 4]],
+  [[74, 2], [71, 2], [67, 4], [0, 2], [71, 2], [74, 4]],
+  [[72, 3], [69, 1], [76, 4], [74, 2], [72, 2], [69, 4]],
+  [[67, 2], [72, 2], [76, 4], [0, 4], [74, 2], [72, 2]],
+  // A'
+  [[77, 3], [76, 1], [72, 4], [69, 2], [72, 2], [77, 4]],
+  [[79, 4], [74, 2], [71, 2], [74, 4], [71, 2], [67, 2]],
+  [[69, 2], [74, 2], [77, 4], [76, 2], [74, 2], [69, 4]],
+  [[72, 4], [67, 2], [72, 2], [76, 6], [0, 2]],
+  // B — mais aguda
+  [[81, 3], [77, 1], [74, 4], [77, 2], [81, 2], [77, 4]],
+  [[79, 2], [76, 2], [72, 4], [76, 2], [79, 2], [84, 4]],
+  [[81, 2], [77, 2], [72, 4], [77, 2], [81, 2], [77, 4]],
+  [[79, 2], [74, 2], [71, 4], [74, 2], [79, 2], [83, 4]],
+  [[81, 4], [76, 2], [72, 2], [76, 2], [81, 2], [84, 2], [81, 2]],
+  [[81, 2], [77, 2], [74, 4], [77, 4], [74, 2], [69, 2]],
+  [[71, 2], [74, 2], [79, 4], [77, 2], [76, 2], [74, 4]],
+  [[72, 6], [67, 2], [69, 2], [72, 2], [0, 4]],
+];
+
+/** Raiz do baixo (F2 = 41) */
+const BAH_ROOTS: readonly number[] = [41, 43, 45, 48, 41, 43, 38, 48, 38, 48, 41, 43, 45, 38, 43, 48];
+
+/** Baixo em triângulo: [semicolcheia, intervalo, duração] */
+const BAH_BASS: readonly (readonly [number, number, number])[] = [
+  [0, 0, 3],
+  [6, 0, 2],
+  [8, 7, 3],
+  [11, 0, 2],
+  [14, 7, 2],
+];
+
+/** Berimbau: [semicolcheia, intervalo acima da raiz, duração] */
+const BAH_BERIMBAU: readonly (readonly [number, number, number])[] = [
+  [0, 12, 3],
+  [3, 14, 2],
+  [8, 19, 3],
+  [11, 14, 2],
+];
+
+/** Agogô ijexá (3-3-2): [semicolcheia, agudo?] */
+const BAH_AGOGO: readonly (readonly [number, boolean])[] = [
+  [0, true], [3, false], [6, true], [8, true], [11, false], [14, true],
+];
+
+const BAH_MELODY: (Note | undefined)[] = new Array<Note | undefined>(BAH_LOOP_STEPS).fill(undefined);
+{
+  let pos = 0;
+  for (const bar of BAH_MELODY_BARS) {
+    for (const [midi, steps] of bar) {
+      if (midi > 0) BAH_MELODY[pos] = [midi, steps];
+      pos += steps;
+    }
+  }
+}
+
+/** Melodia onírica: pulso 25% suavizado por lowpass, vibrato nas longas e eco. */
+function dreamLead(g: Graph, midi: number, t: number, steps: number, peak: number, lp: number): void {
+  const { ctx } = g;
+  const dur = steps * BAH_STEP;
+  const o = ctx.createOscillator();
+  o.setPeriodicWave(g.pulse);
+  o.frequency.setValueAtTime(midiToHz(midi), t);
+  if (steps >= 3) {
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 5;
+    const d = ctx.createGain();
+    d.gain.value = midiToHz(midi) * 0.008;
+    lfo.connect(d);
+    d.connect(o.frequency);
+    lfo.start(t);
+    lfo.stop(t + dur + 0.02);
+  }
+  const flt = ctx.createBiquadFilter();
+  flt.type = 'lowpass';
+  flt.frequency.value = lp;
+  const amp = ctx.createGain();
+  amp.gain.setValueAtTime(FLOOR, t);
+  amp.gain.exponentialRampToValueAtTime(peak, t + 0.01);
+  amp.gain.exponentialRampToValueAtTime(peak * 0.6, t + dur * 0.7);
+  amp.gain.exponentialRampToValueAtTime(FLOOR, t + dur * 0.95);
+  o.connect(flt);
+  flt.connect(amp);
+  amp.connect(g.music);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+}
+
+/** Pad aquático: duas senoides com ataque e saída lentos. */
+function pad(g: Graph, midi: number, t: number, dur: number, peak: number): void {
+  const o = g.ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(midiToHz(midi), t);
+  const amp = g.ctx.createGain();
+  amp.gain.setValueAtTime(FLOOR, t);
+  amp.gain.linearRampToValueAtTime(peak, t + dur * 0.3);
+  amp.gain.linearRampToValueAtTime(FLOOR, t + dur);
+  o.connect(amp);
+  amp.connect(g.music);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+}
+
+function scheduleBahia(g: Graph, step: number, t: number): void {
+  const bar = Math.floor(step / STEPS_PER_BAR);
+  const s = step % STEPS_PER_BAR;
+  const root = BAH_ROOTS[bar % BAH_ROOTS.length] ?? 41;
+
+  for (const [bs, interval, len] of BAH_BASS) {
+    if (bs === s) osc(g, g.music, 'triangle', midiToHz(root + interval), t, len * BAH_STEP * 0.95, 0.45);
+  }
+
+  for (const [bs, interval, len] of BAH_BERIMBAU) {
+    if (bs === s) berimbau(g, g.music, root + interval, t, len * BAH_STEP, 0.07);
+  }
+
+  // surdo nos tempos 1 e 3; atabaque nas síncopes
+  if (s === 0 || s === 8) surdo(g, g.music, t, s === 0 ? 1 : 0.7);
+  else if (s === 6 || s === 14) atabaque(g, g.music, t, 0.6, 210);
+  else if (s === 3 || s === 11) atabaque(g, g.music, t, 0.35, 280);
+
+  for (const [bs, high] of BAH_AGOGO) {
+    if (bs === s) agogo(g, g.music, t, high, 0.8);
+  }
+
+  // afoxé: chocalho suave em colcheias, sopros nas semicolcheias ímpares
+  if (s % 2 === 0) noise(g, g.music, t, 0.05, s % 4 === 2 ? 0.07 : 0.05, 'highpass', 6000);
+  else noise(g, g.music, t, 0.03, 0.025, 'highpass', 7000);
+
+  // pad de dois em dois compassos
+  if (s === 0 && bar % 2 === 0) {
+    const dur = 2 * STEPS_PER_BAR * BAH_STEP;
+    pad(g, root + 24, t, dur, 0.07);
+    pad(g, root + 31, t, dur, 0.05);
+  }
+
+  const note = BAH_MELODY[step];
+  if (note) {
+    dreamLead(g, note[0], t, note[1], 0.26, 3200);
+    // eco (delay de 3 semicolcheias) em volume baixo e mais escuro
+    if (note[1] >= 2) dreamLead(g, note[0], t + 3 * BAH_STEP, Math.min(note[1], 3), 0.07, 1400);
+  }
+
+  // bolhas ocasionais
+  if (s === 5 && bar % 2 === 0 && Math.random() < 0.5) bubbles(g, g.music, t, 3, 0.04);
+}
+
 interface Track {
   readonly stepDur: number;
   readonly loopSteps: number;
@@ -624,6 +983,7 @@ interface Track {
 const TRACKS: Record<MusicTrack, Track> = {
   sertao: { stepDur: STEP, loopSteps: LOOP_STEPS, scheduleStep: scheduleSertao },
   amazonia: { stepDur: STEP, loopSteps: AMZ_LOOP_STEPS, scheduleStep: scheduleAmazonia },
+  bahia: { stepDur: BAH_STEP, loopSteps: BAH_LOOP_STEPS, scheduleStep: scheduleBahia },
 };
 
 function makeNoise(ctx: AudioContext): AudioBuffer {

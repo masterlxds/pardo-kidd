@@ -9,6 +9,9 @@ import {
 } from './objects';
 import { LEVEL1_MOVERS, LEVEL1_ROWS } from './level1';
 import { LEVEL2_MOVERS, LEVEL2_ROWS } from './level2';
+import { LEVEL3_ROWS } from './level3';
+import { createSeaEnemy } from './enemies3';
+import { createAirVent, createGoldfishSchool, createJandira, createRibbon, createStaffGoal } from './objects3';
 
 type SpriteName = keyof typeof SPRITE_SPEC;
 
@@ -30,6 +33,8 @@ export interface LevelDef {
   index: number;
   name: string;
   theme: LevelTheme;
+  /** fase subaquática (física de nado + oxigênio) */
+  underwater?: boolean;
   rows: string[];
   movers: Record<string, { range: number; speed: number }>;
   /** caractere → tile */
@@ -44,6 +49,10 @@ export interface LevelDef {
   tileSprites: Partial<Record<TileId, SpriteName>>;
   /** tiles com 2 variações (frame escolhido por hash da posição) */
   tileVariants: TileId[];
+  /** linha (tile) do chão da fase: topo máximo da sombra de abismo (padrão 11) */
+  groundRow?: number;
+  /** borda desenhada no topo de Rock exposto (sem sólido acima): [linha clara, linha de musgo] */
+  rockEdge?: [string, string];
   /** cores da sombra de abismo [borda, meio, fundo] */
   pitColors: [string, string, string];
   /** cores da bandeira de checkpoint [não alcançado, alcançado] */
@@ -105,6 +114,7 @@ export function buildLevel(def: LevelDef): Level {
     for (let y = 0; y < rows; y++) if (original[y * cols + x] === Tile.Water) { waterCol[x] = 1; break; }
   }
 
+  const groundRow = def.groundRow ?? 11;
   const [pitEdge, pitMid, pitDeep] = def.pitColors;
   const [flagOff, flagOn] = def.flagColors;
 
@@ -112,6 +122,7 @@ export function buildLevel(def: LevelDef): Level {
     index: def.index,
     name: def.name,
     theme: def.theme,
+    underwater: def.underwater ?? false,
     cols,
     rows,
     widthPx: cols * TILE,
@@ -165,13 +176,13 @@ export function buildLevel(def: LevelDef): Level {
 
       // sombra dos abismos: colunas sem chão até a base ficam escuras (senão o chão do
       // parallax faz o buraco parecer chão). Nunca em colunas de água.
-      const pitTop = 11 * TILE;
+      const pitTop = groundRow * TILE;
       for (let tx = x0; tx <= x1; tx++) {
         if (waterCol[tx]) continue;
         if (!isOpen(grid[(rows - 1) * cols + tx] ?? 0)) continue;
         // topo da sombra = primeira linha vazia contínua acima da base, limitada à linha do chão
         let top = rows - 1;
-        while (top > 11 && isOpen(grid[(top - 1) * cols + tx] ?? 0)) top--;
+        while (top > groundRow && isOpen(grid[(top - 1) * cols + tx] ?? 0)) top--;
         const y = Math.max(pitTop, top * TILE);
         ctx.fillStyle = pitEdge;
         ctx.fillRect(tx * TILE, y, TILE, 6);
@@ -221,6 +232,12 @@ export function buildLevel(def: LevelDef): Level {
           if (!name) continue;
           const f = def.tileVariants.includes(t) ? hash(tx, ty) & 1 : 0;
           sp.draw(ctx, name, f, px, py);
+          if (t === Tile.Rock && def.rockEdge && ty > 0 && !isSolid(tx, ty - 1)) {
+            ctx.fillStyle = def.rockEdge[0];
+            ctx.fillRect(px, py, TILE, 1);
+            ctx.fillStyle = def.rockEdge[1];
+            ctx.fillRect(px, py + 1, TILE, 1);
+          }
         }
       }
     },
@@ -301,13 +318,64 @@ export function createLevel2(): Level {
         case 'o': return createEnemy('onca', cx, top + TILE);
         case 'j': return createEnemy('jacare', cx, top + TILE);
         case 'n': return createEnemy('cobra', cx, top + TILE);
-        case 'u': return createEnemy('tucano', cx, top + TILE / 2);
+        // +12px: com a câmera embaixo, a linha 3 fica atrás da faixa do HUD; assim o tucano paira logo abaixo dela
+        case 'u': return createEnemy('tucano', cx, top + TILE / 2 + 12);
         case 'V': return createVineWater(left, top + TILE - 32);
         case 'd': return createCrumblePlatform(left, top, 'platform_lily');
         case 'm':
         case 'M':
           return createMovingPlatform(left, top, ch === 'm' ? 'x' : 'y', mover.range * TILE, mover.speed, 'platform_log');
         case 'A': return createAlienGoal(cx, top + TILE);
+        default: return null;
+      }
+    },
+  });
+}
+
+// ── Fase 3 — Bahia World (subaquática) ───────────────────────────────────────
+export function createLevel3(): Level {
+  return buildLevel({
+    index: 2,
+    name: 'BAHIA WORLD',
+    theme: 'bahia',
+    underwater: true,
+    groundRow: 15,
+    rockEdge: ['#9fe0ff', '#3d8a2a'],
+    rows: LEVEL3_ROWS,
+    movers: {},
+    tileChars: {
+      '=': Tile.GroundTop, '#': Tile.Ground, 'R': Tile.Rock, '^': Tile.Spike,
+      'B': Tile.Block, '?': Tile.BlockItem, 'W': Tile.BlockItem, '-': Tile.OneWay,
+    },
+    dropBlockChars: 'W',
+    decor: {
+      '1': 'coral_pink', '2': 'coral_fan', '3': 'seaweed', '4': 'anchor', '5': 'ruin_column', '6': 'ruin_arch',
+      '7': 'shell', '8': 'bsign', '9': 'bonfim_rock', '0': 'amphora',
+    },
+    tileSprites: {
+      [Tile.GroundTop]: 'tile_bh_top', [Tile.Ground]: 'tile_bh_ground', [Tile.Rock]: 'tile_bh_rock',
+      [Tile.Spike]: 'tile_bh_spike', [Tile.Block]: 'tile_bh_block', [Tile.BlockItem]: 'tile_bh_block_item',
+      [Tile.OneWay]: 'tile_bh_oneway',
+    },
+    tileVariants: [Tile.GroundTop, Tile.Ground, Tile.Rock],
+    pitColors: ['#0d3b66', '#0a2c4e', '#061a30'],
+    flagColors: ['#c9c1a9', '#ef476f'],
+    marker(ch, { left, top, cx }) {
+      const cy = top + TILE / 2, foot = top + TILE;
+      switch (ch) {
+        case 'c': return createCoin(left + 4, top + 4);
+        case 'a': return createSeaEnemy('agua_viva', cx, cy);
+        case 'g': return createSeaEnemy('peixe_agulha', cx, cy);
+        case 'b': return createSeaEnemy('baiacu', cx, cy);
+        case 'D': return createSeaEnemy('dentao', cx, cy);
+        case 's': return createSeaEnemy('siri', cx, foot);
+        case 'T': return createSeaEnemy('tartaruga', cx, cy);
+        case 'e': return createSeaEnemy('moreia', cx, cy);
+        case 'v': return createAirVent(cx, foot);
+        case 'f': return createRibbon(cx, cy);
+        case 'p': return createGoldfishSchool(cx, cy);
+        case 'S': return createStaffGoal(cx, foot);
+        case 'J': return createJandira(cx, foot);
         default: return null;
       }
     },

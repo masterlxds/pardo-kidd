@@ -1,6 +1,6 @@
 import type { Entity, Player, PlayerState, Rect, World } from '../core/types';
 import { Tile } from '../core/types';
-import { PHYS, PLAYER_H, PLAYER_W, TILE } from '../core/constants';
+import { PHYS, PLAYER_H, PLAYER_W, SWIM, TILE, SWIM_CEILING } from '../core/constants';
 import { moveBody } from '../core/physics';
 import type { Input } from '../core/input';
 
@@ -42,13 +42,58 @@ export const FEEL = {
   landFxVy: 170,
 } as const;
 
+/**
+ * Nado (só em `level.underwater`). Envelope de SWIM (constants.ts): afunda até ~45px/s, braçada
+ * -115px/s (sobe ~1.5 tile com a desaceleração maior subindo), horizontal até 80px/s com deslize.
+ */
+export const SWIM_FEEL = {
+  /** gravidade afundando (vy ≥ 0) */
+  sinkGravity: SWIM.gravity,
+  /** desaceleração subindo (vy < 0): 115²/(2·280) ≈ 24px ≈ 1.5 tile por braçada */
+  riseGravity: 280,
+  maxSink: SWIM.maxSink,
+  strokeVel: SWIM.strokeVel,
+  maxRise: SWIM.maxRise,
+  /** fração da subida atual mantida ao encadear braçadas */
+  strokeCarry: 0.35,
+  strokeCooldown: 0.15,
+  /** duração da animação de braçada (3 quadros) */
+  strokeAnim: 0.36,
+  swimMax: SWIM.swimMax,
+  /** andando no fundo */
+  walkMax: 55,
+  accel: 300,
+  /** deslize sem input (água) */
+  drag: 110,
+  /** atrito no fundo sem input */
+  groundFriction: 420,
+  turnAccel: 520,
+  knockbackX: 70,
+  knockbackY: 60,
+  /** afundando morto */
+  deadSink: 22,
+  /** bolhinhas do snorkel: intervalo aleatório */
+  bubbleMin: 0.9,
+  bubbleMax: 2.0,
+  /** drink subaquático: timeout de segurança para chegar ao chão em alvoX */
+  drinkTimeout: 5,
+  /** lambida no cajado */
+  lickSip: 3.2,
+} as const;
+
 /** Sprite do corpo 20x24 centralizado na base da hitbox. */
 const SPR_W = 20;
 const SPR_H = 24;
 
 type DrinkPhase = 'walk' | 'sip' | 'done';
-/** O que o Pardo bebe na vitória: caneca (Fase 1) ou mamadeira do alien (Fase 2). */
-export type DrinkItem = 'mug' | 'bottle';
+/** O que o Pardo bebe na vitória: caneca (Fase 1), mamadeira do alien (Fase 2) ou o Cajado Jailnesco (Fase 3, lambida). */
+export type DrinkItem = 'mug' | 'bottle' | 'staff';
+
+/** Sprite da lambida: 24x32, corpo do Pardo nas colunas 0-19 (como o quadro 20x24), cajado ~17-23. */
+const LICK_W = 24;
+const LICK_H = 32;
+/** Distância do centro do corpo (coluna 10) ao centro do cajado (coluna ~20.5) no sprite pardo_lick. */
+export const LICK_STAFF_OFFSET = 10;
 
 /** Pardo — implementa a interface `Player` com a máquina de estados do PLAN §4. */
 export class PardoPlayer implements Player {
@@ -84,6 +129,15 @@ export class PardoPlayer implements Player {
   private drinkFace: 1 | -1 = 1;
   /** y da superfície da água em que está afundando (morte por água), senão null */
   private sinkY: number | null = null;
+  /** morreu debaixo d'água (afunda devagar com colisão, sprite pardo_swim_dead) */
+  private swimDead = false;
+  private drowning = false;
+  /** cooldown entre braçadas */
+  private strokeCd = 0;
+  /** tempo desde a última braçada (animação) */
+  private strokeT = 99;
+  /** próxima bolhinha do snorkel */
+  private bubbleT = 1;
 
   constructor(x: number, y: number) {
     this.respawn(x, y);
@@ -113,6 +167,10 @@ export class PardoPlayer implements Player {
     this.drinkPhase = 'done';
     this.drinkItem = 'mug';
     this.sinkY = null;
+    this.swimDead = false;
+    this.strokeCd = 0;
+    this.strokeT = 99;
+    this.bubbleT = 1;
   }
 
   /** Fase da sequência de vitória (lida pelo alien para esconder a mamadeira da mão). */
@@ -134,8 +192,9 @@ export class PardoPlayer implements Player {
       return;
     }
     const dir: 1 | -1 = this.centerX >= sourceX ? 1 : -1;
-    this.vx = dir * FEEL.knockbackX;
-    this.vy = -FEEL.knockbackY;
+    const water = world.level.underwater;
+    this.vx = dir * (water ? SWIM_FEEL.knockbackX : FEEL.knockbackX);
+    this.vy = -(water ? SWIM_FEEL.knockbackY : FEEL.knockbackY);
     this.facing = dir === 1 ? -1 : 1;
     this.onGround = false;
     this.standingOn = null;
@@ -158,6 +217,17 @@ export class PardoPlayer implements Player {
     this.punchT = 0;
     this.invuln = 0;
     this.setState('dead');
+    if (world.level.underwater) {
+      // debaixo d'água: sem salto de morte — vira e afunda devagar
+      this.swimDead = true;
+      this.sinkY = null;
+      this.vy = Math.min(Math.max(this.vy, 0), SWIM_FEEL.deadSink);
+      if (!this.drowning) world.audio.play('die');
+      world.fx('bubble', this.centerX, this.y + 2);
+      world.fx('bubble', this.centerX + 3, this.y + 6);
+      world.shake(2, 0.2);
+      return;
+    }
     if (waterY !== undefined) {
       this.sinkY = waterY;
       this.vy = FEEL.sinkVy;
@@ -173,11 +243,24 @@ export class PardoPlayer implements Player {
     world.shake(3, 0.25);
   }
 
+  /** Afogamento (oxigênio acabou): como kill, mas com sfx 'drown'. */
+  drown(world: World): void {
+    if (this.dead || this.state === 'drink') return;
+    this.drowning = true;
+    this.kill(world);
+    this.drowning = false;
+    world.audio.play('drown');
+  }
+
   heal(world: World, n: number): number {
     const st = world.state;
     const before = st.hydration;
     st.hydration = Math.min(st.maxHydration, st.hydration + Math.max(0, n));
     return st.hydration - before;
+  }
+
+  refillAir(world: World): void {
+    world.state.air = world.state.maxAir;
   }
 
   // ── Extras usados por game.ts ──────────────────────────────────────────────
@@ -218,6 +301,13 @@ export class PardoPlayer implements Player {
     if (this.invuln > 0) this.invuln = Math.max(0, this.invuln - dt);
 
     if (this.dead) {
+      if (this.swimDead) {
+        // afogado/derrotado debaixo d'água: afunda devagar e para no fundo
+        this.vx = 0;
+        this.vy = approach(this.vy, SWIM_FEEL.deadSink, 60 * dt);
+        moveBody(this, world.level, dt);
+        return;
+      }
       if (this.sinkY !== null) {
         // afundando na água
         this.y += this.vy * dt;
@@ -231,6 +321,11 @@ export class PardoPlayer implements Player {
 
     if (this.state === 'drink') {
       this.updateDrink(dt, world);
+      return;
+    }
+
+    if (world.level.underwater) {
+      this.updateSwim(dt, world, input);
       return;
     }
 
@@ -317,6 +412,100 @@ export class PardoPlayer implements Player {
     }
   }
 
+  /** Nado estilo fases aquáticas do Super Mario World (só em fase subaquática). */
+  private updateSwim(dt: number, world: World, input: Input): void {
+    const S = SWIM_FEEL;
+    const left = input.down('left');
+    const right = input.down('right');
+    const dirIn = (right ? 1 : 0) - (left ? 1 : 0);
+
+    if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
+    if (this.punchT > 0) this.punchT = Math.max(0, this.punchT - dt);
+    if (this.strokeCd > 0) this.strokeCd = Math.max(0, this.strokeCd - dt);
+    this.strokeT += dt;
+    this.bufferT = input.pressed('jump') ? FEEL.jumpBuffer : Math.max(0, this.bufferT - dt);
+    const inHurt = this.hurtT > 0;
+
+    // soco (mesma punchBox; mantém a inércia)
+    if (!inHurt && this.punchT === 0 && input.pressed('punch')) {
+      this.punchT = FEEL.punchTime;
+      this.punchId++;
+      if (dirIn !== 0) this.facing = dirIn > 0 ? 1 : -1;
+      this.setState('punch');
+      world.audio.play('punch');
+    }
+    const lockedPunch = this.punchT > 0 && FEEL.punchTime - this.punchT < FEEL.punchWindup + FEEL.punchActive;
+
+    // horizontal: deslize suave
+    if (inHurt) {
+      this.vx = approach(this.vx, 0, S.drag * dt);
+    } else if (lockedPunch) {
+      this.vx = approach(this.vx, 0, S.drag * 0.5 * dt);
+    } else {
+      if (dirIn !== 0) this.facing = dirIn > 0 ? 1 : -1;
+      const max = this.onGround ? S.walkMax : S.swimMax;
+      const target = dirIn * max;
+      let rate: number;
+      if (dirIn === 0) rate = this.onGround ? S.groundFriction : S.drag;
+      else if (Math.sign(this.vx) !== 0 && Math.sign(this.vx) !== dirIn) rate = S.turnAccel;
+      else if (Math.abs(this.vx) > max) rate = S.drag; // vindo mais rápido (ex.: nadando → pousou)
+      else rate = S.accel;
+      this.vx = approach(this.vx, target, rate * dt);
+    }
+
+    // braçada: sem precisar de chão
+    if (!inHurt && this.bufferT > 0 && this.strokeCd === 0) {
+      this.vy = Math.max(-S.maxRise, Math.min(this.vy, 0) * S.strokeCarry - S.strokeVel);
+      this.bufferT = 0;
+      this.strokeCd = S.strokeCooldown;
+      this.strokeT = 0;
+      this.onGround = false;
+      this.standingOn = null;
+      world.audio.play('swim');
+      world.fx('bubble', this.snorkelX(), this.y + 1);
+    }
+
+    this.physics(dt, world, true);
+
+    // teto do mundo
+    if (this.y < SWIM_CEILING) {
+      this.y = SWIM_CEILING;
+      if (this.vy < 0) this.vy = 0;
+    }
+
+    // bolhinhas do snorkel
+    this.bubbleT -= dt;
+    if (this.bubbleT <= 0) {
+      this.bubbleT = S.bubbleMin + Math.random() * (S.bubbleMax - S.bubbleMin);
+      world.fx('bubble', this.snorkelX(), this.y + 1);
+    }
+
+    // perigos (ouriços); fora do mapa por baixo
+    const hz = this.touchedHazard(world);
+    if (hz !== null || this.y > world.level.heightPx + 32) {
+      this.kill(world);
+      return;
+    }
+
+    if (this.state === 'hurt' && this.hurtT === 0) this.setState(this.swimState());
+    if (this.state === 'punch' && this.punchT === 0) this.setState(this.swimState());
+    if (this.state !== 'hurt' && this.state !== 'punch') {
+      const next = this.swimState();
+      if (next !== this.state) this.setState(next);
+    }
+  }
+
+  /** 'swim' = braçada/subindo/andando; 'float' = afundando/parado. */
+  private swimState(): PlayerState {
+    if (this.strokeT < SWIM_FEEL.strokeAnim || this.vy < -10) return 'swim';
+    return Math.abs(this.vx) > FEEL.runThreshold && this.onGround ? 'swim' : 'float';
+  }
+
+  /** x do topo do snorkel (tubo ao lado da cabeça, do lado de trás). */
+  private snorkelX(): number {
+    return this.centerX - this.facing * 4;
+  }
+
   private locomotionState(): PlayerState {
     if (!this.onGround) return this.vy < 0 ? 'jump' : 'fall';
     return Math.abs(this.vx) > FEEL.runThreshold ? 'run' : 'idle';
@@ -329,7 +518,7 @@ export class PardoPlayer implements Player {
   }
 
   /** Gravidade, carregamento por plataforma, colisão com tiles e com topos de plataformas. */
-  private physics(dt: number, world: World): void {
+  private physics(dt: number, world: World, swim = false): void {
     const wasGround = this.onGround;
     const fallSpeed = this.vy;
     const prevBottom = this.y + this.h;
@@ -347,7 +536,13 @@ export class PardoPlayer implements Player {
       }
     }
 
-    this.vy = Math.min(this.vy + PHYS.gravity * dt, PHYS.maxFall);
+    if (swim) {
+      const g = this.vy < 0 ? SWIM_FEEL.riseGravity : SWIM_FEEL.sinkGravity;
+      // velocidades acima do terminal (ex.: knockback) são amortecidas, não cortadas
+      this.vy = this.vy > SWIM_FEEL.maxSink ? approach(this.vy, SWIM_FEEL.maxSink, 400 * dt) : Math.min(this.vy + g * dt, SWIM_FEEL.maxSink);
+    } else {
+      this.vy = Math.min(this.vy + PHYS.gravity * dt, PHYS.maxFall);
+    }
     const col = moveBody(this, world.level, dt);
     this.onGround = col.bottom;
     this.standingOn = null;
@@ -373,7 +568,7 @@ export class PardoPlayer implements Player {
 
     if (this.onGround && !wasGround) {
       this.jumping = false;
-      if (fallSpeed > FEEL.landFxVy) {
+      if (!swim && fallSpeed > FEEL.landFxVy) {
         world.audio.play('land');
         world.fx('dust', this.centerX, this.y + this.h - 2);
       }
@@ -407,6 +602,10 @@ export class PardoPlayer implements Player {
 
   private updateDrink(dt: number, world: World): void {
     this.drinkT += dt;
+    if (world.level.underwater) {
+      this.updateDrinkSwim(dt, world);
+      return;
+    }
     if (this.drinkPhase === 'walk') {
       const d = this.drinkX - this.centerX;
       if (this.onGround && (Math.abs(d) < 1.5 || this.drinkT > 2.5)) {
@@ -422,7 +621,8 @@ export class PardoPlayer implements Player {
       }
     } else {
       this.vx = 0;
-      if (this.drinkPhase === 'sip' && this.drinkT >= FEEL.drinkSip) {
+      const sip = this.drinkItem === 'staff' ? SWIM_FEEL.lickSip : FEEL.drinkSip;
+      if (this.drinkPhase === 'sip' && this.drinkT >= sip) {
         this.drinkPhase = 'done';
         this.drinkDone = true;
       }
@@ -430,6 +630,37 @@ export class PardoPlayer implements Player {
     this.physics(dt, world);
     if (this.y > world.level.heightPx + 32) {
       // segurança: nunca deveria cair durante a vitória
+      this.drinkPhase = 'done';
+      this.drinkDone = true;
+    }
+  }
+
+  /** Vitória subaquática: desliza/afunda até pousar no chão em drinkX, depois lambe/bebe. */
+  private updateDrinkSwim(dt: number, world: World): void {
+    const S = SWIM_FEEL;
+    if (this.drinkPhase === 'walk') {
+      const d = this.drinkX - this.centerX;
+      if ((this.onGround && Math.abs(d) < 1.5) || this.drinkT > S.drinkTimeout) {
+        this.vx = 0;
+        this.drinkPhase = 'sip';
+        this.drinkT = 0;
+        this.facing = this.drinkFace;
+      } else {
+        if (Math.abs(d) >= 1.5) this.facing = d > 0 ? 1 : -1;
+        const max = this.onGround ? Math.min(S.walkMax, FEEL.drinkWalk) : S.swimMax * 0.6;
+        this.vx = Math.sign(d) * Math.min(max, Math.abs(d) / dt);
+      }
+    } else {
+      this.vx = 0;
+      const sip = this.drinkItem === 'staff' ? S.lickSip : FEEL.drinkSip;
+      if (this.drinkPhase === 'sip' && this.drinkT >= sip) {
+        this.drinkPhase = 'done';
+        this.drinkDone = true;
+      }
+    }
+    this.physics(dt, world, true);
+    if (this.y < SWIM_CEILING) this.y = SWIM_CEILING;
+    if (this.y > world.level.heightPx + 32) {
       this.drinkPhase = 'done';
       this.drinkDone = true;
     }
@@ -443,6 +674,10 @@ export class PardoPlayer implements Player {
     const sy = Math.round(this.y + this.h - SPR_H);
     const flip = this.facing === -1;
     const spr = world.sprites;
+    if (world.level.underwater) {
+      this.drawSwim(ctx, world, sx, sy, flip);
+      return;
+    }
     let name = 'pardo_idle';
     let frame = 0;
     switch (this.state) {
@@ -494,7 +729,65 @@ export class PardoPlayer implements Player {
       return;
     }
     if (spr.has(name)) spr.draw(ctx, name, frame, sx, sy, flip);
+    this.drawFist(ctx, world, sx, sy, flip);
+  }
 
+  /** Render em fase subaquática (sprites pardo_swim_* e a lambida pardo_lick). */
+  private drawSwim(ctx: CanvasRenderingContext2D, world: World, sx: number, sy: number, flip: boolean): void {
+    const spr = world.sprites;
+    let name = 'pardo_swim_idle';
+    let frame = 0;
+    switch (this.state) {
+      case 'swim':
+        name = 'pardo_swim';
+        frame = this.strokeT < SWIM_FEEL.strokeAnim
+          ? Math.floor((this.strokeT / SWIM_FEEL.strokeAnim) * 3)
+          : Math.floor(this.animT * (this.onGround ? 6 : 4));
+        break;
+      case 'punch':
+        name = 'pardo_swim_punch';
+        break;
+      case 'hurt':
+        name = 'pardo_swim_hurt';
+        break;
+      case 'dead': {
+        // vira de barriga para cima enquanto afunda
+        const k = Math.min(1, this.stateT / 0.4);
+        const cx = sx + SPR_W / 2;
+        const cy = sy + SPR_H / 2;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate((flip ? -1 : 1) * k * Math.PI);
+        if (spr.has('pardo_swim_dead')) spr.draw(ctx, 'pardo_swim_dead', 0, -SPR_W / 2, -SPR_H / 2, flip);
+        ctx.restore();
+        return;
+      }
+      case 'drink':
+        if (this.drinkPhase === 'walk') {
+          name = Math.abs(this.vx) > 1 ? 'pardo_swim' : 'pardo_swim_idle';
+          frame = Math.floor(this.animT * 5);
+        } else if (this.drinkItem === 'staff') {
+          // pardo_lick 24x32: corpo nas colunas 0-19 alinhado à base como o quadro 20x24.
+          // Virado para a esquerda (flip), o corpo fica nas colunas 4-23 → desloca 4px.
+          const lx = flip ? sx - (LICK_W - SPR_W) : sx;
+          const ly = Math.round(this.y + this.h - LICK_H);
+          if (spr.has('pardo_lick')) spr.draw(ctx, 'pardo_lick', Math.floor(this.drinkT * 2.5), lx, ly, flip);
+          return;
+        } else {
+          name = this.drinkItem === 'bottle' && spr.has('pardo_drink_bottle') ? 'pardo_drink_bottle' : 'pardo_drink';
+          frame = Math.floor(this.drinkT * 3);
+        }
+        break;
+      default:
+        frame = Math.floor(this.animT * 2);
+        break;
+    }
+    if (spr.has(name)) spr.draw(ctx, name, frame, sx, sy, flip);
+    this.drawFist(ctx, world, sx, sy, flip);
+  }
+
+  private drawFist(ctx: CanvasRenderingContext2D, world: World, sx: number, sy: number, flip: boolean): void {
+    const spr = world.sprites;
     // punho gigante na fase ativa (e um quadro antes/depois para leitura)
     if (this.state === 'punch' && spr.has('fist')) {
       const t = FEEL.punchTime - this.punchT;

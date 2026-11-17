@@ -91,6 +91,8 @@ export const SPRITE_SPEC = {
   cobra_strike: [28, 14, 1],
   /** tucano voando (2 frames de asa) */
   tucano: [24, 16, 2],
+  /** tucano no rasante: asas recolhidas para trás, corpo inclinado, bico apontando para frente-baixo */
+  tucano_dive: [24, 16, 1],
   /** fruto (açaí/castanha) solto pelo tucano, 2 frames girando */
   fruit: [6, 6, 2],
   /** alien verde de chapéu de explorador, camiseta amarela, calça azul (arte conceitual) — 2 frames parado */
@@ -140,6 +142,129 @@ export const SPRITE_SPEC = {
   totem: [16, 32, 1],
   /** placa de madeira com seta e folhas */
   jsign: [16, 16, 1],
+
+  // ════════ FASE 3 — BAHIA WORLD (subaquática) ════════
+  // ── Pardo mergulhador (art/pardoSwim.ts) — mesmo Pardo de art/pardo.ts + SNORKEL (tubo laranja/azul
+  //    subindo ao lado da cabeça, bocal sob a máscara preta). Quadro 20x24, hitbox 10x20 na base.
+  /** flutuando/afundando devagar: corpo ereto, braços abertos, pernas soltas (2 frames) */
+  pardo_swim_idle: [20, 24, 2],
+  /** braçada (estilo Mario nadando): 3 frames — braços à frente, puxando, pernas batendo */
+  pardo_swim: [20, 24, 3],
+  /** soco subaquático: como pardo_punch (o punho gigante `fist` é desenhado à parte) */
+  pardo_swim_punch: [20, 24, 1],
+  pardo_swim_hurt: [20, 24, 1],
+  /** afogado/derrotado: olhos em X, corpo mole */
+  pardo_swim_dead: [20, 24, 1],
+  /**
+   * CLÍMAX: Pardo em pé segurando o Cajado Jailnesco com as duas mãos, máscara preta ABAIXADA no queixo,
+   * língua para fora lambendo o cajado, expressão de determinação. Corpo do Pardo nas colunas 0-19
+   * (alinhado à base, como o quadro 20x24); cajado vertical nas colunas ~17-23 ocupando a altura toda.
+   * Frame 0 = língua encostando embaixo; frame 1 = língua mais acima (lambida).
+   */
+  pardo_lick: [24, 32, 2],
+
+  // ── Jandira e o Cajado (art/jandira.ts) — arte conceitual em "level 3/"
+  /**
+   * Jandira sentada numa pedra cinza (pedra incluída no sprite, base na última linha), FIEL à "OPÇÃO 2"
+   * da arte conceitual: rosto em 3/4, cabelo ruivo longo e ondulado caindo volumoso de um lado, cropped rosa
+   * "Barbie", cauda turquesa→azul enrolada na frente da pedra com a nadadeira clara aberta, uma mão apoiada
+   * na pedra, fitinhas do Bonfim nos pulsos. Autorado ESPELHADO em relação à arte (olhando para a DIREITA,
+   * nadadeira à esquerda): o jogo desenha com flipX. 2 frames (cabelo/nadadeira balançando).
+   */
+  jandira: [48, 56, 2],
+  /** mesma pose, o braço do lado de fora erguido acenando (fitinhas balançando) — 2 frames */
+  jandira_wave: [48, 56, 2],
+  /** rindo (olhos fechados, boca aberta) e acenando — 2 frames */
+  jandira_laugh: [48, 56, 2],
+  /** retrato do rosto para a caixa de diálogo */
+  jandira_face: [16, 16, 1],
+  /** Cajado Jailnesco: bastão de madeira retorcida, conchas, algas brilhantes, fitinhas na ponta. 0 = normal, 1 = brilhando */
+  cajado: [8, 28, 2],
+
+  // ── Fauna (art/sea.ts) — olham para a DIREITA; contorno preto, paleta vibrante
+  /** água-viva roxa/lilás translúcida: domo em cima, tentáculos embaixo (2 frames pulsando) */
+  agua_viva: [16, 20, 2],
+  /** peixe-agulha prateado/azulado, focinho pontudo (2 frames) */
+  peixe_agulha: [24, 8, 2],
+  /** baiacu-bomba murcho, amarelo-alaranjado (2 frames nadando) */
+  baiacu: [14, 12, 2],
+  /** baiacu inflado, redondo, cheio de espinhos (2 frames) */
+  baiacu_puff: [20, 20, 2],
+  /** baiacu-dentão: peixe azul-esverdeado musculoso, dorsal laranja, boca fechada com dentes à mostra (2 frames) */
+  dentao: [24, 18, 2],
+  /** dentão na investida: bocarra aberta cheia de dentes */
+  dentao_dash: [24, 18, 1],
+  /** siri vermelho-alaranjado, garras abertas para os lados (2 frames andando) */
+  siri: [24, 14, 2],
+  /** siri em guarda: garras fechadas na frente do corpo */
+  siri_guard: [24, 14, 1],
+  /** tartaruga-de-couro: casco verde-escuro texturizado, nadadeiras fortes (2 frames nadando) */
+  tartaruga: [32, 18, 2],
+  /** só o casco (cabeça recolhida), 2 frames girando */
+  tartaruga_shell: [20, 14, 2],
+  /**
+   * moreia verde-musgo/amarela esticada para a DIREITA: cabeça à direita, corpo saindo da borda esquerda
+   * (o código recorta pela esquerda para ela "sair" da toca). 0 = boca fechada, 1 = boca aberta.
+   */
+  moreia: [32, 14, 2],
+  /** toca da moreia: fenda escura numa pedra, dois olhos brilhantes dentro */
+  moreia_hole: [16, 16, 1],
+  /** estrelinhas/bolhas girando sobre a cabeça de inimigo atordoado (2 frames) */
+  stun_stars: [16, 8, 2],
+  /** peixe-dourado neutro: laranja com listras amarelas (2 frames) */
+  peixe_dourado: [10, 8, 2],
+
+  // ── Tiles do fundo do mar 16x16 (art/bahia.ts)
+  /** areia dourada texturizada (topo), conchinhas */
+  tile_bh_top: [16, 16, 2],
+  /** areia compactada/sedimento */
+  tile_bh_ground: [16, 16, 2],
+  /** rocha escura com musgo verde — indestrutível */
+  tile_bh_rock: [16, 16, 2],
+  /** ouriço-do-mar preto/roxo — perigo */
+  tile_bh_spike: [16, 16, 1],
+  /** bloco de ruína/coral rachado (quebrável com soco) */
+  tile_bh_block: [16, 16, 1],
+  /** bloco rachado com concha dourada (guarda item) */
+  tile_bh_block_item: [16, 16, 1],
+  /** plataforma de coral rosado (one-way, ~6px de cima) */
+  tile_bh_oneway: [16, 16, 1],
+
+  // ── Objetos do fundo do mar (art/bahia.ts)
+  /** fissura de bolhas no chão (base na última linha): 0 = quieta, 1 = soltando bolha */
+  air_vent: [16, 8, 2],
+  /** bolha grande de ar (2 frames oscilando) */
+  air_bubble: [16, 16, 2],
+  /** partícula: bolhinha (2 tamanhos) */
+  bubble: [6, 6, 2],
+  /** partícula: brilho dourado (0) / turquesa (1) */
+  sparkle: [8, 8, 2],
+  /** fitinha do Bonfim colecionável, tremulando (2 frames; cores verde/amarelo/azul/vermelho/branco) */
+  ribbon: [8, 12, 2],
+  /** altar de pedra com conchas onde fica o cajado */
+  altar: [32, 16, 1],
+  /** 0 = bolha cheia, 1 = bolha vazia (contorno) */
+  icon_bubble: [8, 8, 2],
+  /** 0 = coração vermelho cheio, 1 = vazio */
+  icon_heart: [8, 8, 2],
+  icon_ribbon: [8, 8, 1],
+
+  // ── Decoração do fundo do mar (art/bahia.ts) — base na última linha
+  coral_pink: [16, 16, 1],
+  /** coral-leque/gorgônia vermelho-coral */
+  coral_fan: [16, 24, 1],
+  seaweed: [16, 32, 1],
+  anchor: [16, 16, 1],
+  /** coluna de ruína submersa com musgo */
+  ruin_column: [16, 48, 1],
+  /** arco de ruína (passa-se por baixo) */
+  ruin_arch: [48, 48, 1],
+  shell: [8, 6, 1],
+  /** placa de madeira submersa com seta */
+  bsign: [16, 16, 1],
+  /** pedra com fitinhas do Bonfim amarradas */
+  bonfim_rock: [16, 16, 1],
+  amphora: [16, 16, 1],
 } as const satisfies Record<string, readonly [number, number, number]>;
 
 export type SpriteName = keyof typeof SPRITE_SPEC;

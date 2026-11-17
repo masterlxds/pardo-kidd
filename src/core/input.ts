@@ -4,6 +4,8 @@
  * válidas até `endStep()` (chamado no fim de cada passo).
  */
 
+import { VIEW_H, VIEW_W } from './constants';
+
 export type Action = 'left' | 'right' | 'jump' | 'punch' | 'start' | 'confirm' | 'pause' | 'mute';
 
 export interface Input {
@@ -16,6 +18,8 @@ export interface Input {
   clear(): void;
   /** Callback chamado de forma SÍNCRONA dentro de todo gesto do usuário (para destravar áudio). */
   onGesture(cb: () => void): void;
+  /** Posição (coordenadas lógicas 320x180) do toque/clique no canvas neste passo, ou null. Limpa em endStep(). */
+  tapPos(): { x: number; y: number } | null;
   /** true depois do primeiro toque detectado. */
   readonly touch: boolean;
 }
@@ -57,6 +61,7 @@ export function createInput(canvas: HTMLCanvasElement): Input {
   const releasedSet = new Set<Action>();
   const gestureCbs: Array<() => void> = [];
   let touch = false;
+  let lastTap: { x: number; y: number } | null = null;
 
   for (const a of ACTIONS) sources.set(a, new Set());
 
@@ -167,6 +172,10 @@ export function createInput(canvas: HTMLCanvasElement): Input {
     e.preventDefault();
     if (e.pointerType === 'touch') markTouch();
     gesture();
+    const r = canvas.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      lastTap = { x: ((e.clientX - r.left) / r.width) * VIEW_W, y: ((e.clientY - r.top) / r.height) * VIEW_H };
+    }
     tap('confirm');
   });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -196,7 +205,9 @@ export function createInput(canvas: HTMLCanvasElement): Input {
     endStep() {
       pressedSet.clear();
       releasedSet.clear();
+      lastTap = null;
     },
+    tapPos: () => lastTap,
     clear,
     onGesture(cb) {
       gestureCbs.push(cb);

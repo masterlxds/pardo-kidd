@@ -61,4 +61,23 @@ export const PALETTE: Record<string, string> = {
   '2': '#4caf50', // verde alien
   '3': '#1e6b8a', // água de rio profunda
   '4': '#f06a1a', // laranja bico de tucano
+  // ── extensão Fase 3 — Bahia World
+  '5': '#c2337e', // rosa escuro (sombra da camisa da Jandira; Z = rosa da camisa)
+  '6': '#e2622b', // cabelo ruivo
+  '7': '#a83a18', // cabelo ruivo sombra
+  '8': '#2ec4b6', // turquesa (cauda da sereia, água rasa)
+  '9': '#1b9aaa', // turquesa vibrante
+  '0': '#0d3b66', // azul profundo
+  '+': '#5fa8d3', // azul-ciano claro
+  '@': '#1b4965', // azul-petróleo (recifes distantes, sombra de rocha submersa)
+  '&': '#7cf0e0', // turquesa brilho (escamas, brilho do cajado, bolhas)
+  '*': '#b48cf0', // lilás (água-viva)
+  '!': '#ef476f', // vermelho-coral
+  '%': '#f5a3c0', // coral rosado claro
+  // ── extensão Fase 2 — redesenho dos inimigos (contraste contra a mata)
+  '$': '#b9bc5a', // oliva claro (escamas do jacaré)
+  '=': '#7c8232', // oliva (couro do jacaré)
+  '~': '#454a1c', // oliva escuro
+  '^': '#b3246f', // magenta escuro (sombra da cobra)
+  ':': '#ffa8d6', // rosa claro (brilho da cobra / do fruto)
 };

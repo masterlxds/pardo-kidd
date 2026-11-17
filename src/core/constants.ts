@@ -30,3 +30,32 @@ export const PLAYER_H = 20;
 
 export const MAX_HYDRATION = 3;
 export const START_LIVES = 3;
+/** Vidas iniciais no modo fácil "Amaro"; também é o teto de vidas. */
+export const EASY_LIVES = 99;
+/** A cada COINS_PER_LIFE moedas: +1 vida e o contador de moedas zera. Moedas não se perdem ao morrer. */
+export const COINS_PER_LIFE = 100;
+
+// ── Fase 3 (subaquática) ──
+/** Bolhas de oxigênio na HUD. */
+export const MAX_AIR = 5;
+/** Segundos que cada bolha de oxigênio dura. */
+export const AIR_BUBBLE_TIME = 6;
+/** Valor inicial da contagem regressiva exibida na última bolha (número = ceil(air * AIR_COUNTDOWN)). */
+export const AIR_COUNTDOWN = 5;
+/**
+ * Envelope de nado (referência para level design e IA; o agente CORE afina a sensação em player.ts):
+ * afunda devagar (~45px/s terminal), cada braçada dá ~-115px/s (sobe ~1.5 tile), velocidade horizontal
+ * máx. ~80px/s com deslize. O Pardo alcança qualquer espaço aberto de 1 tile de largura x 2 de altura.
+ */
+export const SWIM = {
+  gravity: 200,
+  maxSink: 45,
+  strokeVel: 115,
+  maxRise: 130,
+  swimMax: 80,
+} as const;
+/**
+ * Teto do nado (px de mundo): a linha d'água. O Pardo não sobe acima disso, então as linhas 0-2 do
+ * mapa subaquático ficam acima da superfície (só céu ou rocha que aflora).
+ */
+export const SWIM_CEILING = 48;
