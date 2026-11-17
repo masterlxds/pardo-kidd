@@ -91,6 +91,8 @@ export const SPRITE_SPEC = {
   cobra_strike: [28, 14, 1],
   /** tucano voando (2 frames de asa) */
   tucano: [24, 16, 2],
+  /** tucano no rasante: asas recolhidas para trás, corpo inclinado, bico apontando para frente-baixo */
+  tucano_dive: [24, 16, 1],
   /** fruto (açaí/castanha) solto pelo tucano, 2 frames girando */
   fruit: [6, 6, 2],
   /** alien verde de chapéu de explorador, camiseta amarela, calça azul (arte conceitual) — 2 frames parado */

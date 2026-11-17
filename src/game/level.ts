@@ -301,7 +301,8 @@ export function createLevel2(): Level {
         case 'o': return createEnemy('onca', cx, top + TILE);
         case 'j': return createEnemy('jacare', cx, top + TILE);
         case 'n': return createEnemy('cobra', cx, top + TILE);
-        case 'u': return createEnemy('tucano', cx, top + TILE / 2);
+        // +12px: com a câmera embaixo, a linha 3 fica atrás da faixa do HUD; assim o tucano paira logo abaixo dela
+        case 'u': return createEnemy('tucano', cx, top + TILE / 2 + 12);
         case 'V': return createVineWater(left, top + TILE - 32);
         case 'd': return createCrumblePlatform(left, top, 'platform_lily');
         case 'm':
