@@ -74,4 +74,10 @@ export const PALETTE: Record<string, string> = {
   '*': '#b48cf0', // lilás (água-viva)
   '!': '#ef476f', // vermelho-coral
   '%': '#f5a3c0', // coral rosado claro
+  // ── extensão Fase 2 — redesenho dos inimigos (contraste contra a mata)
+  '$': '#b9bc5a', // oliva claro (escamas do jacaré)
+  '=': '#7c8232', // oliva (couro do jacaré)
+  '~': '#454a1c', // oliva escuro
+  '^': '#b3246f', // magenta escuro (sombra da cobra)
+  ':': '#ffa8d6', // rosa claro (brilho da cobra / do fruto)
 };
