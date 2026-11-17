@@ -9,6 +9,10 @@ import { WORLD } from './art/world';
 import { DECOR } from './art/decor';
 import { ENEMIES2 } from './art/enemies2';
 import { AMAZON } from './art/amazon';
+import { PARDO_SWIM } from './art/pardoSwim';
+import { JANDIRA } from './art/jandira';
+import { SEA } from './art/sea';
+import { BAHIA } from './art/bahia';
 
 interface Entry { w: number; h: number; frames: number; sheet: HTMLCanvasElement; flipped: HTMLCanvasElement }
 
@@ -29,7 +33,7 @@ function makeCanvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingCo
 
 /** Rasteriza toda a arte em texturas offscreen (uma tira horizontal por sprite + versão espelhada). */
 export function createAtlas(): SpriteAtlas {
-  const art: SpriteArt = { ...PARDO, ...ENEMIES, ...WORLD, ...DECOR, ...ENEMIES2, ...AMAZON };
+  const art: SpriteArt = { ...PARDO, ...ENEMIES, ...WORLD, ...DECOR, ...ENEMIES2, ...AMAZON, ...PARDO_SWIM, ...JANDIRA, ...SEA, ...BAHIA };
   const D = RENDER_SCALE;
   const entries = new Map<string, Entry>();
   const rgb = new Map<string, [number, number, number]>();

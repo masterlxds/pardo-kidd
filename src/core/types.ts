@@ -56,17 +56,56 @@ export interface GameState {
   muted: boolean;
   /** índice (0-based) da fase atual em LEVELS (src/game/levels.ts) */
   levelIndex: number;
+  // ── Fase 3 (subaquática) ──
+  /**
+   * Oxigênio, 0..maxAir (float; 1 unidade = 1 bolha na HUD = AIR_BUBBLE_TIME segundos).
+   * Só drena quando level.underwater. HUD mostra ceil(air) bolhas cheias. Com air ≤ 1 começa a
+   * contagem regressiva: número = ceil(air * AIR_COUNTDOWN) (5..1). air ≤ 0 → Pardo se afoga (perde vida).
+   */
+  air: number;
+  maxAir: number;
+  /** fitinhas do Bonfim coletadas na fase atual / total existente na fase (0 se a fase não tem) */
+  ribbons: number;
+  ribbonsTotal: number;
+  /** fala em exibição (caixa de diálogo da HUD) ou null. game.ts avança `t` e zera ao passar de `duration`. */
+  dialogue: Dialogue | null;
+  /** dificuldade escolhida no título: 'normal' = START_LIVES vidas; 'amaro' (fácil) = EASY_LIVES vidas */
+  difficulty: Difficulty;
+}
+
+export type Difficulty = 'normal' | 'amaro';
+
+export interface Dialogue {
+  /** nome de quem fala, ex.: 'JANDIRA' */
+  speaker: string;
+  /** texto em MAIÚSCULAS (a fonte bitmap só tem maiúsculas/acentos); a HUD quebra em linhas */
+  text: string;
+  /** segundos desde que apareceu (para efeito de digitação) */
+  t: number;
+  duration: number;
 }
 
 /** Tema visual/sonoro de uma fase. */
-export type LevelTheme = 'sertao' | 'amazonia';
+export type LevelTheme = 'sertao' | 'amazonia' | 'bahia';
 export type MusicTrack = LevelTheme;
 
 export type SfxName =
   | 'jump' | 'punch' | 'hit' | 'break' | 'coin' | 'water' | 'hurt' | 'die'
   | 'crumble' | 'land' | 'start' | 'win' | 'gameover' | 'checkpoint' | 'squawk' | 'boing'
   // Fase 2
-  | 'splash' | 'roar' | 'hiss' | 'chomp' | 'deliver';
+  | 'splash' | 'roar' | 'hiss' | 'chomp' | 'deliver'
+  // Fase 3
+  /** braçada */ | 'swim'
+  /** bolha grande estourando / respirar fundo (oxigênio restaurado) */ | 'air'
+  /** bip da contagem regressiva de oxigênio */ | 'countdown'
+  /** afogamento */ | 'drown'
+  /** 1º soco num inimigo blindado (atordoa) */ | 'stun'
+  /** choque da água-viva */ | 'zap'
+  /** fitinha do Bonfim coletada */ | 'ribbon'
+  /** fanfarra 16-bit com berimbau e percussão baiana (pegou o Cajado; ~3-4s) */ | 'fanfare'
+  /** lambida no cajado */ | 'lick'
+  /** blip curto de fala (diálogo da Jandira) */ | 'talk'
+  /** vida extra (100 moedas) */ | 'oneup';
 
 export interface AudioApi {
   /** Chamar no primeiro gesto do usuário (cria/resume o AudioContext). Idempotente. */
@@ -86,7 +125,8 @@ export interface SpriteAtlas {
   size(name: string): { w: number; h: number; frames: number };
 }
 
-export type PlayerState = 'idle' | 'run' | 'jump' | 'fall' | 'punch' | 'hurt' | 'dead' | 'drink';
+/** 'swim' = braçada/subindo, 'float' = afundando devagar (só em fases subaquáticas). 'drink' cobre também a lambida no cajado. */
+export type PlayerState = 'idle' | 'run' | 'jump' | 'fall' | 'punch' | 'hurt' | 'dead' | 'drink' | 'swim' | 'float';
 
 export interface Player extends Body {
   facing: 1 | -1;
@@ -101,9 +141,12 @@ export interface Player extends Body {
   kill(world: World): void;
   /** +n hidratação (limitado ao máximo). Retorna quanto realmente curou. */
   heal(world: World, n: number): number;
+  /** Oxigênio de volta a 100% (silencioso: quem chama toca som/fx). */
+  refillAir(world: World): void;
 }
 
-export type FxKind = 'impact' | 'dust' | 'debris' | 'splash';
+/** 'bubble' = bolhinhas que sobem (sprite `bubble`); 'sparkle' = brilho dourado/turquesa (sprite `sparkle`). */
+export type FxKind = 'impact' | 'dust' | 'debris' | 'splash' | 'bubble' | 'sparkle';
 
 export interface Entity extends Body {
   kind: string;
@@ -131,7 +174,9 @@ export interface Entity extends Body {
 
 export type EnemyKind = 'calango' | 'carcara' | 'palma' | 'tatu'
   // Fase 2 — Amazônia
-  | 'onca' | 'jacare' | 'cobra' | 'tucano';
+  | 'onca' | 'jacare' | 'cobra' | 'tucano'
+  // Fase 3 — Bahia World (src/game/enemies3.ts)
+  | 'agua_viva' | 'peixe_agulha' | 'baiacu' | 'dentao' | 'siri' | 'tartaruga' | 'moreia';
 
 export interface Level {
   /** índice (0-based) em LEVELS */
@@ -139,6 +184,8 @@ export interface Level {
   /** nome exibido no cartão de introdução, ex.: 'TRILHA DOS MONÓLITOS' */
   readonly name: string;
   readonly theme: LevelTheme;
+  /** fase 100% subaquática: física de nado + oxigênio */
+  readonly underwater: boolean;
   readonly cols: number;
   readonly rows: number;
   readonly widthPx: number;
@@ -185,13 +232,19 @@ export interface World {
   /** Partículas. dir opcional orienta o espalhamento. */
   fx(kind: FxKind, x: number, y: number, dir?: 1 | -1): void;
   shake(intensity: number, duration?: number): void;
-  /** Pardo tocou o objetivo (Caneca Esmaltada / alien com a mamadeira) → inicia sequência de vitória. */
+  /** Pardo tocou o objetivo (Caneca Esmaltada / alien com a mamadeira / Cajado Jailnesco) → inicia sequência de vitória. */
   win(): void;
+  /** Mostra uma fala na caixa de diálogo (substitui a atual). duration padrão ≈ 3.5s. */
+  say(speaker: string, text: string, duration?: number): void;
+  /** +1 fitinha do Bonfim (state.ribbons). */
+  addRibbon(): void;
 }
 
 export interface Background {
   /** Desenha o parallax completo cobrindo a tela 320x180 (coordenadas de tela). */
   draw(ctx: CanvasRenderingContext2D, camX: number, camY: number, time: number): void;
+  /** Camada de primeiro plano (opcional), desenhada por game.ts DEPOIS do mundo/entidades e antes da HUD (coordenadas de tela). */
+  drawForeground?(ctx: CanvasRenderingContext2D, camX: number, camY: number, time: number): void;
 }
 
 export interface TextOpts {

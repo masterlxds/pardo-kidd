@@ -536,5 +536,6 @@ export function createEnemy(kind: EnemyKind, centerX: number, footY: number): En
     case 'jacare': return build(kind, centerX, footY, 32, 10, 400, jacareAi);
     case 'cobra': return build(kind, centerX, footY, 12, 12, 300, cobraAi);
     case 'tucano': return build(kind, centerX, footY, 18, 10, 400, tucanoAi);
+    default: throw new Error(`inimigo ${kind} não é deste módulo (Fase 3: src/game/enemies3.ts)`);
   }
 }

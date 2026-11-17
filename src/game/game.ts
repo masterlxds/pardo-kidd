@@ -3,6 +3,7 @@ import type {
   LevelTheme,
   Background,
   Camera,
+  Difficulty,
   Entity,
   FxKind,
   GameState,
@@ -12,14 +13,15 @@ import type {
   SpriteAtlas,
   World,
 } from '../core/types';
-import { MAX_HYDRATION, RENDER_SCALE, START_LIVES, TILE, VIEW_H, VIEW_W } from '../core/constants';
+import { AIR_BUBBLE_TIME, COINS_PER_LIFE, EASY_LIVES, AIR_COUNTDOWN, MAX_AIR, MAX_HYDRATION, RENDER_SCALE, START_LIVES, TILE, VIEW_H, VIEW_W } from '../core/constants';
 import { overlaps } from '../core/physics';
 import type { Input } from '../core/input';
-import { createPlayer, type PardoPlayer } from './player';
+import { createPlayer, LICK_STAFF_OFFSET, type PardoPlayer } from './player';
 import { LEVEL_COUNT, LEVELS } from './levels';
 import { drawGameOver, drawHud, drawIntro, drawPaused, drawTitle, drawWin } from './hud';
 import { createBackground } from '../gfx/background';
 import { createAmazonBackground } from '../gfx/background2';
+import { createBahiaBackground } from '../gfx/background3';
 import { createAtlas } from '../gfx/atlas';
 import { createAudio } from '../audio/audio';
 import { drawText } from '../gfx/font';
@@ -58,6 +60,9 @@ interface Particle {
   life: number;
   /** quadro fixo (≥0) ou -1 para animar pela vida */
   frame: number;
+  /** oscilação horizontal (bolhas): amplitude px/s e fase */
+  wob?: number;
+  ph?: number;
 }
 
 interface Popup {
@@ -105,9 +110,14 @@ export class GameWorld implements World {
   private shakeDur = 0;
   private lookAhead = CAM_LOOKAHEAD;
   private checkpoint = -1;
+  /** fitinhas da fase atual, na ordem de criação, e os índices já coletados (sobrevivem à morte) */
+  private ribbonEntities: Entity[] = [];
+  private collectedRibbons = new Set<number>();
   private lastPunchId = -1;
   private punchedEntities = new Set<Entity>();
   private punchedTiles = new Set<number>();
+  /** último número da contagem regressiva de oxigênio tocado (0 = nenhum) */
+  private lastCountdown = 0;
 
   constructor(
     private readonly ctx: CanvasRenderingContext2D,
@@ -131,6 +141,12 @@ export class GameWorld implements World {
       timeBonus: 0,
       muted: false,
       levelIndex: this.startLevel,
+      air: MAX_AIR,
+      maxAir: MAX_AIR,
+      ribbons: 0,
+      ribbonsTotal: 0,
+      dialogue: null,
+      difficulty: 'normal',
     };
     const sp = this.level.playerSpawn;
     this.player = createPlayer(sp.x, sp.y);
@@ -151,7 +167,15 @@ export class GameWorld implements World {
   }
 
   addCoin(): void {
-    this.state.coins += 1;
+    const st = this.state;
+    st.coins += 1;
+    if (st.coins >= COINS_PER_LIFE) {
+      // 100 moedas → +1 vida e o contador zera
+      st.coins -= COINS_PER_LIFE;
+      st.lives = Math.min(EASY_LIVES, st.lives + 1);
+      this.audio.play('oneup');
+      this.popup('1UP', this.player.centerX, this.player.y - 10, '#4fc65a');
+    }
   }
 
   fx(kind: FxKind, x: number, y: number, dir?: 1 | -1): void {
@@ -195,6 +219,33 @@ export class GameWorld implements World {
           add({ x, y, vx: rand(-50, 50) + d * 20, vy: rand(-150, -70), g: 500, life: 0.55, frame: i % 2 });
         }
         break;
+      case 'bubble':
+        // sobe com leve oscilação; tamanho aleatório (2 quadros)
+        add({
+          x: x + rand(-1.5, 1.5),
+          y,
+          vx: d * 10,
+          vy: rand(-34, -22),
+          g: -12,
+          life: rand(1.1, 1.7),
+          frame: Math.random() < 0.6 ? 1 : 0,
+          wob: rand(10, 18),
+          ph: rand(0, Math.PI * 2),
+        });
+        break;
+      case 'sparkle':
+        for (let i = 0; i < 2; i++) {
+          add({
+            x: x + rand(-4, 4),
+            y: y + rand(-4, 4),
+            vx: rand(-14, 14) + d * 10,
+            vy: rand(-26, -8),
+            g: 0,
+            life: rand(0.4, 0.7),
+            frame: Math.random() < 0.5 ? 0 : 1,
+          });
+        }
+        break;
     }
   }
 
@@ -212,12 +263,21 @@ export class GameWorld implements World {
     let goal: Entity | null = null;
     let best = Infinity;
     for (const e of this.entities) {
-      if (e.dead || (e.kind !== 'mug' && e.kind !== 'goal')) continue;
+      if (e.dead || (e.kind !== 'mug' && e.kind !== 'goal' && e.kind !== 'staff')) continue;
       const d = Math.abs(e.x + e.w / 2 - px);
       if (d < best) {
         best = d;
         goal = e;
       }
+    }
+    if (goal && goal.kind === 'staff') {
+      // Cajado Jailnesco: para de modo que o cajado do sprite pardo_lick caia sobre o centro do altar
+      const cx = goal.x + goal.w / 2;
+      this.player.startDrink(cx - LICK_STAFF_OFFSET, 'staff', 1);
+      this.audio.stopMusic();
+      this.audio.play('fanfare');
+      this.setScene('winning');
+      return;
     }
     if (goal && goal.kind === 'goal') {
       // alien: o Pardo para um pouco antes, do lado de onde veio, e olha para ele
@@ -232,6 +292,29 @@ export class GameWorld implements World {
     this.setScene('winning');
   }
 
+  say(speaker: string, text: string, duration = 3.5): void {
+    this.state.dialogue = { speaker, text, t: 0, duration };
+  }
+
+  addRibbon(): void {
+    // identifica QUAL fitinha foi pega (a mais próxima do Pardo) para ela não voltar após morrer
+    const px = this.player.centerX, py = this.player.y + this.player.h / 2;
+    let best = -1, bestD = Infinity;
+    this.ribbonEntities.forEach((e, i) => {
+      if (this.collectedRibbons.has(i)) return;
+      const d = Math.hypot(e.x + e.w / 2 - px, e.y + e.h / 2 - py);
+      if (d < bestD) { bestD = d; best = i; }
+    });
+    if (best >= 0) this.collectedRibbons.add(best);
+    this.state.ribbons = this.collectedRibbons.size;
+  }
+
+  private setDifficulty(d: Difficulty): void {
+    if (this.state.difficulty === d) return;
+    this.state.difficulty = d;
+    this.audio.play('coin');
+  }
+
   // ── Fluxo de jogo ──────────────────────────────────────────────────────────
   setScene(s: Scene): void {
     this.state.scene = s;
@@ -242,7 +325,7 @@ export class GameWorld implements World {
   newGame(index = 0): void {
     const st = this.state;
     st.score = 0;
-    st.lives = START_LIVES;
+    st.lives = st.difficulty === 'amaro' ? EASY_LIVES : START_LIVES;
     st.coins = 0;
     this.loadLevel(index);
     this.setScene('intro');
@@ -266,13 +349,14 @@ export class GameWorld implements World {
     st.timeBonus = 0;
     this.checkpoint = -1;
     this.time = 0;
+    this.collectedRibbons.clear(); // fase nova (ou jogo novo): fitinhas voltam
     this.respawnAt(this.level.playerSpawn.x, this.level.playerSpawn.y);
   }
 
   private backgroundFor(theme: LevelTheme): Background {
     let bg = this.backgrounds.get(theme);
     if (!bg) {
-      bg = theme === 'amazonia' ? createAmazonBackground() : createBackground();
+      bg = theme === 'bahia' ? createBahiaBackground() : theme === 'amazonia' ? createAmazonBackground() : createBackground();
       this.backgrounds.set(theme, bg);
     }
     return bg;
@@ -291,6 +375,9 @@ export class GameWorld implements World {
     this.replaceEntities();
     this.player.respawn(x, y);
     this.state.hydration = this.state.maxHydration;
+    this.state.air = this.state.maxAir;
+    this.state.dialogue = null;
+    this.lastCountdown = 0;
     this.particles.length = 0;
     this.popups.length = 0;
     this.shakeT = 0;
@@ -310,7 +397,17 @@ export class GameWorld implements World {
   private replaceEntities(): void {
     this.entities.length = 0;
     this.pending.length = 0;
-    for (const e of this.level.createEntities()) this.entities.push(e);
+    // fitinhas já coletadas continuam coletadas após morrer (a ordem de criação é estável → índice = identidade)
+    this.ribbonEntities = [];
+    for (const e of this.level.createEntities()) {
+      if (e.kind === 'ribbon') {
+        const i = this.ribbonEntities.push(e) - 1;
+        if (this.collectedRibbons.has(i)) continue;
+      }
+      this.entities.push(e);
+    }
+    this.state.ribbons = this.collectedRibbons.size;
+    this.state.ribbonsTotal = this.ribbonEntities.length;
   }
 
   private toggleMute(): void {
@@ -335,7 +432,12 @@ export class GameWorld implements World {
       case 'title':
         this.time += dt;
         this.updateParticles(dt);
+        // seleção de dificuldade: ←/→ alternam; toque/clique numa metade da tela escolhe e inicia
+        if (input.pressed('left')) this.setDifficulty('normal');
+        if (input.pressed('right')) this.setDifficulty('amaro');
         if (input.pressed('confirm') || input.pressed('start')) {
+          const tap = input.tapPos();
+          if (tap) st.difficulty = tap.x < VIEW_W / 2 ? 'normal' : 'amaro';
           this.newGame(this.startLevel);
           this.startLevel = 0;
         }
@@ -362,6 +464,8 @@ export class GameWorld implements World {
         this.time += dt;
         st.elapsed += dt;
         this.stepPlaying(dt);
+        this.updateAir(dt);
+        this.updateDialogue(dt);
         if (this.player.dead && st.scene === 'playing') {
           st.lives = Math.max(0, st.lives - 1);
           this.audio.stopMusic();
@@ -378,6 +482,7 @@ export class GameWorld implements World {
 
       case 'dying':
         this.time += dt;
+        this.updateDialogue(dt);
         this.player.update(dt, this, input);
         this.updateParticles(dt);
         this.updatePopups(dt);
@@ -396,6 +501,7 @@ export class GameWorld implements World {
 
       case 'winning':
         this.time += dt;
+        this.updateDialogue(dt);
         this.updateEntities(dt);
         this.player.update(dt, this, input);
         this.updateParticles(dt);
@@ -436,6 +542,34 @@ export class GameWorld implements World {
     this.updatePopups(dt);
     this.flushEntities();
     this.updateCamera(dt);
+  }
+
+  /** Oxigênio (só em fase subaquática): drena, contagem regressiva e afogamento. */
+  private updateAir(dt: number): void {
+    const st = this.state;
+    if (!this.level.underwater || st.scene !== 'playing' || this.player.dead) return;
+    st.air = Math.max(0, Math.min(st.maxAir, st.air - dt / AIR_BUBBLE_TIME));
+    if (st.air <= 0) {
+      this.lastCountdown = 0;
+      this.player.drown(this);
+      return;
+    }
+    if (st.air <= 1) {
+      const n = Math.ceil(st.air * AIR_COUNTDOWN);
+      if (n !== this.lastCountdown) {
+        this.lastCountdown = n;
+        this.audio.play('countdown');
+      }
+    } else {
+      this.lastCountdown = 0;
+    }
+  }
+
+  private updateDialogue(dt: number): void {
+    const d = this.state.dialogue;
+    if (!d) return;
+    d.t += dt;
+    if (d.t >= d.duration) this.state.dialogue = null;
   }
 
   private updateEntities(dt: number): void {
@@ -562,6 +696,7 @@ export class GameWorld implements World {
       if (p.t >= p.life) continue;
       p.vy += p.g * dt;
       p.x += p.vx * dt;
+      if (p.wob) p.x += Math.cos(p.t * 5 + (p.ph ?? 0)) * p.wob * dt;
       p.y += p.vy * dt;
       this.particles[j++] = p;
     }
@@ -655,6 +790,13 @@ export class GameWorld implements World {
     }
     this.player.draw(ctx, this);
     this.drawParticles(ctx);
+    ctx.restore();
+
+    // primeiro plano (coordenadas de tela), antes da HUD
+    this.background.drawForeground?.(ctx, camX, camY, this.time);
+
+    ctx.save();
+    ctx.translate(-camX + ox, -camY + oy);
     this.drawPopups(ctx);
     ctx.restore();
 
