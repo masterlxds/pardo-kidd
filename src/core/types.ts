@@ -99,6 +99,8 @@ export interface GameState {
   difficulty: Difficulty;
   /** estado da Fase Bônus ("Tubo do Bonfim") */
   bonus: BonusState;
+  /** Fase 5: gotas perdidas na fase atual (avaliação em estrelas da corrida; zera ao (re)iniciar a fase, não ao renascer) */
+  rideHits: number;
 }
 
 export type Difficulty = 'normal' | 'amaro';
@@ -223,7 +225,7 @@ export type EnemyKind = 'calango' | 'carcara' | 'palma' | 'tatu'
   // Fase 4 — Favela do Rio (src/game/enemies4.ts)
   | 'caramelo' | 'pombo' | 'gato' | 'capivara' | 'traficante'
   // Fase 5 — Marginal de São Paulo / Autoscroller no Uber (src/game/enemies5.ts)
-  | 'motoboy' | 'drone' | 'patinete' | 'pichador'
+  | 'motoboy' | 'motoboy_fast' | 'drone' | 'patinete' | 'pichador'
   // Fase 6 — Transportadora de São Paulo (src/game/enemies6.ts)
   | 'rato' | 'carregador' | 'empilhadeira' | 'arremessador';
 

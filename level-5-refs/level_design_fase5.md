@@ -30,7 +30,7 @@ Não existe tile sólido acima da linha 10, nem tile letal em lugar nenhum.
 - **Obstáculos:** `L` limitador (pule) · `F` faixa de obra, 2 colunas (pule) · `G` placa de pórtico, 3 colunas (não pule) · `i` luminária (não pule).
 - **Socáveis:** `B` barreira da CET · `W` isopor (+1 gota).
 - **Inimigos** (a coluna é o ponto de encontro na posição neutra): `y` motoboy · `Y` motoboy rápido · `p` patinete · `u` drone (linha 8: onde o rasante termina) · `z` pichador (linha 5) · `x` caixa baixa · `X` caixa alta.
-- **Estrutura:** `P` spawn + carro · `K` checkpoint por passagem · `J` início de rampa (12 colunas de voo) · `T` entrada do caminhão-baú (fica 8 compassos) · `A` desembarque 5★ · `c` moeda · `t` placa de tutorial.
+- **Estrutura:** `P` spawn + carro · `K` checkpoint por passagem · `J` início de rampa (12 colunas de voo) · `T` entrada do caminhão-baú (fica 8 compassos) · `A` desembarque 5★ · `c` moeda · `1` `2` `3` `4` placas de tutorial (pule, soque, não pule, pule + soque; na partitura aparecem como `t`). O `J` vai só na primeira coluna do compasso da rampa.
 - **Decoração:** `s` placa da Marginal · `r` radar · `l` poste · `n` cone.
 
 ## 3. Como o arquivo é escrito

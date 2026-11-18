@@ -1,6 +1,7 @@
 import type { Entity, Player, PlayerState, Rect, World } from '../core/types';
 import { Tile } from '../core/types';
-import { PHYS, PLAYER_H, PLAYER_W, SWIM, TILE, SWIM_CEILING, UBER_SPEED, VIEW_W } from '../core/constants';
+import { PHYS, PLAYER_H, PLAYER_W, SWIM, TILE, SWIM_CEILING, VIEW_W } from '../core/constants';
+import { UBER } from './uberRules';
 import { moveBody } from '../core/physics';
 import type { Input } from '../core/input';
 
@@ -197,7 +198,7 @@ export class PardoPlayer implements Player {
     const dir: 1 | -1 = this.centerX >= sourceX ? 1 : -1;
     const water = world.level.underwater;
     if (world.level.autoscroll && world.camera.x < world.level.widthPx - VIEW_W - 1) {
-      this.vx = UBER_SPEED + dir * FEEL.knockbackX * 0.7;
+      this.vx = UBER.speed + dir * FEEL.knockbackX * 0.7;
     } else {
       this.vx = dir * (water ? SWIM_FEEL.knockbackX : FEEL.knockbackX);
     }
@@ -338,7 +339,7 @@ export class PardoPlayer implements Player {
 
     const autoscroll = Boolean(world.level.autoscroll);
     const scrolling = autoscroll && world.state.scene === 'playing' && world.camera.x < world.level.widthPx - VIEW_W - 1;
-    const baseVx = scrolling ? UBER_SPEED : 0;
+    const baseVx = scrolling ? UBER.speed : 0;
 
     const left = input.down('left');
     const right = input.down('right');
@@ -724,7 +725,7 @@ export class PardoPlayer implements Player {
         break;
       case 'run': {
         name = 'pardo_run';
-        const runVx = Math.abs(this.vx - (world.level.autoscroll && world.camera.x < world.level.widthPx - VIEW_W - 1 ? UBER_SPEED : 0));
+        const runVx = Math.abs(this.vx - (world.level.autoscroll && world.camera.x < world.level.widthPx - VIEW_W - 1 ? UBER.speed : 0));
         frame = Math.floor(this.animT * (6 + runVx / 16));
         break;
       }

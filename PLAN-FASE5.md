@@ -24,12 +24,11 @@ A Etapa 2 só começa com a Etapa 1 commitada: os contratos são o que permite n
 
 ## 2. Contratos (Etapa 1 — orquestrador)
 
-- **`src/core/constants.ts`**: troca `UBER_SPEED` pelo bloco
-  `UBER = { speed: 120, steer: 40, screenMin: 48, screenMax: 176, screenNeutral: 72, roofY: 144, camY: 12, invuln: 1.0, bpm: 150, barCols: 12, rampCols: 12, rampHeight: 40 }`.
+- **`src/game/uberRules.ts`** (novo, sem imports, lido também pelo validador): bloco `UBER` (velocidade 120, direcional ±40, faixa de tela 48–176, teto em y = 144, câmera Y = 12, invulnerabilidade 1,0 s, 150 BPM, 12 colunas por compasso, rampa de 12 colunas × 40 px), zonas que ferem, tabela dos inimigos e as funções puras `uberEnemyX`, `uberDronePos`, `uberRampOffset` e `uberStars`. `UBER_SPEED` sai de `constants.ts`.
 - **`src/core/types.ts`**: `GameState += rideHits: number` (gotas perdidas na fase, para as estrelas); `SfxName` mantém `rev`/`horn` e reutiliza `beep`, `crate`, `break`, `water`; `EnemyKind` mantém `'motoboy' | 'drone' | 'patinete' | 'pichador'`. O dano continua em `onTouchPlayer`.
 - **`src/gfx/spec.ts`**, seção FASE 5: remove os sprites listados no §6 do bestiário e declara os novos: `motoboy`, `motoboy_fast`, `patinete`, `drone`, `drone_dive`, `pichador_rapel`, `spray_cloud`, `caixa`, `obst_limitador`, `obst_faixa`, `obst_placa`, `portico_post`, `obst_luminaria`, `barreira_cet`, `isopor_agua`, `rampa_obra`, `truck_bau`, `tutorial_sign`, mais `uber_car`, `uber_goal`, `tile_ub_top`, `tile_ub_ground` e a decoração que fica. Tamanhos no bestiário.
 - **`src/game/level5.ts`**: cabeçalho, `LEVEL5_LEGEND` (legenda do §2 do level design), `LEVEL5_BARS` com 74 compassos vazios válidos e `LEVEL5_ROWS` derivado. Sai `LEVEL5_MOVERS`.
-- **Assinaturas** (stubs compiláveis): `createUberEnemy(kind, encontroX, variante?)`, `createCaixa(encontroX, alta)`, `createObstaculo(tipo, x)`, `createBarreira(x)`, `createIsopor(x)`, `createRampa(x)`, `createTruckBau(x)`, `createUberCar(x)`, `createUberGoal(x, footY)`; função pura compartilhada `uberEnemyX(encontroX, vPropria, cameraX)` e `rampOffset(x, level)` em `objects5.ts`, usadas pelo jogo e portadas pelo validador.
+- **Assinaturas** (stubs compiláveis): `createUberEnemy(kind, encontroX, variante?)`, `createCaixa(encontroX, alta)`, `createObstaculo(tipo, x)`, `createBarreira(x)`, `createIsopor(x)`, `createRampa(x)`, `createTruckBau(x)`, `createUberCar(x)`, `createUberGoal(x, footY)`; `createTutorialSign(x, quadro)`. As funções puras ficam em `uberRules.ts`.
 
 ## 3. Delegações (Etapa 2)
 

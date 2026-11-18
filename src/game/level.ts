@@ -18,9 +18,12 @@ import { createAmaroGoal, createClayFilter } from './objects4';
 import { LEVEL6_MOVERS, LEVEL6_ROWS } from './level6';
 import { createSampaEnemy } from './enemies6';
 import { createBebedouro, createMaiaGoal } from './objects6';
-import { LEVEL5_MOVERS, LEVEL5_ROWS } from './level5';
-import { createUberEnemy } from './enemies5';
-import { createCoolerUber, createUberCar, createUberGoal } from './objects5';
+import { LEVEL5_ROWS } from './level5';
+import { createCaixa, createUberEnemy } from './enemies5';
+import {
+  createBarreira, createIsopor, createObstaculo, createRampa, createTruckBau, createTutorialSign, createUberCar, createUberGoal,
+} from './objects5';
+import { UBER } from './uberRules';
 
 type SpriteName = keyof typeof SPRITE_SPEC;
 
@@ -112,7 +115,11 @@ export function buildLevel(def: LevelDef): Level {
   grid.set(original);
 
   const spawnM = markers.find((m) => m.ch === 'P');
-  const footPos = (m: Marker): Vec2 => ({ x: m.col * TILE + (TILE - PLAYER_W) / 2, y: (m.row + 1) * TILE - PLAYER_H });
+  // Autoscroller (Fase 5): spawn e checkpoints valem pela COLUNA; o Pardo sempre nasce em pé no teto do carro.
+  const footPos = (m: Marker): Vec2 => ({
+    x: m.col * TILE + (TILE - PLAYER_W) / 2,
+    y: def.autoscroll ? UBER.roofY - PLAYER_H : (m.row + 1) * TILE - PLAYER_H,
+  });
   const playerSpawn: Vec2 = spawnM ? footPos(spawnM) : { x: 16, y: 10 * TILE };
   const cps = markers.filter((m) => m.ch === 'K').sort((a, b) => a.col - b.col).map(footPos);
 
@@ -201,7 +208,7 @@ export function buildLevel(def: LevelDef): Level {
         if (e) out.push(e);
       }
       if (def.autoscroll && spawnM) {
-        out.unshift(createUberCar(playerSpawn.x + PLAYER_W / 2, 10 * TILE));
+        out.unshift(createUberCar(playerSpawn.x + PLAYER_W / 2));
       }
       return out;
     },
@@ -474,6 +481,7 @@ export function createLevel4(): Level {
 }
 
 // ── Fase 5 — Marginal de São Paulo (De Uber até o Galpão) ────────────────────
+// Autoscroller linear: nenhum tile sólido acima da pista; toda ameaça é entidade (legenda em level5.ts).
 export function createLevel5(): Level {
   return buildLevel({
     index: 4,
@@ -481,38 +489,36 @@ export function createLevel5(): Level {
     theme: 'uber',
     autoscroll: true,
     rows: LEVEL5_ROWS,
-    movers: LEVEL5_MOVERS,
-    tileChars: {
-      '=': Tile.GroundTop, '#': Tile.Ground, 'R': Tile.Rock, '^': Tile.Spike,
-      'B': Tile.Block, '?': Tile.BlockItem, 'W': Tile.BlockItem, '-': Tile.OneWay, '~': Tile.Water,
-    },
-    dropBlockChars: 'W',
-    decor: {
-      b: 'bus_front', w: 'bus_wheels', s: 'marginal_sign', r: 'speed_radar', l: 'street_light', n: 'traffic_cone',
-    },
+    movers: {},
+    tileChars: { '=': Tile.GroundTop, '#': Tile.Ground, '~': Tile.Water },
+    dropBlockChars: '',
+    decor: { s: 'marginal_sign', r: 'speed_radar', l: 'street_light', n: 'traffic_cone' },
     decorCentered: 'n',
-    tileSprites: {
-      [Tile.GroundTop]: 'tile_ub_top', [Tile.Ground]: 'tile_ub_ground', [Tile.Rock]: 'tile_ub_rock',
-      [Tile.Spike]: 'tile_ub_spike', [Tile.Block]: 'tile_ub_block', [Tile.BlockItem]: 'tile_ub_block_item',
-      [Tile.OneWay]: 'tile_ub_oneway',
-    },
+    tileSprites: { [Tile.GroundTop]: 'tile_ub_top', [Tile.Ground]: 'tile_ub_ground' },
     tileVariants: [Tile.GroundTop, Tile.Ground],
-    rockRunFrames: 3,
+    groundRow: 10,
     terrainOutline: '#0d1020',
     pitColors: ['#25294a', '#171a34', '#0b0d1e'],
     flagColors: ['#c9c1a9', '#2ec4b6'],
-    marker(ch, { left, top, cx, mover }) {
+    marker(ch, { left, top, cx }) {
       switch (ch) {
         case 'c': return createCoin(left + 4, top + 4);
-        case 'y': return createUberEnemy('motoboy', cx, top + TILE);
-        case 'u': return createUberEnemy('drone', cx, top + TILE / 2 + 8);
-        case 'p': return createUberEnemy('patinete', cx, top + TILE);
-        case 'z': return createUberEnemy('pichador', cx, top + TILE);
-        case 'V': return createCoolerUber(left, top + TILE - 32);
-        case 'd': return createCrumblePlatform(left, top, 'platform_beam');
-        case 'm':
-        case 'M':
-          return createMovingPlatform(left, top, ch === 'm' ? 'x' : 'y', mover.range * TILE, mover.speed, 'platform_drone');
+        case 'L': return createObstaculo('limitador', left);
+        case 'F': return createObstaculo('faixa', left);
+        case 'G': return createObstaculo('placa', left);
+        case 'i': return createObstaculo('luminaria', left);
+        case 'B': return createBarreira(left);
+        case 'W': return createIsopor(left);
+        case 'y': return createUberEnemy('motoboy', cx);
+        case 'Y': return createUberEnemy('motoboy_fast', cx);
+        case 'p': return createUberEnemy('patinete', cx);
+        case 'u': return createUberEnemy('drone', cx);
+        case 'z': return createUberEnemy('pichador', cx);
+        case 'x': return createCaixa(cx, false);
+        case 'X': return createCaixa(cx, true);
+        case 'J': return createRampa(left);
+        case 'T': return createTruckBau(left);
+        case '1': case '2': case '3': case '4': return createTutorialSign(left, Number(ch) - 1);
         case 'A': return createUberGoal(cx, top + TILE);
         default: return null;
       }

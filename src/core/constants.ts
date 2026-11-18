@@ -61,6 +61,4 @@ export const SWIM = {
 export const SWIM_CEILING = 48;
 
 // ── Fase 5 (Marginal de São Paulo — Autoscroller no Uber) ──
-/** Velocidade horizontal constante do autoscroll da câmera e do carro preto da Uber (px/s = 5 tiles/s). */
-export const UBER_SPEED = 80;
-
+// Todos os números da fase vivem em src/game/uberRules.ts (UBER), arquivo sem imports que o validador também lê.

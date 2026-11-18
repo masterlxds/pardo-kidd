@@ -452,72 +452,69 @@ export const SPRITE_SPEC = {
   /** baliza luminosa de checkpoint com fitinha do Bonfim (2 quadros) */
   bonus_gate: [16, 16, 2],
 
-  // ══════════ FASE 5 — MARGINAL DE SÃO PAULO (AUTOSCROLLER NO UBER) ══════════ (PLAN-FASE5.md)
-  // ── Carro Preto da Uber & Objetivo (art/uber.ts) — olham para a DIREITA, base na última linha
-  /**
-   * Carro sedã PRETO executivo escrito "UBER" em branco na lateral das portas, com o motorista visível
-   * através da janela segurando o volante, faróis dianteiros acesos e rodas girando (2 frames).
-   */
+  // ══════════ FASE 5 — MARGINAL DE SÃO PAULO (AUTOSCROLLER NO UBER), versão 2 ══════════ (PLAN-FASE5.md)
+  // Leitura por cor: zebrado amarelo/preto = PULE · verde de placa ou luz branca = NÃO PULE ·
+  // contorno claro com laranja/vermelho = SOQUE. Visual de cada um em level-5-refs/gdd_bestiario_fase5.md.
+  // ── Carro e objetivo (art/uber.ts) — olham para a DIREITA, base na última linha
+  /** sedã PRETO com "UBER" em branco na porta e motorista visível ao volante; rodas girando (2 frames) */
   uber_car: [64, 24, 2],
-  /** Totem/recepção luminosa "UBER 5★" com água de cortesia no desembarque da Transportadora (2 frames) */
+  /** totem luminoso "UBER 5★" do desembarque na portaria da Transportadora (2 frames) */
   uber_goal: [32, 40, 2],
 
-  // ── Bestiário da Marginal (art/enemies5.ts) — todos morrem com 1 golpe; olham para a DIREITA
-  /** motoboy em moto vermelha/preta com baú de entrega (2 frames) */
+  // ── Bestiário (art/enemies5.ts) — todos morrem com 1 soco; autorados olhando para a DIREITA (convenção); o jogo espelha os que vêm de frente
+  /** motoboy sempre empinando, moto vermelha com baú térmico, farol aceso (2 frames) */
   motoboy: [28, 22, 2],
-  /** motoboy empinando a moto ("dando grau") na arrancada */
-  motoboy_wheelie: [28, 24, 1],
-  /** drone quadricóptero de entrega expressa (2 frames de hélices) */
-  drone: [20, 16, 2],
-  /** drone inclinado no rasante com visor de alerta aceso */
-  drone_dive: [20, 16, 1],
-  /** Faria Limer de colete puffer e óculos escuros em patinete elétrico (2 frames) */
+  /** motoboy rápido: jaqueta amarela, farol alto piscando, rastro de vento (2 frames) */
+  motoboy_fast: [28, 22, 2],
+  /** Faria Limer de colete puffer no patinete verde-neon, olhando o celular (2 frames) */
   patinete: [20, 24, 2],
-  /** Faria Limer puxando o patinete elétrico num salto */
-  patinete_jump: [20, 24, 1],
-  /** pichador de moletom com capuz e lata de spray nos viadutos (2 frames) */
-  pichador: [20, 24, 2],
-  /** pichador arremessando: 0 = braço armado (aviso), 1 = soltando a lata */
-  pichador_throw: [22, 24, 2],
-  /** lata de tinta spray arremessada girando (2 frames) */
-  lata: [8, 8, 2],
+  /** drone quadricóptero amarelo/preto pairando (2 frames de hélices) */
+  drone: [20, 16, 2],
+  /** drone inclinado 30° com o visor piscando (aviso e rasante) */
+  drone_dive: [20, 16, 1],
+  /** pichador de moletom roxo pendurado por corda (a corda ocupa o topo do sprite), lata apontada para baixo (2 frames) */
+  pichador_rapel: [20, 32, 2],
+  /** nuvem de spray neon descendo (2 frames) */
+  spray_cloud: [16, 32, 2],
+  /** caixa de papelão "FRÁGIL" girando (2 frames) */
+  caixa: [12, 12, 2],
 
-  // ── Tiles da Marginal & Viadutos 16x16 (art/uber.ts)
-  /** asfalto escuro da Marginal com faixa tracejada reflexiva no topo */
+  // ── Obstáculos (art/uber.ts) — base na última linha, alinhados à esquerda da célula
+  /** limitador de altura: barra ZEBRADA "2,0 m" entre postes; a barra fica em y 32..44 do sprite (base = asfalto) */
+  obst_limitador: [16, 48, 1],
+  /** faixa de obra "OBRAS — CET": cavalete duplo zebrado, 2 colunas; a lona fica em y 32..44 do sprite */
+  obst_faixa: [32, 48, 1],
+  /** placa VERDE de destino pendurada no pórtico (3 colunas): 0 TIETÊ, 1 CENTRO, 2 TRANSPORTADORA → */
+  obst_placa: [48, 32, 3],
+  /** poste lateral do pórtico (decoração, do topo da tela ao asfalto) */
+  portico_post: [16, 96, 1],
+  /** luminária de túnel: calha de LUZ BRANCA pulsando (2 frames) */
+  obst_luminaria: [16, 16, 2],
+  /** barreira laranja da CET com faixas brancas: 0 inteira, 1 rachando (frame do golpe) */
+  barreira_cet: [16, 16, 2],
+  /** isopor "ÁGUA 2 REAL" num suporte: 0 fechado, 1 aberto/vazio */
+  isopor_agua: [16, 24, 2],
+  /** rampa de obra (cunha zebrada apoiada no fim da pista) */
+  rampa_obra: [32, 16, 1],
+  /** caminhão-baú da transportadora visto de lado, traseira à ESQUERDA com a porta aberta (2 frames de balanço) */
+  truck_bau: [80, 48, 2],
+  /** placas de tutorial com pictograma: 0 PULE, 1 SOQUE, 2 NÃO PULE, 3 PULE+SOQUE */
+  tutorial_sign: [24, 24, 4],
+
+  // ── Tiles 16x16 (art/uber.ts)
+  /** asfalto escuro com faixa tracejada reflexiva no topo */
   tile_ub_top: [16, 16, 2],
-  /** viga de concreto armado do viaduto elevado */
+  /** mureta de concreto / pilar do viaduto */
   tile_ub_ground: [16, 16, 2],
-  /** carroceria de ônibus/furgão (0 = vermelho SPTrans, 1 = azul metrô, 2 = furgão prata) — indestrutível */
-  tile_ub_rock: [16, 16, 3],
-  /** cavalete eletrificado / vergalhão exposto de obra — perigo letal */
-  tile_ub_spike: [16, 16, 1],
-  /** barreira plástica laranja/branca da CET (quebrável com 1 soco) */
-  tile_ub_block: [16, 16, 1],
-  /** barreira/caixa de suprimento com estrela dourada (guarda item) */
-  tile_ub_block_item: [16, 16, 1],
-  /** passarela metálica de pórtico / viga suspensa (one-way, ~6px de cima) */
-  tile_ub_oneway: [16, 16, 1],
 
-  // ── Objetos interativos da Marginal (art/uber.ts)
-  /** cooler térmico "5★ ÁGUA": 0 = cheio, 1 = vazio (após 3 socos) */
-  cooler_uber: [16, 32, 2],
-  /** plataforma-drone de carga suspensa (plataforma móvel) */
-  platform_drone: [32, 10, 1],
-  /** viga metálica bamba de viaduto: 0 = firme, 1 = cedendo */
-  platform_beam: [32, 10, 2],
-
-  // ── Decoração da Marginal (art/uber.ts) — base na última linha
-  /** frente de ônibus/caminhão engarrafado olhando para a DIREITA (encosta nos tiles R à esquerda) */
-  bus_front: [40, 48, 1],
-  /** par de rodas + chassi de ônibus/furgão (3 tiles de largura) */
-  bus_wheels: [48, 16, 1],
-  /** placa verde de rodovia "MARGINAL" */
+  // ── Decoração da mureta (art/uber.ts) — base na última linha
+  /** placa verde de km da Marginal (também marca os checkpoints) */
   marginal_sign: [24, 24, 1],
-  /** radar de velocidade amarelo "60 KM/H" */
+  /** radar de velocidade amarelo */
   speed_radar: [16, 32, 1],
-  /** poste curvo de iluminação da Marginal */
+  /** poste curvo de iluminação */
   street_light: [16, 48, 1],
-  /** cone listrado laranja/branco da CET */
+  /** cone listrado da CET */
   traffic_cone: [8, 12, 1],
 } as const satisfies Record<string, readonly [number, number, number]>;
 

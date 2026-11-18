@@ -13,7 +13,8 @@ import type {
   SpriteAtlas,
   World,
 } from '../core/types';
-import { AIR_BUBBLE_TIME, COINS_PER_LIFE, EASY_LIVES, AIR_COUNTDOWN, MAX_AIR, MAX_HYDRATION, RENDER_SCALE, START_LIVES, TILE, UBER_SPEED, VIEW_H, VIEW_W } from '../core/constants';
+import { AIR_BUBBLE_TIME, COINS_PER_LIFE, EASY_LIVES, AIR_COUNTDOWN, MAX_AIR, MAX_HYDRATION, RENDER_SCALE, START_LIVES, TILE, VIEW_H, VIEW_W } from '../core/constants';
+import { UBER } from './uberRules';
 import { overlaps } from '../core/physics';
 import type { Input } from '../core/input';
 import { createPlayer, LICK_STAFF_OFFSET, type PardoPlayer } from './player';
@@ -167,6 +168,7 @@ export class GameWorld implements World {
       muted: false,
       levelIndex: this.startLevel,
       air: MAX_AIR,
+      rideHits: 0,
       maxAir: MAX_AIR,
       ribbons: 0,
       ribbonsTotal: 0,
@@ -915,7 +917,7 @@ export class GameWorld implements World {
     const c = this.camera;
     if (this.level.autoscroll) {
       if (this.state.scene === 'playing' && !p.dead) {
-        c.x = Math.min(Math.max(0, this.level.widthPx - VIEW_W), c.x + UBER_SPEED * dt);
+        c.x = Math.min(Math.max(0, this.level.widthPx - VIEW_W), c.x + UBER.speed * dt);
       }
       const t = this.cameraTarget();
       if (!p.dead) {
