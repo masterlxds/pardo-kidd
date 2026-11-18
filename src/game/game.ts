@@ -18,7 +18,18 @@ import { overlaps } from '../core/physics';
 import type { Input } from '../core/input';
 import { createPlayer, LICK_STAFF_OFFSET, type PardoPlayer } from './player';
 import { LEVEL_COUNT, LEVELS } from './levels';
-import { drawGameOver, drawHud, drawIntro, drawPaused, drawTitle, drawWin } from './hud';
+import { createBonusStage, type BonusStage } from './bonus';
+import {
+  drawBonusEnd,
+  drawBonusHud,
+  drawBonusIntro,
+  drawGameOver,
+  drawHud,
+  drawIntro,
+  drawPaused,
+  drawTitle,
+  drawWin,
+} from './hud';
 import { createBackground } from '../gfx/background';
 import { createAmazonBackground } from '../gfx/background2';
 import { createBahiaBackground } from '../gfx/background3';
@@ -93,6 +104,8 @@ export interface Game {
 export interface GameOptions {
   /** índice (0-based) da fase em que o primeiro jogo começa (ex.: ?fase=2 → 1) */
   startLevel?: number;
+  /** inicia diretamente na Fase Bônus após o título (ex.: ?fase=bonus ou ?bonus=1) */
+  startBonus?: boolean;
 }
 
 export class GameWorld implements World {
@@ -103,10 +116,13 @@ export class GameWorld implements World {
   readonly state: GameState;
   readonly audio: AudioApi;
   readonly sprites: SpriteAtlas;
+  readonly bonusStage: BonusStage = createBonusStage();
   background: Background;
   time = 0;
   /** fase do primeiro "jogar" a partir do título (depois sempre volta à fase 0) */
   private startLevel: number;
+  private startBonusMode: boolean;
+  private pausedFrom: 'playing' | 'bonus' = 'playing';
   private backgrounds = new Map<LevelTheme, Background>();
 
   readonly particles: Particle[] = [];
@@ -134,6 +150,7 @@ export class GameWorld implements World {
     this.sprites = createAtlas();
     this.audio = createAudio();
     this.startLevel = clampLevel(opts.startLevel ?? 0);
+    this.startBonusMode = Boolean(opts.startBonus);
     this.level = makeLevel(this.startLevel);
     this.background = this.backgroundFor(this.level.theme);
     this.state = {
@@ -154,6 +171,14 @@ export class GameWorld implements World {
       ribbonsTotal: 0,
       dialogue: null,
       difficulty: 'normal',
+      bonus: {
+        active: false,
+        coins: 0,
+        target: 20,
+        stage: 1,
+        cleared: false,
+        endedByCheckpoint: false,
+      },
     };
     const sp = this.level.playerSpawn;
     this.player = createPlayer(sp.x, sp.y);
@@ -181,7 +206,11 @@ export class GameWorld implements World {
       st.coins -= COINS_PER_LIFE;
       st.lives = Math.min(EASY_LIVES, st.lives + 1);
       this.audio.play('oneup');
-      this.popup('1UP', this.player.centerX, this.player.y - 10, '#4fc65a');
+      if (st.scene === 'bonus' || st.scene === 'bonus_intro' || st.scene === 'bonus_end') {
+        this.popup('1UP', VIEW_W / 2, VIEW_H - 54, '#4fc65a');
+      } else {
+        this.popup('1UP', this.player.centerX, this.player.y - 10, '#4fc65a');
+      }
     }
   }
 
@@ -337,12 +366,43 @@ export class GameWorld implements World {
     this.state.sceneTime = 0;
   }
 
+  /** Pausa a partida atual ('playing' ou 'bonus'), guardando a cena de origem. */
+  pause(): void {
+    const sc = this.state.scene;
+    if (sc !== 'playing' && sc !== 'bonus') return;
+    this.pausedFrom = sc;
+    this.setScene('paused');
+    this.audio.stopMusic();
+  }
+
+  /** Inicia a Fase Bônus ("Tubo do Bonfim"), preservando pontos, moedas e vidas. */
+  startBonus(): void {
+    this.state.dialogue = null;
+    this.particles.length = 0;
+    this.popups.length = 0;
+    this.shakeT = 0;
+    this.bonusStage.reset(this);
+    this.state.bonus.active = true;
+    this.setScene('bonus_intro');
+    this.audio.play('start');
+    this.audio.startMusic('bonus');
+  }
+
   /** Começo do zero (título, game over ou fim do jogo → jogar) na fase `index`. */
   newGame(index = 0): void {
     const st = this.state;
     st.score = 0;
     st.lives = st.difficulty === 'amaro' ? EASY_LIVES : START_LIVES;
     st.coins = 0;
+    st.bonus = {
+      active: false,
+      coins: 0,
+      target: 20,
+      stage: 1,
+      cleared: false,
+      endedByCheckpoint: false,
+    };
+    this.pausedFrom = 'playing';
     this.loadLevel(index);
     this.setScene('intro');
     this.audio.play('start');
@@ -463,8 +523,17 @@ export class GameWorld implements World {
         if (input.pressed('confirm') || input.pressed('start')) {
           const tap = input.tapPos();
           if (tap) st.difficulty = tap.x < VIEW_W / 2 ? 'normal' : 'amaro';
-          this.newGame(this.startLevel);
-          this.startLevel = 0;
+          if (this.startBonusMode) {
+            st.score = 0;
+            st.lives = st.difficulty === 'amaro' ? EASY_LIVES : START_LIVES;
+            st.coins = 0;
+            this.startBonusMode = false;
+            this.startLevel = 0;
+            this.startBonus();
+          } else {
+            this.newGame(this.startLevel);
+            this.startLevel = 0;
+          }
         }
         break;
 
@@ -482,8 +551,7 @@ export class GameWorld implements World {
 
       case 'playing':
         if (input.pressed('pause')) {
-          this.setScene('paused');
-          this.audio.stopMusic();
+          this.pause();
           break;
         }
         this.time += dt;
@@ -500,8 +568,13 @@ export class GameWorld implements World {
 
       case 'paused':
         if (input.pressed('pause') || input.pressed('start')) {
-          this.setScene('playing');
-          this.audio.startMusic(this.level.theme);
+          if (this.pausedFrom === 'bonus') {
+            this.setScene('bonus');
+            this.audio.startMusic('bonus');
+          } else {
+            this.setScene('playing');
+            this.audio.startMusic(this.level.theme);
+          }
         }
         break;
 
@@ -541,13 +614,73 @@ export class GameWorld implements World {
         break;
 
       case 'gameover':
+        this.time += dt;
+        this.updateParticles(dt);
+        this.updatePopups(dt);
+        if (st.sceneTime >= END_CONFIRM_DELAY && (input.pressed('confirm') || input.pressed('start'))) {
+          this.newGame(0);
+        }
+        break;
+
       case 'win':
         this.time += dt;
         this.updateParticles(dt);
         this.updatePopups(dt);
         if (st.sceneTime >= END_CONFIRM_DELAY && (input.pressed('confirm') || input.pressed('start'))) {
-          if (st.scene === 'win' && st.levelIndex + 1 < LEVEL_COUNT) this.nextLevel();
-          else this.newGame(0);
+          const unlockBonus =
+            st.levelIndex === 2 &&
+            st.ribbonsTotal > 0 &&
+            st.ribbons >= st.ribbonsTotal;
+          if (unlockBonus) {
+            this.startBonus();
+          } else if (st.levelIndex + 1 < LEVEL_COUNT) {
+            this.nextLevel();
+          } else {
+            this.newGame(0);
+          }
+        }
+        break;
+
+      case 'bonus_intro':
+        this.time += dt;
+        this.updateParticles(dt);
+        if (
+          st.sceneTime >= INTRO_TIME ||
+          (st.sceneTime >= INTRO_SKIP_DELAY && (input.pressed('confirm') || input.pressed('start')))
+        ) {
+          this.setScene('bonus');
+        }
+        break;
+
+      case 'bonus': {
+        if (input.pressed('pause')) {
+          this.pause();
+          break;
+        }
+        this.time += dt;
+        const res = this.bonusStage.update(dt, this, input);
+        this.updateParticles(dt);
+        this.updatePopups(dt);
+        this.updateShake(dt);
+        if (res === 'cleared' || res === 'failed') {
+          this.audio.stopMusic();
+          this.setScene('bonus_end');
+        }
+        break;
+      }
+
+      case 'bonus_end':
+        this.time += dt;
+        this.updateParticles(dt);
+        this.updatePopups(dt);
+        this.updateShake(dt);
+        if (st.sceneTime >= END_CONFIRM_DELAY && (input.pressed('confirm') || input.pressed('start'))) {
+          st.bonus.active = false;
+          this.pausedFrom = 'playing';
+          this.loadLevel(3);
+          this.setScene('intro');
+          this.audio.play('start');
+          this.audio.startMusic(this.level.theme);
         }
         break;
     }
@@ -799,6 +932,38 @@ export class GameWorld implements World {
       ox = Math.round(rand(-k, k));
       oy = Math.round(rand(-k, k));
     }
+
+    const inBonus =
+      st.scene === 'bonus_intro' ||
+      st.scene === 'bonus' ||
+      st.scene === 'bonus_end' ||
+      (st.scene === 'paused' && this.pausedFrom === 'bonus');
+    if (inBonus) {
+      ctx.save();
+      ctx.translate(ox, oy);
+      this.bonusStage.render(ctx, this);
+      this.drawParticles(ctx);
+      this.drawPopups(ctx);
+      ctx.restore();
+
+      switch (st.scene) {
+        case 'bonus_intro':
+          drawBonusIntro(ctx, this);
+          break;
+        case 'bonus':
+          drawBonusHud(ctx, this);
+          break;
+        case 'paused':
+          drawBonusHud(ctx, this);
+          drawPaused(ctx, this);
+          break;
+        case 'bonus_end':
+          drawBonusEnd(ctx, this);
+          break;
+      }
+      return;
+    }
+
     const camX = Math.round(this.camera.x);
     const camY = Math.round(this.camera.y);
 
@@ -902,9 +1067,8 @@ export function createGame(ctx: CanvasRenderingContext2D, input: Input, opts: Ga
     update: (dt) => world.step(dt),
     render: () => world.render(),
     onHidden() {
-      if (world.state.scene === 'playing') {
-        world.setScene('paused');
-        world.audio.stopMusic();
+      if (world.state.scene === 'playing' || world.state.scene === 'bonus') {
+        world.pause();
       }
       input.clear();
     },

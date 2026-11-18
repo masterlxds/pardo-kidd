@@ -1,6 +1,6 @@
 # Pardo Kidd in Quixadá World
 
-Plataforma 2D retro 8-bit com cinco fases. **Fase 1, "Trilha dos Monólitos"** (sertão cearense): o Pardo sai do povoado, atravessa o Desfiladeiro Seco e a Subida da Galinha Choca, e chega à Capela do Horizonte para beber da Caneca Esmaltada. **Fase 2, "Coração da Amazônia"**: rio, cachoeiras e cipós até a aldeia, onde um alien de chapéu de explorador espera com a mamadeira do índio. **Fase 3, "Bahia World"** (subaquática): o sonho do Pardo no fundo da Baía de Todos-os-Santos, até o santuário da sereia Jandira e o Cajado Jailnesco. **Fase 4, "Favela do Rio"** (do morro ao Tribunal): sob um sol de 40°C, o Pardo sobe a favela carioca até o pátio do Tribunal, onde **Amaro**, o faxineiro, o espera com uma **Garrafa de Água Mineral**. **Fase 5, "Transportadora de São Paulo"** (Hora do Café): de madrugada, o Pardo acorda num pátio de transportadora paulistana, atravessa docas e galpão até a copa, onde o conferente **Renan Maia** lhe entrega um café. Detalhes em `lore.md`.
+Plataforma 2D retro 8-bit com cinco fases e uma **Fase Bônus secreta ("Tubo do Bonfim")**, estágio especial pseudo-3D em meio-tubo desbloqueado após a Fase 3. **Fase 1, "Trilha dos Monólitos"** (sertão cearense): o Pardo sai do povoado, atravessa o Desfiladeiro Seco e a Subida da Galinha Choca, e chega à Capela do Horizonte para beber da Caneca Esmaltada. **Fase 2, "Coração da Amazônia"**: rio, cachoeiras e cipós até a aldeia, onde um alien de chapéu de explorador espera com a mamadeira do índio. **Fase 3, "Bahia World"** (subaquática): o sonho do Pardo no fundo da Baía de Todos-os-Santos, até o santuário da sereia Jandira e o Cajado Jailnesco — com todas as fitinhas coletadas, um vórtice leva à **Fase Bônus, "Tubo do Bonfim"** (corrida pseudo-3D em meio-tubo com o parceiro **Caramelo-Tails**). **Fase 4, "Favela do Rio"** (do morro ao Tribunal): sob um sol de 40°C, o Pardo sobe a favela carioca até o pátio do Tribunal, onde **Amaro**, o faxineiro, o espera com uma **Garrafa de Água Mineral**. **Fase 5, "Transportadora de São Paulo"** (Hora do Café): de madrugada, o Pardo acorda num pátio de transportadora paulistana, atravessa docas e galpão até a copa, onde o conferente **Renan Maia** lhe entrega um café. Detalhes em `lore.md`.
 
 ## Controles
 
@@ -31,7 +31,15 @@ Mecânicas novas:
 - **Nado:** o botão de pulo vira braçada. Cada toque dá um impulso para cima; sem toques, o Pardo afunda devagar. O movimento horizontal tem um leve deslize. O soco continua sendo o único ataque, inclusive nadando.
 - **Oxigênio:** a barra tem 5 bolhas e se esvazia em cerca de 30 segundos. Com uma bolha restante, aparece uma contagem regressiva de 5 a 1 sobre a cabeça do Pardo. Ficar sem ar custa uma vida. O ar volta ao máximo ao tocar as bolhas grandes soltas pelas **fissuras de bolhas** e ao chegar perto da Jandira.
 - **Inimigos de 1 e 2 socos:** a maioria cai com um soco. Os blindados (baiacu-dentão, siri, tartaruga e moreia) atordoam com o primeiro soco, por cerca de 1,5 s, e são derrotados pelo segundo. O siri bloqueia socos pela frente enquanto está em guarda.
-- **Fitinhas do Bonfim:** três fitinhas secretas espalhadas pelo recife e pelas ruínas. Cada uma vale 1000 pontos, e a HUD mostra quantas foram coletadas (n/3).
+- **Fitinhas do Bonfim:** três fitinhas secretas espalhadas pelo recife e pelas ruínas. Cada uma vale 1000 pontos, e a HUD mostra quantas foram coletadas (n/3). Coletar **todas as 3 Fitinhas do Bonfim (`3/3`)** abre o vórtice do Cajado Jailnesco para a **Fase Bônus — "Tubo do Bonfim"** antes de seguir para a Fase 4 (com menos de 3 fitinhas, o jogo avança direto para a Fase 4).
+
+## Fase Bônus — "Tubo do Bonfim" (Special Stage Pseudo-3D)
+
+Ao vencer a Fase 3 com **`3/3` Fitinhas do Bonfim** (ou acessando diretamente via `?fase=bonus` / `?bonus=1`), o brilho do Cajado Jailnesco puxa o Pardo para um túnel caleidoscópico em meio-tubo sob o céu estrelado da Bahia.
+
+- **Corrida no meio-tubo:** visto de costas em perspectiva pseudo-3D, `←`/`→` (`A`/`D`) fazem o Pardo correr pelas paredes laterais do tubo (soltar o direcional devolve suavemente ao centro), enquanto `↑`/`W` ou `Espaço`/`Z`/`J` saltam em direção ao centro do tubo para desviar de bombas de espinhos e alcançar arcos altos de moedas.
+- **Parceiro Caramelo-Tails:** um vira-lata caramelo de cauda dupla giratória segue o rastro do Pardo logo adiante no túnel e ajuda a coletar moedas cooperativamente, **sem** fazer o jogador perder moedas caso encoste em bombas.
+- **3 trechos e recompensa máxima:** o percurso tem 3 checkpoints com metas acumuladas progressivas (**20 → 45 → 70 moedas**) e **zero perda de vidas** (bombas descontam até 5 moedas da meta do bônus, mas nunca tiram vida). Bater as três metas e capturar o **Amuleto / Esmeralda do Bonfim** rende **+5000 pontos** e **+1 vida (`1UP`)**; em qualquer desfecho, todas as moedas e pontos conquistados seguem para a Fase 4.
 
 ## Fase 5 — "Transportadora de São Paulo" (Hora do Café)
 
@@ -57,9 +65,9 @@ npm run build      # checagem de tipos + build de produção em dist/
 npm run preview    # serve o dist/ localmente
 ```
 
-Atalhos de teste: `http://localhost:5173/?fase=2`, `?fase=3`, `?fase=4` ou `?fase=5` na URL começam direto na fase correspondente (porta padrão do Vite).
+Atalhos de teste: `http://localhost:5173/?fase=2`, `?fase=3`, `?fase=4`, `?fase=5` ou `?fase=bonus` (ou `?bonus=1`) na URL começam direto na fase correspondente ou na Fase Bônus (porta padrão do Vite).
 
-Checagens de mapa:
+Checagens de fases e bônus:
 
 ```bash
 node scripts/check-level.mjs    # valida o mapa da Fase 1
@@ -67,6 +75,7 @@ node scripts/check-level2.mjs   # valida o mapa da Fase 2
 node scripts/check-level3.mjs   # valida o mapa da Fase 3 (dimensões, contagens, alcançabilidade a nado, fissuras)
 node scripts/check-level4.mjs   # valida o mapa da Fase 4 (dimensões, contagens, alcançabilidade)
 node scripts/check-level5.mjs   # valida o mapa da Fase 5 (dimensões, contagens, alcançabilidade)
+node scripts/check-bonus.mjs    # valida a Fase Bônus (3 trechos, metas 20/45/70, ondas de moedas/bombas e simulação)
 ```
 
 ## Deploy (Vercel)
@@ -79,7 +88,7 @@ O projeto usa o framework Vite com saída em `dist` (ver `vercel.json`).
 
 ## Estrutura
 
-Resumo; o detalhamento de módulos e donos está em `PLAN.md` (Fase 1), `PLAN-FASE2.md` (Fase 2), `PLAN-FASE3.md` (Fase 3), `PLAN-FASE4.md` (Fase 4) e `PLAN-FASE5.md` (Fase 5).
+Resumo; o detalhamento de módulos e donos está em `PLAN.md` (Fase 1), `PLAN-FASE2.md` (Fase 2), `PLAN-FASE3.md` (Fase 3), `PLAN-FASE4.md` (Fase 4), `PLAN-FASE5.md` (Fase 5) e `PLAN-BONUS.md` (Fase Bônus).
 
 ```
 index.html          contrato de DOM (#stage, #game, #touch, #btn-*)
@@ -94,22 +103,32 @@ src/
     level.ts        construtor genérico de fases (mapa ASCII, tiles)
     level1.ts       Fase 1 "Trilha dos Monólitos"
     level2.ts       Fase 2 "Coração da Amazônia"
+    level3.ts       Fase 3 "Bahia World" (subaquática)
     level4.ts       Fase 4 "Favela do Rio"
     level5.ts       Fase 5 "Transportadora de São Paulo"
+    bonus.ts        Fase Bônus "Tubo do Bonfim" (meio-tubo pseudo-3D)
     objects.ts      moedas, plataformas, cipó-d'água, alien, caneca
+    objects3.ts     bolhas, fitinhas do Bonfim, Jandira e cajado (Fase 3)
     objects4.ts     filtro de barro e Amaro (Fase 4)
     objects5.ts     bebedouro, movers e Renan Maia (Fase 5)
-    enemies.ts      inimigos
+    enemies.ts      inimigos (Fases 1–2)
+    enemies3.ts     inimigos marinhos (Fase 3)
     enemies4.ts     inimigos cariocas (Fase 4)
     enemies5.ts     inimigos da transportadora (Fase 5)
     hud.ts          HUD e telas
   gfx/              paleta, sprites em grade de caracteres, atlas, fontes
     background.ts   parallax do sertão (Fase 1)
     background2.ts  parallax da Amazônia (Fase 2)
+    background3.ts  parallax subaquático da Bahia (Fase 3)
     background4.ts  parallax do Rio de Janeiro (Fase 4)
     background5.ts  parallax de São Paulo (Fase 5)
     art/enemies2.ts sprites dos inimigos da Fase 2 (onça, jacaré, cobra, tucano)
     art/amazon.ts   tiles e decoração da Amazônia (Fase 2)
+    art/pardoSwim.ts sprites de nado do Pardo (Fase 3)
+    art/bahia.ts    tiles, recife, ruínas e objetos da Bahia (Fase 3)
+    art/sea.ts      sprites dos inimigos marinhos (Fase 3)
+    art/jandira.ts  sprites da sereia Jandira e do Cajado Jailnesco (Fase 3)
+    art/bonus.ts    sprites da Fase Bônus (Pardo de costas, Caramelo-Tails, tubo)
     art/amaro.ts    sprites do Amaro, garrafa de água mineral e Pardo bebendo (Fase 4)
     art/enemies4.ts sprites dos inimigos da Fase 4
     art/rio.ts      tiles, objetos e decoração do Rio (Fase 4)
@@ -117,7 +136,7 @@ src/
     art/enemies5.ts sprites dos inimigos da Fase 5
     art/sampa.ts    tiles, objetos e decoração da transportadora (Fase 5)
   audio/audio.ts    SFX e música chiptune via Web Audio
-scripts/            check-art.mjs, check-level.mjs, check-level2.mjs, check-level3.mjs, check-level4.mjs, check-level5.mjs
+scripts/            check-art.mjs, check-level.mjs, check-level2.mjs, check-level3.mjs, check-level4.mjs, check-level5.mjs, check-bonus.mjs
 ```
 
 ## Sobre os recursos

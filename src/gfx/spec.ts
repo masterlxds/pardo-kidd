@@ -428,6 +428,29 @@ export const SPRITE_SPEC = {
   time_clock: [16, 24, 1],
   /** máquina de café sobre mesinha da copa */
   coffee_machine: [24, 32, 1],
+
+  // ══════════ FASE BÔNUS — TUBO DO BONFIM (PSEUDO-3D) ══════════ (PLAN-BONUS.md)
+  // ── Pardo de costas (art/bonus.ts) — quadro 20x24, pés na última linha
+  /** Pardo visto de costas correndo em 4 quadros */
+  pardo_bonus_run: [20, 24, 4],
+  /** Pardo visto de costas no salto em 2 quadros */
+  pardo_bonus_jump: [20, 24, 2],
+  /** Pardo visto de costas atingido por bomba */
+  pardo_bonus_hurt: [20, 24, 1],
+  // ── Parceiro Caramelo-Tails (art/bonus.ts) — quadro 18x22, pés na última linha
+  /** Caramelo-Tails de costas correndo com duas caudas abanando/girando (4 quadros) */
+  buddy_bonus_run: [18, 22, 4],
+  /** Caramelo-Tails de costas pulando com caudas em hélice (2 quadros) */
+  buddy_bonus_jump: [18, 22, 2],
+  // ── Pista e recompensas (art/bonus.ts)
+  /** moeda/argola dourada brilhante do meio-tubo em 4 ângulos */
+  bonus_coin: [12, 12, 4],
+  /** mina/bomba estrelada pulsante em 2 quadros */
+  bonus_bomb: [14, 14, 2],
+  /** Amuleto / Esmeralda do Bonfim em turquesa e dourado (2 quadros) */
+  bonus_emerald: [16, 16, 2],
+  /** baliza luminosa de checkpoint com fitinha do Bonfim (2 quadros) */
+  bonus_gate: [16, 16, 2],
 } as const satisfies Record<string, readonly [number, number, number]>;
 
 export type SpriteName = keyof typeof SPRITE_SPEC;
