@@ -18,10 +18,13 @@ import { BAHIA } from '../src/gfx/art/bahia.ts';
 import { AMARO } from '../src/gfx/art/amaro.ts';
 import { ENEMIES4 } from '../src/gfx/art/enemies4.ts';
 import { RIO } from '../src/gfx/art/rio.ts';
+import { MAIA } from '../src/gfx/art/maia.ts';
+import { ENEMIES5 } from '../src/gfx/art/enemies5.ts';
+import { SAMPA } from '../src/gfx/art/sampa.ts';
 
 const out = process.argv[2] ?? 'art-preview.png';
 const filter = process.argv[3] ?? '';
-const art = { ...PARDO, ...ENEMIES, ...WORLD, ...DECOR, ...ENEMIES2, ...AMAZON, ...PARDO_SWIM, ...JANDIRA, ...SEA, ...BAHIA, ...AMARO, ...ENEMIES4, ...RIO };
+const art = { ...PARDO, ...ENEMIES, ...WORLD, ...DECOR, ...ENEMIES2, ...AMAZON, ...PARDO_SWIM, ...JANDIRA, ...SEA, ...BAHIA, ...AMARO, ...ENEMIES4, ...RIO, ...MAIA, ...ENEMIES5, ...SAMPA };
 const D = 2; // arte em alta resolução = D× o tamanho lógico do spec
 const lowres = [];
 const errors = [];

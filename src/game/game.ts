@@ -23,6 +23,7 @@ import { createBackground } from '../gfx/background';
 import { createAmazonBackground } from '../gfx/background2';
 import { createBahiaBackground } from '../gfx/background3';
 import { createRioBackground } from '../gfx/background4';
+import { createSampaBackground } from '../gfx/background5';
 import { createAtlas } from '../gfx/atlas';
 import { createAudio } from '../audio/audio';
 import { drawText } from '../gfx/font';
@@ -45,6 +46,11 @@ const INTRO_TIME = 2.2;
 const INTRO_SKIP_DELAY = 0.25;
 /** Distância (px) entre o centro do Pardo e o centro do alien ao receber a mamadeira. */
 const GOAL_STAND_OFF = 14;
+/**
+ * Idem para o Maia (Fase 5): hitbox 22 (vs. 16 do Amaro) e sprite 34 com o braço da xícara indo até a borda.
+ * 17 mantém a mesma folga de 1px entre as hitboxes que o Amaro tem e deixa a mão do Maia sobre o Pardo.
+ */
+const MAIA_STAND_OFF = 24;
 const TIME_BONUS_PAR = 300;
 const TIME_BONUS_RATE = 10;
 const POPUP_LIFE = 0.9;
@@ -264,7 +270,7 @@ export class GameWorld implements World {
     let goal: Entity | null = null;
     let best = Infinity;
     for (const e of this.entities) {
-      if (e.dead || (e.kind !== 'mug' && e.kind !== 'goal' && e.kind !== 'staff' && e.kind !== 'amaro')) continue;
+      if (e.dead || (e.kind !== 'mug' && e.kind !== 'goal' && e.kind !== 'staff' && e.kind !== 'amaro' && e.kind !== 'maia')) continue;
       const d = Math.abs(e.x + e.w / 2 - px);
       if (d < best) {
         best = d;
@@ -280,7 +286,12 @@ export class GameWorld implements World {
       this.setScene('winning');
       return;
     }
-    if (goal && goal.kind === 'amaro') {
+    if (goal && goal.kind === 'maia') {
+      // Renan Maia entrega o café: ele sempre encara a esquerda (de onde o Pardo vem), então o Pardo
+      // para à esquerda dele, ao alcance do braço estendido, e olha para ele
+      const cx = goal.x + goal.w / 2;
+      this.player.startDrink(cx - MAIA_STAND_OFF, 'coffee', 1);
+    } else if (goal && goal.kind === 'amaro') {
       const cx = goal.x + goal.w / 2;
       const side: 1 | -1 = px <= cx ? -1 : 1;
       this.player.startDrink(cx + side * GOAL_STAND_OFF, 'mineral', side === -1 ? 1 : -1);
@@ -362,7 +373,9 @@ export class GameWorld implements World {
     let bg = this.backgrounds.get(theme);
     if (!bg) {
       bg =
-        theme === 'rio'
+        theme === 'sampa'
+          ? createSampaBackground()
+          : theme === 'rio'
           ? createRioBackground()
           : theme === 'bahia'
             ? createBahiaBackground()

@@ -350,6 +350,84 @@ export const SPRITE_SPEC = {
   mop_bucket: [16, 16, 1],
   /** placa azul de rua do Rio com seta */
   rsign: [16, 16, 1],
+  // ══════════ FASE 5 — TRANSPORTADORA DE SÃO PAULO ══════════ (PLAN-FASE5.md)
+  // ── Renan Maia + final (art/maia.ts) — autorados olhando para a DIREITA, pés na última linha
+  /** Maia em pé: joia com uma mão, xícara fumegante na outra (2 frames: respiração/fumaça) */
+  maia_idle: [34, 36, 2],
+  /** Maia estendendo a xícara de café para o Pardo (2 frames) */
+  maia_give: [34, 36, 2],
+  /** Maia comemorando: joia erguido, sorriso largo, sem xícara (2 frames) */
+  maia_cheer: [34, 36, 2],
+  /** retrato do Maia (reserva para HUD) */
+  maia_face: [16, 16, 1],
+  /** xícara branca com pires e fumaça (frame 1 = fumaça alternada) */
+  coffee_cup: [12, 12, 2],
+  /** Pardo de máscara abaixada bebendo da xícara (2 frames) */
+  pardo_drink_coffee: [20, 24, 2],
+
+  // ── Inimigos da Fase 5 (art/enemies5.ts) — olhando para a DIREITA, base na última linha
+  /** rato de galpão correndo: cinza-escuro, rabo rosado, olho vermelho (2 frames) */
+  rato: [16, 10, 2],
+  /** carregador andando com a pilha de caixas na frente do rosto (2 frames) */
+  carregador: [22, 28, 2],
+  /** carregador sem a caixa, bravo, correndo (2 frames) */
+  carregador_bravo: [22, 24, 2],
+  /** empilhadeira amarela com operador de capacete (2 frames: rodas/trepidação) */
+  empilhadeira: [32, 28, 2],
+  /** empilhadeira na arrancada, giroflex aceso */
+  empilhadeira_dash: [32, 28, 1],
+  /** arremessador parado, pacote debaixo do braço, uniforme azul-marinho e boné (2 frames) */
+  arremessador: [20, 24, 2],
+  /** arremessador: 0 = braço erguido (aviso), 1 = soltando o pacote */
+  arremessador_throw: [22, 26, 2],
+  /** pacote de papelão arremessado, girando (2 frames) */
+  pacote: [8, 8, 2],
+
+  // ── Tiles da transportadora 16x16 (art/sampa.ts)
+  /** piso de concreto com faixa zebrada amarelo/preto no topo */
+  tile_sp_top: [16, 16, 2],
+  /** concreto/fundação */
+  tile_sp_ground: [16, 16, 2],
+  /** lataria de baú de caminhão com rebites: 0 = branco, 1 = azul, 2 = laranja — indestrutível */
+  tile_sp_rock: [16, 16, 3],
+  /** palete quebrado com pregos para cima — perigo letal */
+  tile_sp_spike: [16, 16, 1],
+  /** caixa de papelão com fita "FRÁGIL" (quebrável com soco) */
+  tile_sp_block: [16, 16, 1],
+  /** caixa de papelão com selo dourado (guarda item) */
+  tile_sp_block_item: [16, 16, 1],
+  /** prateleira de porta-palete / palete de madeira (one-way, ~6px de cima) */
+  tile_sp_oneway: [16, 16, 1],
+
+  // ── Objetos interativos da transportadora (art/sampa.ts)
+  /** bebedouro de galão: 0 = cheio, 1 = vazio (já socado 3x) */
+  bebedouro: [16, 32, 2],
+  /** plataforma elevatória de doca / paleteira (plataforma móvel) */
+  platform_dock: [32, 10, 1],
+  /** pilha de caixas bamba: 0 = inteira, 1 = cedendo */
+  platform_crates: [32, 10, 2],
+
+  // ── Decoração da transportadora (art/sampa.ts) — base na última linha
+  /** cabine de caminhão vista de lado, olhando para a DIREITA (encosta no baú de tiles R à esquerda dela) */
+  truck_cab: [40, 48, 1],
+  /** par de rodas + chassi sob o baú (3 tiles de largura) */
+  truck_wheels: [48, 16, 1],
+  /** cone de sinalização laranja */
+  cone: [8, 12, 1],
+  /** placa de doca numerada */
+  dock_sign: [16, 16, 1],
+  /** placa "CUIDADO: EMPILHADEIRA" */
+  forklift_sign: [16, 16, 1],
+  /** carrinho de mão com caixas */
+  hand_truck: [16, 24, 1],
+  /** tambor de óleo */
+  oil_drum: [16, 20, 1],
+  /** guarita da portaria com cancela */
+  guarita: [48, 48, 1],
+  /** relógio de ponto na parede/pedestal */
+  time_clock: [16, 24, 1],
+  /** máquina de café sobre mesinha da copa */
+  coffee_machine: [24, 32, 1],
 } as const satisfies Record<string, readonly [number, number, number]>;
 
 export type SpriteName = keyof typeof SPRITE_SPEC;

@@ -86,8 +86,11 @@ const SPR_W = 20;
 const SPR_H = 24;
 
 type DrinkPhase = 'walk' | 'sip' | 'done';
-/** O que o Pardo bebe na vitória: caneca (Fase 1), mamadeira do alien (Fase 2), Cajado Jailnesco (Fase 3, lambida) ou água mineral do Amaro (Fase 4). */
-export type DrinkItem = 'mug' | 'bottle' | 'staff' | 'mineral';
+/**
+ * O que o Pardo bebe na vitória: caneca (Fase 1), mamadeira do alien (Fase 2), Cajado Jailnesco (Fase 3, lambida),
+ * água mineral do Amaro (Fase 4) ou café do Renan Maia (Fase 5).
+ */
+export type DrinkItem = 'mug' | 'bottle' | 'staff' | 'mineral' | 'coffee';
 
 /** Sprite da lambida: 24x32, corpo do Pardo nas colunas 0-19 (como o quadro 20x24), cajado ~17-23. */
 const LICK_W = 24;
@@ -266,7 +269,7 @@ export class PardoPlayer implements Player {
   // ── Extras usados por game.ts ──────────────────────────────────────────────
   /**
    * Inicia a sequência de vitória: anda até targetX (centro) e bebe.
-   * item: 'mug' (pardo_drink) ou 'bottle' (pardo_drink_bottle); face: para onde olha ao beber.
+   * item: 'mug' (pardo_drink), 'bottle' (pardo_drink_bottle), 'mineral' (pardo_drink_mineral), 'coffee' (pardo_drink_coffee, sfx 'sip') ou 'staff'; face: para onde olha ao beber.
    */
   startDrink(targetX: number, item: DrinkItem = 'mug', face: 1 | -1 = 1): void {
     if (this.dead) return;
@@ -613,6 +616,7 @@ export class PardoPlayer implements Player {
         this.drinkPhase = 'sip';
         this.drinkT = 0;
         this.facing = this.drinkFace;
+        if (this.drinkItem === 'coffee') world.audio.play('sip');
       } else if (this.onGround) {
         this.facing = d > 0 ? 1 : -1;
         this.vx = Math.sign(d) * Math.min(FEEL.drinkWalk, Math.abs(d) / dt);
@@ -711,7 +715,8 @@ export class PardoPlayer implements Player {
         } else if (this.drinkPhase === 'walk') {
           name = this.onGround ? 'pardo_idle' : 'pardo_fall';
         } else {
-          if (this.drinkItem === 'mineral' && spr.has('pardo_drink_mineral')) name = 'pardo_drink_mineral';
+          if (this.drinkItem === 'coffee' && spr.has('pardo_drink_coffee')) name = 'pardo_drink_coffee';
+          else if (this.drinkItem === 'mineral' && spr.has('pardo_drink_mineral')) name = 'pardo_drink_mineral';
           else if (this.drinkItem === 'bottle' && spr.has('pardo_drink_bottle')) name = 'pardo_drink_bottle';
           else name = 'pardo_drink';
           frame = Math.floor(this.drinkT * 3);

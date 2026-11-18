@@ -648,6 +648,37 @@ const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
   bark: (g, t) => bark(g, t),
   // estampido seco de tiro 8-bit do traficante
   shoot: (g, t) => shoot(g, t),
+  // guincho curto e agudo de rato
+  squeak: (g, t) => {
+    osc(g, g.sfx, 'sine', 2400, t, 0.05, 0.22, 3800);
+    osc(g, g.sfx, 'square', 2400, t, 0.05, 0.05, 3800);
+    osc(g, g.sfx, 'sine', 3000, t + 0.06, 0.07, 0.18, 4600);
+    osc(g, g.sfx, 'square', 3000, t + 0.06, 0.07, 0.04, 4600);
+  },
+  // caixa de papelão quebrando: baque grave + estalo
+  crate: (g, t) => {
+    noise(g, g.sfx, t, 0.18, 0.4, 'lowpass', 700, 150);
+    osc(g, g.sfx, 'sine', 130, t, 0.12, 0.3, 55);
+    noise(g, g.sfx, t, 0.05, 0.3, 'bandpass', 2600, 900, 1.2);
+    noise(g, g.sfx, t + 0.08, 0.04, 0.2, 'highpass', 3800);
+  },
+  // gole de café: dois glups + "ahh" suave
+  sip: (g, t) => {
+    osc(g, g.sfx, 'sine', 300, t, 0.07, 0.26, 620);
+    osc(g, g.sfx, 'sine', 380, t + 0.11, 0.07, 0.24, 780);
+    noise(g, g.sfx, t + 0.26, 0.3, 0.1, 'bandpass', 1300, 800, 0.7);
+    osc(g, g.sfx, 'triangle', 460, t + 0.26, 0.28, 0.07, 330);
+  },
+  // bipe de ré da empilhadeira: dois bipes quadrados
+  beep: (g, t) => {
+    osc(g, g.sfx, 'square', 1000, t, 0.1, 0.2);
+    osc(g, g.sfx, 'square', 1000, t + 0.17, 0.1, 0.2);
+  },
+  // arremesso: whoosh curto
+  throw: (g, t) => {
+    noise(g, g.sfx, t, 0.18, 0.3, 'bandpass', 500, 2600, 1.2);
+    osc(g, g.sfx, 'sine', 320, t, 0.12, 0.08, 760);
+  },
 };
 
 /* ----------------------------------------------------------------------------
@@ -1242,6 +1273,194 @@ function scheduleRio(g: Graph, step: number, t: number): void {
   if (note) rioLead(g, note[0], t, note[1], isPartB);
 }
 
+/* ----------------------------------------------------------------------------
+ * Faixa "Madrugada na Paulista" — Ré dórico (D E F G A B C), ~90 BPM, 16 compassos.
+ * Parte A (cc. 1–8): boom-bap seco, baixo marcado e riff de samba-rock com pausas.
+ * Parte B (cc. 9–16): refrão cantável, pad longo e baixo caminhando.
+ * ------------------------------------------------------------------------- */
+
+const SAMPA_BPM = 90;
+const SAMPA_STEP = 60 / SAMPA_BPM / 4;
+const SAMPA_BARS = 16;
+const SAMPA_LOOP_STEPS = STEPS_PER_BAR * SAMPA_BARS;
+const SAMPA_SWING = SAMPA_STEP * 0.14;
+
+type SampaQuality = 'm' | 'M' | '7';
+
+/** Dm7 Dm7 Gm7 A7 | Dm7 Bb Gm7 A7 || Bb A7 Dm Dm | Gm7 A7 Bb A7 */
+const SAMPA_CHORDS: readonly (readonly [root: number, q: SampaQuality])[] = [
+  [38, 'm'], [38, 'm'], [43, 'm'], [45, '7'],
+  [38, 'm'], [46, 'M'], [43, 'm'], [45, '7'],
+  [46, 'M'], [45, '7'], [38, 'm'], [38, 'm'],
+  [43, 'm'], [45, '7'], [46, 'M'], [45, '7'],
+];
+
+const SAMPA_MELODY_BARS: readonly (readonly Note[])[] = [
+  // Parte A — riff de samba-rock: respira, ataca em semicolcheias, pausa
+  [[0, 2], [62, 1], [65, 1], [69, 2], [67, 2], [65, 2], [0, 2], [62, 2], [0, 2]],
+  [[0, 2], [62, 1], [65, 1], [69, 2], [72, 2], [70, 2], [0, 2], [69, 4]],
+  [[0, 2], [67, 1], [70, 1], [74, 2], [72, 2], [70, 2], [0, 2], [67, 4]],
+  [[0, 2], [69, 1], [73, 1], [76, 2], [74, 2], [73, 2], [0, 2], [69, 2], [0, 2]],
+  [[0, 2], [62, 1], [65, 1], [69, 2], [67, 2], [65, 2], [0, 2], [64, 2], [65, 2]],
+  [[0, 2], [70, 1], [74, 1], [77, 2], [74, 2], [72, 2], [0, 2], [70, 4]],
+  [[0, 2], [67, 1], [70, 1], [74, 2], [72, 2], [70, 2], [0, 2], [67, 2], [69, 2]],
+  [[0, 2], [69, 2], [73, 2], [76, 4], [74, 2], [0, 2], [73, 2]],
+  // Parte B — refrão
+  [[74, 3], [72, 1], [70, 4], [72, 2], [70, 2], [69, 4]],
+  [[69, 3], [73, 1], [76, 4], [74, 2], [73, 2], [69, 4]],
+  [[74, 4], [77, 2], [76, 2], [74, 4], [0, 2], [72, 2]],
+  [[70, 4], [69, 4], [65, 4], [0, 4]],
+  [[70, 3], [72, 1], [74, 4], [72, 2], [70, 2], [67, 4]],
+  [[69, 2], [73, 2], [76, 4], [74, 4], [73, 2], [0, 2]],
+  [[74, 2], [77, 2], [74, 2], [72, 2], [70, 4], [72, 2], [74, 2]],
+  [[73, 2], [76, 2], [73, 2], [69, 2], [0, 2], [69, 1], [70, 1], [69, 4]],
+];
+
+/** Baixo: [semicolcheia, intervalo, duração]. */
+const SAMPA_BASS_A: readonly (readonly [number, number, number])[] = [
+  [0, 0, 3], [3, 0, 1], [6, 7, 2], [10, 0, 2], [13, 10, 1], [14, 7, 2],
+];
+const SAMPA_BASS_B: readonly (readonly [number, number, number])[] = [
+  [0, 0, 2], [2, 0, 1], [4, 7, 2], [7, 0, 1], [8, 12, 2], [10, 7, 1], [12, 0, 2], [14, 7, 2],
+];
+
+const SAMPA_MELODY: (Note | undefined)[] = new Array<Note | undefined>(SAMPA_LOOP_STEPS).fill(undefined);
+{
+  let pos = 0;
+  for (const bar of SAMPA_MELODY_BARS) {
+    for (const [midi, steps] of bar) {
+      if (midi > 0) SAMPA_MELODY[pos] = [midi, steps];
+      pos += steps;
+    }
+  }
+}
+
+function boomKick(g: Graph, t: number, level: number): void {
+  osc(g, g.music, 'sine', 120, t, 0.2, 0.62 * level, 40);
+  noise(g, g.music, t, 0.03, 0.1 * level, 'lowpass', 600);
+}
+
+function boomSnare(g: Graph, t: number, level: number): void {
+  osc(g, g.music, 'triangle', 200, t, 0.09, 0.24 * level, 120);
+  noise(g, g.music, t, 0.16, 0.3 * level, 'bandpass', 1500, 800, 0.9);
+  noise(g, g.music, t, 0.04, 0.12 * level, 'highpass', 4000);
+}
+
+function sampaHat(g: Graph, t: number, peak: number): void {
+  noise(g, g.music, t, 0.03, peak, 'highpass', 7400);
+}
+
+function sampaStab(g: Graph, root: number, q: SampaQuality, t: number, peak: number, dur: number): void {
+  const third = q === 'm' ? 15 : 16;
+  const tones = q === '7' ? [12, third, 22] : [12, third, 19];
+  for (const interval of tones) {
+    const o = g.ctx.createOscillator();
+    o.setPeriodicWave(g.pulse);
+    o.frequency.setValueAtTime(midiToHz(root + 12 + interval), t);
+    const amp = g.ctx.createGain();
+    envelope(amp, t, peak, dur);
+    o.connect(amp);
+    amp.connect(g.music);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+}
+
+function sampaPad(g: Graph, root: number, q: SampaQuality, t: number): void {
+  const third = q === 'm' ? 15 : 16;
+  const dur = STEPS_PER_BAR * SAMPA_STEP;
+  for (const interval of [12, third, 19]) {
+    const f = midiToHz(root + 12 + interval);
+    const o = g.ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f, t);
+    const amp = g.ctx.createGain();
+    amp.gain.setValueAtTime(FLOOR, t);
+    amp.gain.exponentialRampToValueAtTime(0.06, t + 0.25);
+    amp.gain.exponentialRampToValueAtTime(FLOOR, t + dur);
+    o.connect(amp);
+    amp.connect(g.music);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+}
+
+function sampaLead(g: Graph, midi: number, t: number, steps: number, partB: boolean): void {
+  const { ctx } = g;
+  const dur = steps * SAMPA_STEP;
+  const f = midiToHz(midi);
+  const o = ctx.createOscillator();
+  o.setPeriodicWave(g.pulse);
+  o.frequency.setValueAtTime(f, t);
+  if (steps >= 3) {
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 5;
+    const d = ctx.createGain();
+    d.gain.value = f * 0.008;
+    lfo.connect(d);
+    d.connect(o.frequency);
+    lfo.start(t);
+    lfo.stop(t + dur + 0.02);
+  }
+  const amp = ctx.createGain();
+  const peak = partB ? 0.24 : 0.2;
+  amp.gain.setValueAtTime(FLOOR, t);
+  amp.gain.exponentialRampToValueAtTime(peak, t + ATTACK);
+  amp.gain.exponentialRampToValueAtTime(peak * 0.5, t + dur * 0.7);
+  amp.gain.exponentialRampToValueAtTime(FLOOR, t + dur * 0.95);
+  o.connect(amp);
+  amp.connect(g.music);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+  if (partB) osc(g, g.music, 'triangle', f / 2, t, dur * 0.9, 0.12);
+}
+
+function scheduleSampa(g: Graph, step: number, t0: number): void {
+  const bar = Math.floor(step / STEPS_PER_BAR);
+  const s = step % STEPS_PER_BAR;
+  const [root, q] = SAMPA_CHORDS[bar % SAMPA_CHORDS.length] ?? [38, 'm'];
+  const isPartB = bar >= 8;
+  const odd = bar % 2 === 1;
+  const t = t0 + (s % 2 === 1 ? SAMPA_SWING : 0);
+
+  // baixo marcado (triângulo + sub senoidal)
+  for (const [bs, interval, len] of isPartB ? SAMPA_BASS_B : SAMPA_BASS_A) {
+    if (bs === s) {
+      const f = midiToHz(root + interval);
+      const d = len * SAMPA_STEP * 0.9;
+      osc(g, g.music, 'triangle', f, t, d, 0.5);
+      osc(g, g.music, 'sine', f, t, d, 0.2);
+    }
+  }
+
+  // bumbo e caixa de boom-bap
+  if (s === 0) boomKick(g, t, 1);
+  else if (s === 7 && !isPartB) boomKick(g, t, 0.7);
+  else if (s === 10) boomKick(g, t, odd ? 0.9 : 0.8);
+  else if (s === 11 && isPartB && odd) boomKick(g, t, 0.6);
+  if (s === 4 || s === 12) boomSnare(g, t, 1);
+  // virada de caixa no fim das frases
+  if ((bar === 7 || bar === 15) && (s === 14 || s === 15)) boomSnare(g, t, 0.55);
+
+  // chimbal em colcheias, com contratempo mais fraco
+  if (s % 2 === 0) sampaHat(g, t, s % 4 === 0 ? 0.07 : 0.045);
+  else if (isPartB && s % 4 === 3) sampaHat(g, t, 0.025);
+
+  // guitarra de samba-rock: pegada seca nos contratempos
+  if (!isPartB) {
+    if (s === 3 || s === 6 || s === 11 || s === 14) sampaStab(g, root, q, t, 0.045, 0.06);
+  } else {
+    if (s === 0) sampaPad(g, root, q, t);
+    if (s === 2 || s === 6 || s === 10 || s === 14) sampaStab(g, root, q, t, 0.04, 0.07);
+  }
+
+  // estalo de vinil, raro, para o clima de madrugada
+  if (Math.random() < 0.05) noise(g, g.music, t, 0.012, 0.03, 'highpass', 5500);
+
+  const note = SAMPA_MELODY[step];
+  if (note) sampaLead(g, note[0], t, note[1], isPartB);
+}
+
 interface Track {
   readonly stepDur: number;
   readonly loopSteps: number;
@@ -1253,6 +1472,7 @@ const TRACKS: Record<MusicTrack, Track> = {
   amazonia: { stepDur: STEP, loopSteps: AMZ_LOOP_STEPS, scheduleStep: scheduleAmazonia },
   bahia: { stepDur: BAH_STEP, loopSteps: BAH_LOOP_STEPS, scheduleStep: scheduleBahia },
   rio: { stepDur: RIO_STEP, loopSteps: RIO_LOOP_STEPS, scheduleStep: scheduleRio },
+  sampa: { stepDur: SAMPA_STEP, loopSteps: SAMPA_LOOP_STEPS, scheduleStep: scheduleSampa },
 };
 
 function makeNoise(ctx: AudioContext): AudioBuffer {

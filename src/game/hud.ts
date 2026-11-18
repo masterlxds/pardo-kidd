@@ -187,7 +187,7 @@ export function drawTitle(ctx: CanvasRenderingContext2D, world: World): void {
 
   // atalho de teste (discreto, canto inferior esquerdo)
   const faseParam = new URLSearchParams(location.search).get('fase');
-  if (faseParam === '2' || faseParam === '3' || faseParam === '4') {
+  if (faseParam === '2' || faseParam === '3' || faseParam === '4' || faseParam === '5') {
     drawText(ctx, 'MODO TESTE:', 5, 149, { color: P.G });
     drawText(ctx, `FASE ${faseParam}`, 5, 157, { color: P.G });
   }
@@ -241,17 +241,18 @@ export function drawIntro(ctx: CanvasRenderingContext2D, world: World): void {
   const amazon = world.level.theme === 'amazonia';
   const bahia = world.level.theme === 'bahia';
   const rio = world.level.theme === 'rio';
+  const sampa = world.level.theme === 'sampa';
 
   // cores por tema
-  const veilRgb = rio ? '36,18,12' : bahia ? '4,18,40' : amazon ? '10,26,12' : '26,20,35';
-  const panelBg = rio ? '#fff3c4' : bahia ? '#bfe9f5' : amazon ? '#d4efb8' : P.p;
-  const grid = rio ? 'rgba(181,83,42,0.28)' : bahia ? 'rgba(36,65,143,0.25)' : amazon ? 'rgba(47,107,30,0.3)' : 'rgba(201,120,46,0.35)';
-  const border = rio ? P.t : bahia ? P.B : amazon ? P.d : P.T;
-  const titleCol = rio ? P.B : bahia ? P.B : amazon ? P.d : P.t;
-  const titleSh = rio ? P.c : bahia ? P.c : amazon ? P.j : P.T;
-  const nameCol = rio ? P.r : bahia ? P.C : amazon ? P.E : P.r;
-  const nameSh = rio ? P.k : bahia ? P.B : amazon ? P.J : P.R;
-  const divider = rio ? P.t : bahia ? P.C : amazon ? P.I : P.O;
+  const veilRgb = sampa ? '14,18,28' : rio ? '36,18,12' : bahia ? '4,18,40' : amazon ? '10,26,12' : '26,20,35';
+  const panelBg = sampa ? '#d3d8de' : rio ? '#fff3c4' : bahia ? '#bfe9f5' : amazon ? '#d4efb8' : P.p;
+  const grid = sampa ? 'rgba(60,70,90,0.25)' : rio ? 'rgba(181,83,42,0.28)' : bahia ? 'rgba(36,65,143,0.25)' : amazon ? 'rgba(47,107,30,0.3)' : 'rgba(201,120,46,0.35)';
+  const border = sampa ? P.K : rio ? P.t : bahia ? P.B : amazon ? P.d : P.T;
+  const titleCol = sampa ? P.K : rio ? P.B : bahia ? P.B : amazon ? P.d : P.t;
+  const titleSh = sampa ? P.y : rio ? P.c : bahia ? P.c : amazon ? P.j : P.T;
+  const nameCol = sampa ? P.D : rio ? P.r : bahia ? P.C : amazon ? P.E : P.r;
+  const nameSh = sampa ? P.y : rio ? P.k : bahia ? P.B : amazon ? P.J : P.R;
+  const divider = sampa ? P.Y : rio ? P.t : bahia ? P.C : amazon ? P.I : P.O;
 
   // entrada: desliza de cima nos primeiros 0.4s; véu surge junto
   const ease = Math.min(1, t / 0.4);
@@ -280,26 +281,30 @@ export function drawIntro(ctx: CanvasRenderingContext2D, world: World): void {
     scale: 2, color: titleCol, align: 'center', shadow: titleSh,
   });
   const name = layoutName(world.level.name, pw - 32);
+  // nome longo (2 linhas): sobe um pouco e empurra divisor/rodapé para baixo
+  const extra = name.lines.length > 1 ? 5 : 0;
   name.lines.forEach((line, i) => {
-    const y = py + 34 + i * (8 * name.scale + 2);
+    const y = py + (extra ? 30 : 34) + i * (8 * name.scale + (extra ? 0 : 2));
     drawText(ctx, line, cx, y, { scale: name.scale, color: nameCol, align: 'center', shadow: nameSh });
   });
 
   if (bahia) {
     drawText(ctx, 'UM SONHO NO FUNDO DO MAR', cx, py + 58, { color: P.B, align: 'center' });
+  } else if (sampa) {
+    drawText(ctx, 'HORA DO CAFÉ', cx, py + 65, { color: P.R, align: 'center' });
   } else if (rio) {
     drawText(ctx, 'DO MORRO AO TRIBUNAL', cx, py + 58, { color: P.T, align: 'center' });
   }
 
   // divisor
   ctx.fillStyle = divider;
-  ctx.fillRect(px + 16, py + 70, pw - 32, 1);
+  ctx.fillRect(px + 16, py + 70 + extra, pw - 32, 1);
 
   // rodapé: Pardo animado + ícone de vida ×N, centralizados
   const lifeTxt = `×${st.lives}`;
   const groupW = 40 + 14 + 16 + 6 + textWidth(lifeTxt, 2);
   const gx = Math.round(cx - groupW / 2);
-  const footY = py + 76;
+  const footY = py + 76 + extra;
   spr(ctx, world, 'pardo_idle', Math.floor(t * 2) % 2, gx, footY, 2);
   spr(ctx, world, 'icon_life', 0, gx + 40 + 14, footY + 16, 2);
   drawText(ctx, lifeTxt, gx + 40 + 14 + 16 + 6, footY + 17, { scale: 2, color: P.k, shadow: P.W });
@@ -315,17 +320,19 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
   const phase2 = idx === 1;
   const sea = idx === 2;
   const rio = idx === 3;
-  const last = idx >= 3;
-  veil(ctx, Math.min(0.55, t * 1.5), rio ? '36,18,12' : sea ? '4,18,40' : '26,20,35');
+  const sp = idx === 4;
+  const tall = sea || sp;
+  const last = idx >= 4;
+  veil(ctx, Math.min(0.55, t * 1.5), sp ? '14,18,28' : rio ? '36,18,12' : sea ? '4,18,40' : '26,20,35');
   const ease = Math.min(1, t / 0.5);
   const slide = Math.round((1 - ease * (2 - ease)) * -170);
   ctx.save();
   ctx.translate(0, slide);
   // Fase 3: painel mais alto para caber a Jandira (48x56 em 2x)
-  const px = 28, py = sea ? 5 : 12, pw = 264, ph = sea ? 170 : 156;
-  const bg = rio ? '#fff3c4' : sea ? '#bfe9f5' : phase2 ? '#d4efb8' : P.W;
-  const grid = rio ? 'rgba(181,83,42,0.25)' : sea ? 'rgba(36,65,143,0.25)' : phase2 ? 'rgba(47,107,30,0.3)' : 'rgba(159,224,255,0.75)';
-  const edge = rio ? P.t : sea ? P.B : phase2 ? P.d : P.B;
+  const px = 28, py = tall ? 5 : 12, pw = 264, ph = tall ? 170 : 156;
+  const bg = sp ? '#d3d8de' : rio ? '#fff3c4' : sea ? '#bfe9f5' : phase2 ? '#d4efb8' : P.W;
+  const grid = sp ? 'rgba(60,70,90,0.22)' : rio ? 'rgba(181,83,42,0.25)' : sea ? 'rgba(36,65,143,0.25)' : phase2 ? 'rgba(47,107,30,0.3)' : 'rgba(159,224,255,0.75)';
+  const edge = sp ? P.K : rio ? P.t : sea ? P.B : phase2 ? P.d : P.B;
   const ink = edge;
   ctx.fillStyle = P.k;
   ctx.fillRect(px - 1, py - 1, pw + 2, ph + 2);
@@ -338,13 +345,19 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
   ctx.lineWidth = 2;
   ctx.strokeRect(px + 1, py + 1, pw - 2, ph - 2);
 
-  if (rio) drawText(ctx, 'FASE 4', 160, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
+  if (sp) drawText(ctx, 'FASE 5', 160, py + 8, { scale: 2, color: P.K, align: 'center', shadow: P.y });
+  else if (rio) drawText(ctx, 'FASE 4', 160, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
   else if (sea) drawText(ctx, `FASE ${idx + 1}`, 160, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
   else if (phase2) drawText(ctx, 'FASE 2', 160, py + 8, { scale: 2, color: P.d, align: 'center', shadow: P.j });
   else drawText(ctx, 'FASE 1', 160, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
   drawText(ctx, 'CONCLUÍDA!', 160, py + 27, { scale: 3, color: P.r, align: 'center', shadow: P.R });
 
-  if (rio) {
+  if (sp) {
+    // Maia (34x36, 2x = 68x72) na coluna esquerda; Pardo e xícara ao lado; frase abaixo, em largura total
+    spr(ctx, world, 'maia_cheer', Math.floor(t * 2) % 2, px + 2, py + 50, 2, true);
+    spr(ctx, world, 'pardo_drink_coffee', Math.floor(t * 3) % 2, px + 76, py + 68, 2);
+    spr(ctx, world, 'coffee_cup', Math.floor(t * 4) % 2, px + 120, py + 94, 2);
+  } else if (rio) {
     spr(ctx, world, 'pardo_drink_mineral', Math.floor(t * 3) % 2, px + 6, py + 48, 2);
     spr(ctx, world, 'mineral_bottle', Math.floor(t * 4) % 2, px + 50, py + 60, 2);
     spr(ctx, world, 'amaro_cheer', Math.floor(t * 2) % 2, px + 66, py + 44, 2, true);
@@ -363,19 +376,22 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
 
   const k = Math.max(0, Math.min(1, (t - 0.6) / 1.2));
   const cnt = (v: number): number => Math.floor(v * k);
-  const lx = sea ? px + 150 : (phase2 || rio) ? px + 128 : px + 100, rx = px + pw - 12;
+  const lx = tall ? px + 150 : (phase2 || rio) ? px + 128 : px + 100, rx = px + pw - 12;
   const row = (label: string, value: string, y: number, col: string): void => {
     drawText(ctx, label, lx, y, { color: ink });
     drawText(ctx, value, rx, y, { color: col, align: 'right', shadow: P.W });
   };
-  const y0 = sea ? py + 54 : py + 56;
-  const dy = sea ? 11 : 12;
+  const y0 = tall ? py + 54 : py + 56;
+  const dy = tall ? 11 : 12;
   row('PONTOS', pad6(cnt(st.score)), y0, P.k);
   row('MOEDAS', `×${String(cnt(st.coins)).padStart(2, '0')}`, y0 + dy, P.Y);
-  row(sea ? 'BÔNUS' : 'BÔNUS DE TEMPO', `+${cnt(st.timeBonus)}`, y0 + dy * 2, P.R);
+  row(tall ? 'BÔNUS' : 'BÔNUS DE TEMPO', `+${cnt(st.timeBonus)}`, y0 + dy * 2, P.R);
   if (sea) row('FITINHAS', `${cnt(st.ribbons)}/${st.ribbonsTotal}`, y0 + dy * 3, P.C);
 
-  if (rio) {
+  if (sp) {
+    drawText(ctx, 'O PARDO TOMOU O CAFÉ', 160, py + 128, { color: P.R, align: 'center' });
+    drawText(ctx, 'NA TRANSPORTADORA', 160, py + 138, { color: P.R, align: 'center' });
+  } else if (rio) {
     drawText(ctx, 'PARDO SE HIDRATOU', 160, py + 104, { color: P.B, align: 'center' });
     drawText(ctx, 'COM A ÁGUA DO AMARO', 160, py + 114, { color: P.B, align: 'center' });
   } else if (sea) {
@@ -390,7 +406,7 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
   }
   if (t > 2 && blink(t)) {
     const msg = last ? 'ENTER OU TOQUE PARA JOGAR NOVAMENTE' : `ENTER OU TOQUE PARA A FASE ${idx + 2}`;
-    drawText(ctx, msg, 160, py + (sea ? 159 : 138), { color: P.r, align: 'center', shadow: sea ? P.W : undefined });
+    drawText(ctx, msg, 160, py + (tall ? 159 : 138), { color: P.r, align: 'center', shadow: tall ? P.W : undefined });
   }
   ctx.restore();
 }
