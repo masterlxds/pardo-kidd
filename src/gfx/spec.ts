@@ -265,6 +265,91 @@ export const SPRITE_SPEC = {
   /** pedra com fitinhas do Bonfim amarradas */
   bonfim_rock: [16, 16, 1],
   amphora: [16, 16, 1],
+
+  // ════════ FASE 4 — FAVELA DO RIO & TRIBUNAL ════════
+  // ── Amaro e Água Mineral (art/amaro.ts) — referência em "level-4-refs/amaro.jpg"
+  /** Pardo bebendo a garrafa de água mineral (máscara preta abaixada no queixo, garrafa azul-cristalina) */
+  pardo_drink_mineral: [20, 24, 2],
+  /**
+   * Amaro (faxineiro do tribunal, uniforme azul-petróleo com crachá, calça cinza-escura, cabelo curto com franja
+   * na testa e pele parda fiel a level-4-refs/amaro.jpg) varrendo o chão com vassoura de piaçava (4 frames).
+   * Autorado olhando para a DIREITA (desenhado com flipX = true no jogo). Pés/vassoura na última linha.
+   */
+  amaro_sweep: [28, 26, 4],
+  /** Amaro apoiando a vassoura e estendendo a garrafa de água mineral com a outra mão (2 frames) */
+  amaro_give: [28, 26, 2],
+  /** Amaro apoiado na vassoura sorrindo/comemorando na vitória (2 frames) */
+  amaro_cheer: [28, 26, 2],
+  /** Retrato 16x16 do rosto do Amaro para a caixa de diálogo da HUD */
+  amaro_face: [16, 16, 1],
+  /** Garrafa de água mineral gelada e cristalina (frame 1 = brilho/gotículas) */
+  mineral_bottle: [8, 14, 2],
+
+  // ── Inimigos Cariocas (art/enemies4.ts) — base na última linha, olham para a DIREITA
+  /** vira-lata caramelo andando (2 frames) */
+  caramelo: [24, 16, 2],
+  /** vira-lata caramelo latindo / no bote rasante */
+  caramelo_bark: [24, 16, 1],
+  /** pombo urbano cinza-azulado de óculos juliet voando (2 frames) */
+  pombo: [24, 16, 2],
+  /** pombo preparando o bombardeio */
+  pombo_dive: [24, 16, 1],
+  /** projétil solto pelo pombo (2 frames) */
+  dropping: [6, 6, 2],
+  /** gato de rua malhado normal (2 frames) */
+  gato: [22, 16, 2],
+  /** gato eriçado em curto-circuito com faíscas elétricas azuis/amarelas (2 frames) */
+  gato_shock: [22, 16, 2],
+  /** capivara-do-valão parruda andando (2 frames) */
+  capivara: [32, 18, 2],
+  /** capivara na investida/cabeçada */
+  capivara_charge: [32, 18, 1],
+  /** traficante com camisa listrada rubro-negra (vermelha e preta) e bermuda, segurando arma (2 frames) */
+  traficante: [22, 24, 2],
+  /** traficante apontando a arma na horizontal: 0 = mirando (aviso), 1 = disparo com clarão de fogo no cano */
+  traficante_aim: [24, 24, 2],
+  /** projétil de tiro (bala indestrutível): 2 frames */
+  bullet: [6, 4, 2],
+
+  // ── Tiles do Rio 16x16 (art/rio.ts)
+  /** laje/calçada de concreto cinza sobre topo de tijolo */
+  tile_rj_top: [16, 16, 2],
+  /** alvenaria de tijolo baiano aparente */
+  tile_rj_ground: [16, 16, 2],
+  /** concreto armado / pedra carioca com grafite/musgo — indestrutível */
+  tile_rj_rock: [16, 16, 2],
+  /** muro com cacos de vidro coloridos fincados — perigo letal */
+  tile_rj_spike: [16, 16, 1],
+  /** mureta de tijolo rachado (quebrável com soco) */
+  tile_rj_block: [16, 16, 1],
+  /** bloco de tijolo caiado com estrela/sol dourado (guarda item) */
+  tile_rj_block_item: [16, 16, 1],
+  /** telhado de telha de zinco ondulada (one-way, ~6px de cima) */
+  tile_rj_oneway: [16, 16, 1],
+
+  // ── Objetos Interativos do Rio (art/rio.ts)
+  /** prancha de andaime / teleférico suspenso (plataforma móvel) */
+  platform_scaffold: [32, 10, 1],
+  /** telha de zinco bamba: 0 = inteira, 1 = amassando/cedendo */
+  platform_zinc: [32, 10, 2],
+  /** filtro de barro São João sobre suporte: 0 = cheio, 1 = seco (já socado) */
+  clay_filter: [16, 32, 2],
+
+  // ── Decoração do Morro e Tribunal (art/rio.ts) — base na última linha
+  /** fachada neoclássica do Tribunal com colunas e balança da justiça */
+  tribunal_facade: [80, 56, 1],
+  /** caixa d'água azul de polietileno */
+  water_tank: [32, 24, 1],
+  /** poste de concreto com emaranhado de fios ("gato de luz") */
+  utility_pole: [16, 48, 1],
+  /** varal de roupas coloridas */
+  clothesline: [32, 16, 1],
+  /** paredão de caixas de som de baile */
+  party_speaker: [24, 24, 1],
+  /** balde amarelo de faxina com esfregão do Amaro */
+  mop_bucket: [16, 16, 1],
+  /** placa azul de rua do Rio com seta */
+  rsign: [16, 16, 1],
 } as const satisfies Record<string, readonly [number, number, number]>;
 
 export type SpriteName = keyof typeof SPRITE_SPEC;

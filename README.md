@@ -1,6 +1,6 @@
 # Pardo Kidd in Quixadá World
 
-Plataforma 2D retro 8-bit com três fases. **Fase 1, "Trilha dos Monólitos"** (sertão cearense): o Pardo sai do povoado, atravessa o Desfiladeiro Seco e a Subida da Galinha Choca, e chega à Capela do Horizonte para beber da Caneca Esmaltada. **Fase 2, "Coração da Amazônia"**: rio, cachoeiras e cipós até a aldeia, onde um alien de chapéu de explorador espera com a mamadeira do índio. **Fase 3, "Bahia World"** (subaquática): o sonho do Pardo no fundo da Baía de Todos-os-Santos, até o santuário da sereia Jandira e o Cajado Jailnesco. Detalhes em `lore.md`.
+Plataforma 2D retro 8-bit com quatro fases. **Fase 1, "Trilha dos Monólitos"** (sertão cearense): o Pardo sai do povoado, atravessa o Desfiladeiro Seco e a Subida da Galinha Choca, e chega à Capela do Horizonte para beber da Caneca Esmaltada. **Fase 2, "Coração da Amazônia"**: rio, cachoeiras e cipós até a aldeia, onde um alien de chapéu de explorador espera com a mamadeira do índio. **Fase 3, "Bahia World"** (subaquática): o sonho do Pardo no fundo da Baía de Todos-os-Santos, até o santuário da sereia Jandira e o Cajado Jailnesco. **Fase 4, "Favela do Rio"** (do morro ao Tribunal): sob um sol de 40°C, o Pardo sobe a favela carioca até o pátio do Tribunal, onde **Amaro**, o faxineiro, o espera com uma **Garrafa de Água Mineral**. Detalhes em `lore.md`.
 
 ## Controles
 
@@ -44,7 +44,7 @@ npm run build      # checagem de tipos + build de produção em dist/
 npm run preview    # serve o dist/ localmente
 ```
 
-Atalhos de teste: `http://localhost:5173/?fase=2` começa direto na Fase 2 e `http://localhost:5173/?fase=3` começa direto na Fase 3 (porta padrão do Vite).
+Atalhos de teste: `http://localhost:5173/?fase=2`, `?fase=3` ou `?fase=4` na URL começam direto na Fase 2, Fase 3 ou Fase 4 (porta padrão do Vite).
 
 Checagens de mapa:
 
@@ -52,6 +52,7 @@ Checagens de mapa:
 node scripts/check-level.mjs    # valida o mapa da Fase 1
 node scripts/check-level2.mjs   # valida o mapa da Fase 2
 node scripts/check-level3.mjs   # valida o mapa da Fase 3 (dimensões, contagens, alcançabilidade a nado, fissuras)
+node scripts/check-level4.mjs   # valida o mapa da Fase 4 (dimensões, contagens, alcançabilidade)
 ```
 
 ## Deploy (Vercel)
@@ -64,7 +65,7 @@ O projeto usa o framework Vite com saída em `dist` (ver `vercel.json`).
 
 ## Estrutura
 
-Resumo; o detalhamento de módulos e donos está em `PLAN.md` (Fase 1) e `PLAN-FASE2.md` (Fase 2).
+Resumo; o detalhamento de módulos e donos está em `PLAN.md` (Fase 1), `PLAN-FASE2.md` (Fase 2), `PLAN-FASE3.md` (Fase 3) e `PLAN-FASE4.md` (Fase 4).
 
 ```
 index.html          contrato de DOM (#stage, #game, #touch, #btn-*)
@@ -79,16 +80,23 @@ src/
     level.ts        construtor genérico de fases (mapa ASCII, tiles)
     level1.ts       Fase 1 "Trilha dos Monólitos"
     level2.ts       Fase 2 "Coração da Amazônia"
+    level4.ts       Fase 4 "Favela do Rio"
     objects.ts      moedas, plataformas, cipó-d'água, alien, caneca
+    objects4.ts     filtro de barro e Amaro (Fase 4)
     enemies.ts      inimigos
+    enemies4.ts     inimigos cariocas (Fase 4)
     hud.ts          HUD e telas
   gfx/              paleta, sprites em grade de caracteres, atlas, fontes
     background.ts   parallax do sertão (Fase 1)
     background2.ts  parallax da Amazônia (Fase 2)
+    background4.ts  parallax do Rio de Janeiro (Fase 4)
     art/enemies2.ts sprites dos inimigos da Fase 2 (onça, jacaré, cobra, tucano)
     art/amazon.ts   tiles e decoração da Amazônia (Fase 2)
+    art/amaro.ts    sprites do Amaro, garrafa de água mineral e Pardo bebendo (Fase 4)
+    art/enemies4.ts sprites dos inimigos da Fase 4
+    art/rio.ts      tiles, objetos e decoração do Rio (Fase 4)
   audio/audio.ts    SFX e música chiptune via Web Audio
-scripts/            check-art.mjs, check-level.mjs, check-level2.mjs, check-level3.mjs
+scripts/            check-art.mjs, check-level.mjs, check-level2.mjs, check-level3.mjs, check-level4.mjs
 ```
 
 ## Sobre os recursos

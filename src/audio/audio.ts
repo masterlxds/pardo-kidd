@@ -349,6 +349,46 @@ function bubbles(g: Graph, dest: AudioNode, t: number, n: number, peak: number):
   }
 }
 
+/** Latido duplo curto e enérgico do Vira-Lata Caramelo. */
+function bark(g: Graph, t: number): void {
+  const { ctx } = g;
+  for (let i = 0; i < 2; i++) {
+    const at = t + i * 0.11;
+    const dur = 0.085;
+    const pitchMult = i === 0 ? 1 : 1.08;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(380 * pitchMult, at);
+    o.frequency.exponentialRampToValueAtTime(720 * pitchMult, at + 0.025);
+    o.frequency.exponentialRampToValueAtTime(260 * pitchMult, at + dur);
+
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 2.4;
+    bp.frequency.setValueAtTime(600, at);
+    bp.frequency.exponentialRampToValueAtTime(1100, at + 0.025);
+    bp.frequency.exponentialRampToValueAtTime(400, at + dur);
+
+    const amp = ctx.createGain();
+    envelope(amp, at, 0.32, dur);
+    o.connect(bp);
+    bp.connect(amp);
+    amp.connect(g.sfx);
+    o.start(at);
+    o.stop(at + dur + 0.02);
+
+    noise(g, g.sfx, at, 0.04, 0.14, 'bandpass', 950, 450, 1.5);
+  }
+}
+
+/** Estampido seco e claro de tiro 8-bit da arma do Traficante. */
+function shoot(g: Graph, t: number): void {
+  noise(g, g.sfx, t, 0.06, 0.36, 'highpass', 2400, 1000);
+  noise(g, g.sfx, t, 0.14, 0.42, 'bandpass', 1600, 380, 1.1);
+  osc(g, g.sfx, 'square', 240, t, 0.09, 0.28, 55);
+  osc(g, g.sfx, 'sine', 240, t, 0.11, 0.36, 55);
+}
+
 const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
   // braçada: "blub" curto e suave (toca muito, volume baixo)
   swim: (g, t) => {
@@ -604,6 +644,10 @@ const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
     seq(g, t, top);
     seq(g, t, top.map((n) => tone(n.f / 2, n.d, 0.22, 'triangle')));
   },
+  // latido duplo curto e enérgico do vira-lata caramelo
+  bark: (g, t) => bark(g, t),
+  // estampido seco de tiro 8-bit do traficante
+  shoot: (g, t) => shoot(g, t),
 };
 
 /* ----------------------------------------------------------------------------
@@ -974,6 +1018,230 @@ function scheduleBahia(g: Graph, step: number, t: number): void {
   if (s === 5 && bar % 2 === 0 && Math.random() < 0.5) bubbles(g, g.music, t, 3, 0.04);
 }
 
+/* ----------------------------------------------------------------------------
+ * Faixa "Samba-Funk do Morro" — Lá menor / Lá dórico (A B C D E F# G), ~124 BPM, 16 compassos.
+ * Parte A (cc. 1–8): Partido-Alto & Samba de Morro (surdo, tamborim telecoteco, cuíca, 7 cordas).
+ * Parte B (cc. 9–16): Batidão de Baile / Tamborzão 8-bit ("tum-pá-tum-tum-pá" + Funk Melody).
+ * ------------------------------------------------------------------------- */
+
+const RIO_BPM = 124;
+const RIO_STEP = 60 / RIO_BPM / 4;
+const RIO_BARS = 16;
+const RIO_LOOP_STEPS = STEPS_PER_BAR * RIO_BARS;
+
+const RIO_MELODY_BARS: readonly (readonly Note[])[] = [
+  // Parte A (cc. 1–8) — Partido-Alto & Samba de Morro
+  [[76, 2], [72, 2], [69, 3], [72, 1], [76, 2], [74, 2], [72, 4]],
+  [[74, 2], [78, 2], [81, 4], [78, 2], [74, 2], [76, 4]],
+  [[72, 2], [76, 2], [79, 3], [76, 1], [74, 2], [72, 2], [69, 4]],
+  [[71, 2], [74, 2], [79, 4], [0, 4], [76, 2], [74, 2]],
+  [[72, 2], [74, 2], [76, 3], [79, 1], [76, 2], [72, 2], [74, 4]],
+  [[78, 2], [74, 2], [81, 4], [78, 2], [76, 2], [74, 4]],
+  [[76, 2], [74, 2], [72, 2], [71, 2], [69, 3], [71, 1], [72, 4]],
+  [[74, 2], [72, 2], [69, 4], [0, 4], [72, 2], [76, 2]],
+  // Parte B (cc. 9–16) — Batidão de Baile / Funk Melody 8-bit
+  [[81, 2], [81, 2], [79, 2], [76, 2], [72, 3], [74, 1], [76, 4]],
+  [[79, 2], [79, 2], [76, 2], [72, 2], [74, 2], [76, 2], [79, 4]],
+  [[78, 2], [78, 2], [81, 2], [78, 2], [74, 3], [76, 1], [78, 4]],
+  [[76, 2], [74, 2], [71, 4], [0, 4], [76, 2], [79, 2]],
+  [[81, 2], [84, 2], [81, 2], [79, 2], [76, 3], [74, 1], [72, 4]],
+  [[79, 2], [83, 2], [79, 2], [74, 2], [76, 2], [79, 2], [74, 4]],
+  [[78, 2], [81, 2], [78, 2], [74, 2], [78, 2], [76, 2], [74, 4]],
+  [[76, 2], [74, 2], [72, 2], [71, 2], [69, 6], [0, 2]],
+];
+
+/** Raiz do baixo + modo menor/maior por compasso: Am D Am G | C D Em Am || Am C D Em | Am G D Em */
+const RIO_CHORDS: readonly (readonly [root: number, minor: boolean])[] = [
+  [45, true], [50, false], [45, true], [43, false],
+  [48, false], [50, false], [40, true], [45, true],
+  [45, true], [48, false], [50, false], [40, true],
+  [45, true], [43, false], [50, false], [40, true],
+];
+
+/** Baixo de samba (7 cordas): [semicolcheia, intervalo, duração]. */
+const RIO_SAMBA_BASS: readonly (readonly [number, number, number])[] = [
+  [0, 0, 3],
+  [3, 7, 2],
+  [6, 0, 2],
+  [8, 0, 3],
+  [11, 7, 2],
+  [14, 7, 2],
+];
+
+/** Sub-bass do tamborzão: [semicolcheia, intervalo, duração]. */
+const RIO_FUNK_BASS: readonly (readonly [number, number, number])[] = [
+  [0, 0, 3],
+  [6, 0, 2],
+  [8, 7, 3],
+  [12, 0, 2],
+];
+
+/** Tamborim no padrão telecoteco: semicolcheia -> intensidade. */
+const RIO_TAMBORIM: ReadonlyMap<number, number> = new Map([
+  [0, 0.9], [2, 0.55], [3, 0.85], [6, 0.9],
+  [8, 0.85], [10, 0.55], [12, 0.8], [14, 0.7],
+]);
+
+const RIO_MELODY: (Note | undefined)[] = new Array<Note | undefined>(RIO_LOOP_STEPS).fill(undefined);
+{
+  let pos = 0;
+  for (const bar of RIO_MELODY_BARS) {
+    for (const [midi, steps] of bar) {
+      if (midi > 0) RIO_MELODY[pos] = [midi, steps];
+      pos += steps;
+    }
+  }
+}
+
+function surdoRio(g: Graph, t: number, mode: 'mark' | 'reply' | 'mute'): void {
+  if (mode === 'mute') {
+    osc(g, g.music, 'sine', 128, t, 0.1, 0.24, 72);
+    noise(g, g.music, t, 0.03, 0.06, 'lowpass', 480);
+    return;
+  }
+  const f0 = mode === 'mark' ? 106 : 92;
+  const peak = mode === 'mark' ? 0.56 : 0.46;
+  osc(g, g.music, 'sine', f0, t, 0.24, peak, 40);
+  noise(g, g.music, t, 0.04, 0.09, 'lowpass', 380);
+}
+
+function tamborim(g: Graph, t: number, level: number): void {
+  osc(g, g.music, 'triangle', 740, t, 0.035, 0.16 * level, 380);
+  noise(g, g.music, t, 0.03, 0.12 * level, 'bandpass', 3200, 1800, 1.8);
+}
+
+/** Cuíca sintetizada: oscilador com pitch bend rápido e filtro bandpass Q=6. */
+function cuica(g: Graph, t: number, f0: number, f1: number, dur: number, peak: number): void {
+  const { ctx } = g;
+  const o = ctx.createOscillator();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(f0, t);
+  o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.85);
+
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.Q.value = 6;
+  bp.frequency.setValueAtTime(f0 * 1.1, t);
+  bp.frequency.exponentialRampToValueAtTime(f1 * 1.1, t + dur * 0.85);
+
+  const amp = ctx.createGain();
+  envelope(amp, t, peak, dur);
+  o.connect(bp);
+  bp.connect(amp);
+  amp.connect(g.music);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+}
+
+function cavaquinho(g: Graph, root: number, minor: boolean, t: number, peak: number): void {
+  const { ctx } = g;
+  const third = minor ? 15 : 16;
+  for (const interval of [12, third, 19]) {
+    const o = ctx.createOscillator();
+    o.setPeriodicWave(g.pulse);
+    o.frequency.setValueAtTime(midiToHz(root + 12 + interval), t);
+    const amp = ctx.createGain();
+    envelope(amp, t, peak, 0.075);
+    o.connect(amp);
+    amp.connect(g.music);
+    o.start(t);
+    o.stop(t + 0.095);
+  }
+}
+
+function tamborzaoKick(g: Graph, t: number, level: number): void {
+  osc(g, g.music, 'sine', 135, t, 0.2, 0.62 * level, 38);
+  osc(g, g.music, 'triangle', 95, t, 0.08, 0.25 * level, 42);
+}
+
+function tamborzaoSnare(g: Graph, t: number, level: number): void {
+  osc(g, g.music, 'triangle', 220, t, 0.07, 0.22 * level, 110);
+  noise(g, g.music, t, 0.09, 0.22 * level, 'bandpass', 1900, 900, 1.0);
+  noise(g, g.music, t + 0.012, 0.06, 0.14 * level, 'highpass', 3600);
+}
+
+function rioLead(g: Graph, midi: number, t: number, steps: number, funk: boolean): void {
+  const { ctx } = g;
+  const dur = steps * RIO_STEP;
+  const o = ctx.createOscillator();
+  if (funk) o.type = 'square';
+  else o.setPeriodicWave(g.pulse);
+  o.frequency.setValueAtTime(midiToHz(midi), t);
+  if (steps >= 3) {
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = funk ? 6 : 5.2;
+    const d = ctx.createGain();
+    d.gain.value = midiToHz(midi) * 0.01;
+    lfo.connect(d);
+    d.connect(o.frequency);
+    lfo.start(t);
+    lfo.stop(t + dur + 0.02);
+  }
+  const amp = ctx.createGain();
+  const peak = funk ? 0.18 : 0.28;
+  amp.gain.setValueAtTime(FLOOR, t);
+  amp.gain.exponentialRampToValueAtTime(peak, t + ATTACK);
+  amp.gain.exponentialRampToValueAtTime(peak * 0.58, t + dur * 0.72);
+  amp.gain.exponentialRampToValueAtTime(FLOOR, t + dur * 0.95);
+  o.connect(amp);
+  amp.connect(g.music);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+}
+
+function scheduleRio(g: Graph, step: number, t: number): void {
+  const bar = Math.floor(step / STEPS_PER_BAR);
+  const s = step % STEPS_PER_BAR;
+  const [root, minor] = RIO_CHORDS[bar % RIO_CHORDS.length] ?? [45, true];
+  const isPartB = bar >= 8;
+
+  if (!isPartB) {
+    // Parte A: Partido-Alto & Samba de Morro
+    for (const [bs, interval, len] of RIO_SAMBA_BASS) {
+      if (bs === s) osc(g, g.music, 'triangle', midiToHz(root + interval), t, len * RIO_STEP * 0.95, 0.45);
+    }
+
+    if (s === 0) surdoRio(g, t, 'mark');
+    else if (s === 8) surdoRio(g, t, 'reply');
+    else if (s === 4 || s === 12) surdoRio(g, t, 'mute');
+
+    const tambLevel = RIO_TAMBORIM.get(s);
+    if (tambLevel !== undefined) tamborim(g, t, tambLevel);
+
+    // ganzá suave em semicolcheias
+    noise(g, g.music, t, 0.03, s % 2 === 0 ? 0.055 : 0.03, 'highpass', 7200);
+
+    // acordes sincopados de cavaquinho no partido-alto
+    if (s === 2 || s === 6 || s === 11 || s === 14) cavaquinho(g, root, minor, t, 0.055);
+
+    // cuíca característica nos compassos pares (2, 4, 6, 8 → bar ímpar 0-based)
+    if (bar % 2 === 1) {
+      if (s === 10) cuica(g, t, 540, 1120, 0.11, 0.22);
+      else if (s === 13) cuica(g, t, 980, 440, 0.14, 0.2);
+    }
+  } else {
+    // Parte B: Batidão de Baile / Tamborzão 8-bit ("tum-pá-tum-tum-pá")
+    for (const [bs, interval, len] of RIO_FUNK_BASS) {
+      if (bs === s) osc(g, g.music, 'triangle', midiToHz(root + interval), t, len * RIO_STEP * 0.95, 0.5);
+    }
+
+    if (s === 0) tamborzaoKick(g, t, 1.0);
+    else if (s === 6 || s === 8) tamborzaoKick(g, t, 0.88);
+    else if (s === 14 && bar % 2 === 1) tamborzaoKick(g, t, 0.6);
+
+    if (s === 3 || s === 12) tamborzaoSnare(g, t, 0.95);
+
+    // chimbau/shaker nos contratempos para manter o balanço a 124 BPM
+    if (s % 2 === 0) noise(g, g.music, t, 0.025, s % 4 === 2 ? 0.075 : 0.04, 'highpass', 7600);
+
+    // acordes curtos de cavaquinho nos contratempos
+    if (s === 2 || s === 6 || s === 10 || s === 14) cavaquinho(g, root, minor, t, 0.065);
+  }
+
+  const note = RIO_MELODY[step];
+  if (note) rioLead(g, note[0], t, note[1], isPartB);
+}
+
 interface Track {
   readonly stepDur: number;
   readonly loopSteps: number;
@@ -984,6 +1252,7 @@ const TRACKS: Record<MusicTrack, Track> = {
   sertao: { stepDur: STEP, loopSteps: LOOP_STEPS, scheduleStep: scheduleSertao },
   amazonia: { stepDur: STEP, loopSteps: AMZ_LOOP_STEPS, scheduleStep: scheduleAmazonia },
   bahia: { stepDur: BAH_STEP, loopSteps: BAH_LOOP_STEPS, scheduleStep: scheduleBahia },
+  rio: { stepDur: RIO_STEP, loopSteps: RIO_LOOP_STEPS, scheduleStep: scheduleRio },
 };
 
 function makeNoise(ctx: AudioContext): AudioBuffer {

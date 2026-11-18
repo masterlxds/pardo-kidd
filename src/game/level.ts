@@ -10,8 +10,11 @@ import {
 import { LEVEL1_MOVERS, LEVEL1_ROWS } from './level1';
 import { LEVEL2_MOVERS, LEVEL2_ROWS } from './level2';
 import { LEVEL3_ROWS } from './level3';
+import { LEVEL4_MOVERS, LEVEL4_ROWS } from './level4';
 import { createSeaEnemy } from './enemies3';
 import { createAirVent, createGoldfishSchool, createJandira, createRibbon, createStaffGoal } from './objects3';
+import { createRioEnemy } from './enemies4';
+import { createAmaroGoal, createClayFilter } from './objects4';
 
 type SpriteName = keyof typeof SPRITE_SPEC;
 
@@ -376,6 +379,51 @@ export function createLevel3(): Level {
         case 'p': return createGoldfishSchool(cx, cy);
         case 'S': return createStaffGoal(cx, foot);
         case 'J': return createJandira(cx, foot);
+        default: return null;
+      }
+    },
+  });
+}
+
+// ── Fase 4 — Favela do Rio (Do Morro ao Tribunal) ───────────────────────────
+export function createLevel4(): Level {
+  return buildLevel({
+    index: 3,
+    name: 'FAVELA DO RIO',
+    theme: 'rio',
+    rows: LEVEL4_ROWS,
+    movers: LEVEL4_MOVERS,
+    tileChars: {
+      '=': Tile.GroundTop, '#': Tile.Ground, 'R': Tile.Rock, '^': Tile.Spike,
+      'B': Tile.Block, '?': Tile.BlockItem, 'W': Tile.BlockItem, '-': Tile.OneWay, '~': Tile.Water,
+    },
+    dropBlockChars: 'W',
+    decor: {
+      s: 'rsign', T: 'tribunal_facade', x: 'water_tank', p: 'utility_pole',
+      v: 'clothesline', F: 'party_speaker', b: 'mop_bucket',
+    },
+    tileSprites: {
+      [Tile.GroundTop]: 'tile_rj_top', [Tile.Ground]: 'tile_rj_ground', [Tile.Rock]: 'tile_rj_rock',
+      [Tile.Spike]: 'tile_rj_spike', [Tile.Block]: 'tile_rj_block', [Tile.BlockItem]: 'tile_rj_block_item',
+      [Tile.OneWay]: 'tile_rj_oneway',
+    },
+    tileVariants: [Tile.GroundTop, Tile.Ground, Tile.Rock],
+    pitColors: ['#4a2a1e', '#2e1812', '#1a0e0c'],
+    flagColors: ['#c9c1a9', '#2ec4b6'],
+    marker(ch, { left, top, cx, mover }) {
+      switch (ch) {
+        case 'c': return createCoin(left + 4, top + 4);
+        case 'l': return createRioEnemy('caramelo', cx, top + TILE);
+        case 'u': return createRioEnemy('pombo', cx, top + TILE / 2 + 12);
+        case 'g': return createRioEnemy('gato', cx, top + TILE);
+        case 'o': return createRioEnemy('capivara', cx, top + TILE);
+        case 'z': return createRioEnemy('traficante', cx, top + TILE);
+        case 'V': return createClayFilter(left, top + TILE - 32);
+        case 'd': return createCrumblePlatform(left, top, 'platform_zinc');
+        case 'm':
+        case 'M':
+          return createMovingPlatform(left, top, ch === 'm' ? 'x' : 'y', mover.range * TILE, mover.speed, 'platform_scaffold');
+        case 'A': return createAmaroGoal(cx, top + TILE);
         default: return null;
       }
     },
