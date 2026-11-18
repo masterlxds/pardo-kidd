@@ -670,6 +670,7 @@ const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
     osc(g, g.sfx, 'triangle', 460, t + 0.26, 0.28, 0.07, 330);
   },
   // bipe de ré da empilhadeira: dois bipes quadrados
+  // (também usado pelo drone da Fase 5 ao travar a mira)
   beep: (g, t) => {
     osc(g, g.sfx, 'square', 1000, t, 0.1, 0.2);
     osc(g, g.sfx, 'square', 1000, t + 0.17, 0.1, 0.2);
@@ -682,7 +683,7 @@ const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
   // corte de giro da moto do Motoboy do Grau ("vrum-VRUUM!", ~0.32s)
   rev: (g, t) => {
     const { ctx } = g;
-    const dur = 0.32;
+    const dur = 0.28;
     const saw = ctx.createOscillator();
     saw.type = 'sawtooth';
     const sq = ctx.createOscillator();
@@ -723,9 +724,9 @@ const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
 
     const amp = ctx.createGain();
     amp.gain.setValueAtTime(FLOOR, t);
-    amp.gain.exponentialRampToValueAtTime(0.24, t + 0.015);
-    amp.gain.exponentialRampToValueAtTime(0.11, t + 0.115);
-    amp.gain.exponentialRampToValueAtTime(0.32, t + 0.145);
+    amp.gain.exponentialRampToValueAtTime(0.18, t + 0.015);
+    amp.gain.exponentialRampToValueAtTime(0.08, t + 0.115);
+    amp.gain.exponentialRampToValueAtTime(0.24, t + 0.145);
     amp.gain.exponentialRampToValueAtTime(FLOOR, t + dur);
 
     saw.connect(sawGain);
@@ -744,7 +745,7 @@ const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
 
     // rajada curta de ruído filtrado do escapamento
     noise(g, g.sfx, t, 0.11, 0.13, 'bandpass', 540, 1250, 1.4);
-    noise(g, g.sfx, t + 0.12, 0.2, 0.18, 'bandpass', 680, 1700, 1.5);
+    noise(g, g.sfx, t + 0.12, 0.16, 0.14, 'bandpass', 680, 1700, 1.5);
   },
   // buzina dupla de chegada do Uber 5 estrelas ("bi-bi!", ~0.34s, díade Lá maior 440 + 554.37 Hz)
   horn: (g, t) => {
@@ -2086,7 +2087,9 @@ function scheduleUber(g: Graph, step: number, t: number): void {
   if (isTurnaround && s >= 12) {
     uberTom(g, t, UBER_TOM_FREQS[s - 12] ?? 120);
   } else {
+    // bumbo marcando TODOS os tempos (s = 0, 4, 8, 12): o jogador soca no tempo
     if (s === 0 || s === 8) uberKick(g, t, 1.0);
+    else if (s === 4 || s === 12) uberKick(g, t, 0.9);
     else if (s === 3 || s === 6 || s === 10) uberKick(g, t, 0.84);
     else if (s === 14 && bar % 2 === 1) uberKick(g, t, 0.72);
 
@@ -2208,11 +2211,22 @@ export function createAudio(): AudioApi {
     }
   }
 
+  /** Posição (s) na faixa em que a próxima partida do sequenciador começa (ver startMusic(track, atSeconds)). */
+  let startAt = 0;
+
   function startScheduler(): void {
     const g = graph;
     if (!g || timer !== null) return;
-    nextStep = 0;
-    nextTime = g.ctx.currentTime + 0.05;
+    // começa no passo que contém `startAt` (módulo o laço); a fração restante do passo vira atraso,
+    // para que o passo 0 caia exatamente em startAt = 0, laço, 2·laço...
+    const tr = TRACKS[current];
+    const loopDur = tr.stepDur * tr.loopSteps;
+    const pos = ((startAt % loopDur) + loopDur) % loopDur;
+    let step = Math.ceil(pos / tr.stepDur - 1e-6);
+    const wait = step * tr.stepDur - pos;
+    if (step >= tr.loopSteps) step = 0;
+    nextStep = step;
+    nextTime = g.ctx.currentTime + 0.05 + wait;
     timer = window.setInterval(tick, TICK_MS);
     tick();
   }
@@ -2250,9 +2264,11 @@ export function createAudio(): AudioApi {
       SFX[name](g, g.ctx.currentTime + 0.01);
     },
 
-    startMusic(track: MusicTrack = 'sertao'): void {
-      if (musicWanted && current === track) return;
+    startMusic(track: MusicTrack = 'sertao', atSeconds?: number): void {
+      // sem atSeconds: idempotente para a mesma faixa; com atSeconds: sempre reposiciona
+      if (musicWanted && current === track && atSeconds === undefined) return;
       if (musicWanted) silenceMusic();
+      startAt = atSeconds !== undefined && Number.isFinite(atSeconds) ? atSeconds : 0;
       current = track;
       musicWanted = true;
       startScheduler();

@@ -99,6 +99,8 @@ export interface GameState {
   difficulty: Difficulty;
   /** estado da Fase Bônus ("Tubo do Bonfim") */
   bonus: BonusState;
+  /** Fase 5: gotas perdidas na fase atual (avaliação em estrelas da corrida; zera ao (re)iniciar a fase, não ao renascer) */
+  rideHits: number;
 }
 
 export type Difficulty = 'normal' | 'amaro';
@@ -154,8 +156,12 @@ export interface AudioApi {
   /** Chamar no primeiro gesto do usuário (cria/resume o AudioContext). Idempotente. */
   unlock(): void;
   play(name: SfxName): void;
-  /** Música da faixa em loop (padrão 'sertao'). Idempotente para a mesma faixa; trocar de faixa reinicia. */
-  startMusic(track?: MusicTrack): void;
+  /**
+   * Música da faixa em loop (padrão 'sertao'). Sem `atSeconds`: idempotente para a mesma faixa; trocar de
+   * faixa reinicia do começo. Com `atSeconds`: (re)começa SEMPRE nessa posição da faixa, em segundos
+   * (módulo a duração do laço) — usado pela Fase 5 para manter a música em fase com os compassos do mapa.
+   */
+  startMusic(track?: MusicTrack, atSeconds?: number): void;
   stopMusic(): void;
   setMuted(muted: boolean): void;
   readonly muted: boolean;
@@ -222,9 +228,9 @@ export type EnemyKind = 'calango' | 'carcara' | 'palma' | 'tatu'
   | 'agua_viva' | 'peixe_agulha' | 'baiacu' | 'dentao' | 'siri' | 'tartaruga' | 'moreia'
   // Fase 4 — Favela do Rio (src/game/enemies4.ts)
   | 'caramelo' | 'pombo' | 'gato' | 'capivara' | 'traficante'
-  // Fase 5 — Marginal de São Paulo / Autoscroller no Uber (src/game/enemiesUber.ts)
-  | 'motoboy' | 'drone' | 'patinete' | 'pichador'
-  // Fase 6 — Transportadora de São Paulo (src/game/enemies5.ts)
+  // Fase 5 — Marginal de São Paulo / Autoscroller no Uber (src/game/enemies5.ts)
+  | 'motoboy' | 'motoboy_fast' | 'drone' | 'patinete' | 'pichador'
+  // Fase 6 — Transportadora de São Paulo (src/game/enemies6.ts)
   | 'rato' | 'carregador' | 'empilhadeira' | 'arremessador';
 
 export interface Level {

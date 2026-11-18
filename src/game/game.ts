@@ -13,10 +13,12 @@ import type {
   SpriteAtlas,
   World,
 } from '../core/types';
-import { AIR_BUBBLE_TIME, COINS_PER_LIFE, EASY_LIVES, AIR_COUNTDOWN, MAX_AIR, MAX_HYDRATION, RENDER_SCALE, START_LIVES, TILE, UBER_SPEED, VIEW_H, VIEW_W } from '../core/constants';
+import { AIR_BUBBLE_TIME, COINS_PER_LIFE, EASY_LIVES, AIR_COUNTDOWN, MAX_AIR, MAX_HYDRATION, RENDER_SCALE, START_LIVES, TILE, VIEW_H, VIEW_W } from '../core/constants';
+import { UBER, uberStars } from './uberRules';
 import { overlaps } from '../core/physics';
 import type { Input } from '../core/input';
-import { createPlayer, LICK_STAFF_OFFSET, type PardoPlayer } from './player';
+import { ARRIVE_WIN_FALLBACK, createPlayer, LICK_STAFF_OFFSET, type PardoPlayer } from './player';
+import { LEVEL5_RAMP_COLS } from './level5';
 import { LEVEL_COUNT, LEVELS } from './levels';
 import { createBonusStage, type BonusStage } from './bonus';
 import {
@@ -34,8 +36,8 @@ import { createBackground } from '../gfx/background';
 import { createAmazonBackground } from '../gfx/background2';
 import { createBahiaBackground } from '../gfx/background3';
 import { createRioBackground } from '../gfx/background4';
-import { createSampaBackground } from '../gfx/background5';
-import { createUberBackground } from '../gfx/backgroundUber';
+import { createSampaBackground } from '../gfx/background6';
+import { createUberBackground } from '../gfx/background5';
 import { createAtlas } from '../gfx/atlas';
 import { createAudio } from '../audio/audio';
 import { drawText } from '../gfx/font';
@@ -50,6 +52,15 @@ const CAM_FOLLOW_Y = 6;
 const CAM_ANCHOR_Y = 0.58;
 /** Entidades além desta distância da câmera não são atualizadas. */
 const ACTIVE_MARGIN = VIEW_W * 1.5;
+/**
+ * Entidades presas ao Pardo ou à tela no autoscroller (Fase 5): SEMPRE atualizadas e desenhadas, sem
+ * culling por distância (issue #10: o carro recriado longe da câmera congelava e sumia).
+ */
+const NO_CULL_KINDS: ReadonlySet<string> = new Set(['uber_car', 'truck_bau']);
+/** Fase 5: x de tela em que a rolagem para com o desembarque (`uber_goal`) à vista. */
+const UBER_GOAL_SCREEN_X = 150;
+/** Fase 5, cutscene de chegada: o carro estaciona com o centro do Pardo esta distância antes do centro do totem. */
+const UBER_ARRIVE_GAP = 46;
 const DYING_TIME = 1.8;
 const END_CONFIRM_DELAY = 0.8;
 /** Duração do cartão "FASE N" antes de cada fase. */
@@ -59,7 +70,7 @@ const INTRO_SKIP_DELAY = 0.25;
 /** Distância (px) entre o centro do Pardo e o centro do alien ao receber a mamadeira. */
 const GOAL_STAND_OFF = 14;
 /**
- * Idem para o Maia (Fase 5): hitbox 22 (vs. 16 do Amaro) e sprite 34 com o braço da xícara indo até a borda.
+ * Idem para o Maia (Fase 6): hitbox 22 (vs. 16 do Amaro) e sprite 34 com o braço da xícara indo até a borda.
  * 17 mantém a mesma folga de 1px entre as hitboxes que o Amaro tem e deixa a mão do Maia sobre o Pardo.
  */
 const MAIA_STAND_OFF = 24;
@@ -142,6 +153,18 @@ export class GameWorld implements World {
   private punchedTiles = new Set<number>();
   /** último número da contagem regressiva de oxigênio tocado (0 = nenhum) */
   private lastCountdown = 0;
+  /**
+   * Autoscroller (Fase 5): velocidade ATUAL da rolagem da câmera (px/s), lida por player.ts. UBER.speed em
+   * cruzeiro, cai até 0 nos últimos UBER.stopBars compassos; 0 fora de 'playing' e nas outras fases.
+   */
+  scrollSpeed = 0;
+  /** Autoscroller: camera.x em que a rolagem para (desembarque à vista). */
+  private scrollStopX = 0;
+  /** Autoscroller: camera.x em que a frenagem começa (nunca antes do fim do voo da última rampa). */
+  private brakeStartX = 0;
+  /** Autoscroller: centro e base do totem `uber_goal` (cutscene de chegada); goalCx < 0 = sem totem. */
+  private rideGoalCx = -1;
+  private rideGoalFootY = 0;
 
   constructor(
     private readonly ctx: CanvasRenderingContext2D,
@@ -167,6 +190,7 @@ export class GameWorld implements World {
       muted: false,
       levelIndex: this.startLevel,
       air: MAX_AIR,
+      rideHits: 0,
       maxAir: MAX_AIR,
       ribbons: 0,
       ribbonsTotal: 0,
@@ -184,6 +208,7 @@ export class GameWorld implements World {
     const sp = this.level.playerSpawn;
     this.player = createPlayer(sp.x, sp.y);
     this.replaceEntities();
+    if (this.level.autoscroll) this.prepareRide();
     this.snapCamera();
     input.onGesture(() => this.audio.unlock());
   }
@@ -367,6 +392,7 @@ export class GameWorld implements World {
 
   // ── Fluxo de jogo ──────────────────────────────────────────────────────────
   setScene(s: Scene): void {
+    if (s !== 'playing') this.scrollSpeed = 0;
     this.state.scene = s;
     this.state.sceneTime = 0;
   }
@@ -428,6 +454,7 @@ export class GameWorld implements World {
     st.levelIndex = i;
     st.elapsed = 0;
     st.timeBonus = 0;
+    st.rideHits = 0; // avaliação da corrida (Fase 5): zera ao (re)iniciar a fase, não ao renascer
     this.checkpoint = -1;
     this.time = 0;
     this.collectedRibbons.clear(); // fase nova (ou jogo novo): fitinhas voltam
@@ -466,6 +493,7 @@ export class GameWorld implements World {
     this.level.reset();
     this.replaceEntities();
     this.player.respawn(x, y);
+    if (this.level.autoscroll) this.prepareRide();
     this.state.hydration = this.state.maxHydration;
     this.state.air = this.state.maxAir;
     this.state.dialogue = null;
@@ -484,6 +512,54 @@ export class GameWorld implements World {
     const cp = this.checkpoint >= 0 ? this.level.checkpoints[this.checkpoint] : undefined;
     const p = cp ?? this.level.playerSpawn;
     this.respawnAt(p.x, p.y);
+  }
+
+  /**
+   * Autoscroller: posiciona o carro sob o Pardo (issue #10: createEntities o cria no spawn) e calcula onde
+   * a rolagem para. Chamado depois de replaceEntities + player.respawn.
+   */
+  private prepareRide(): void {
+    const cx = this.player.centerX;
+    let goalCx = -1;
+    for (const e of this.entities) {
+      if (e.kind === 'uber_car') e.x = cx - e.w / 2;
+      else if (e.kind === 'uber_goal') {
+        goalCx = e.x + e.w / 2;
+        this.rideGoalFootY = e.y + e.h;
+      }
+    }
+    this.rideGoalCx = goalCx;
+    const camMax = Math.max(0, this.level.widthPx - VIEW_W);
+    this.scrollStopX = goalCx >= 0 ? clamp(goalCx - UBER_GOAL_SCREEN_X, 0, camMax) : camMax;
+    // frenagem nos últimos UBER.stopBars compassos, mas só depois do fim do voo da última rampa
+    // (o voo segue o centro do Pardo: termina com o centro em (últimaJ + rampCols)·TILE, a 120 px/s)
+    const lastRamp = LEVEL5_RAMP_COLS.length > 0 ? Math.max(...LEVEL5_RAMP_COLS) : -Infinity;
+    const flightEndCam = (lastRamp + UBER.rampCols) * TILE - UBER.screenNeutral;
+    const D = UBER.stopBars * UBER.barCols * TILE;
+    this.brakeStartX = Math.min(this.scrollStopX, Math.max(this.scrollStopX - D, flightEndCam));
+    this.scrollSpeed = UBER.speed;
+  }
+
+  /**
+   * Autoscroller: avança camera.x pela rolagem (antes de entidades e Pardo, que leem a câmera deste passo).
+   * Entre brakeStartX e scrollStopX (UBER.stopBars compassos, nunca antes do fim do voo da última rampa) a
+   * velocidade cai linearmente NO TEMPO até 0 (v = speed·√(resto/D), desaceleração constante speed²/2D),
+   * parando exatamente em scrollStopX. Parada → começa a cutscene de chegada (o carro vai até o totem).
+   */
+  private advanceScroll(dt: number): void {
+    const c = this.camera;
+    const rest = this.scrollStopX - c.x;
+    if (rest <= 0.25) {
+      c.x = Math.max(c.x, this.scrollStopX);
+      this.scrollSpeed = 0;
+      if (this.rideGoalCx >= 0 && !this.player.dead) {
+        this.player.beginArrival(this.rideGoalCx - UBER_ARRIVE_GAP, this.rideGoalCx - GOAL_STAND_OFF, this.rideGoalFootY);
+      }
+      return;
+    }
+    const D = Math.max(1, this.scrollStopX - this.brakeStartX);
+    this.scrollSpeed = rest >= D ? UBER.speed : Math.max(UBER.speed * Math.sqrt(rest / D), 6);
+    c.x = Math.min(this.scrollStopX, c.x + this.scrollSpeed * dt);
   }
 
   private replaceEntities(): void {
@@ -553,6 +629,7 @@ export class GameWorld implements World {
           (st.sceneTime >= INTRO_SKIP_DELAY && (input.pressed('confirm') || input.pressed('start')))
         ) {
           this.setScene('playing');
+          if (this.level.autoscroll) this.syncRideMusic();
         }
         break;
 
@@ -580,7 +657,8 @@ export class GameWorld implements World {
             this.audio.startMusic('bonus');
           } else {
             this.setScene('playing');
-            this.audio.startMusic(this.level.theme);
+            if (this.level.autoscroll) this.syncRideMusic();
+            else this.audio.startMusic(this.level.theme);
           }
         }
         break;
@@ -596,7 +674,8 @@ export class GameWorld implements World {
           if (st.lives > 0) {
             this.respawnAtCheckpoint();
             this.setScene('playing');
-            this.audio.startMusic(this.level.theme);
+            if (this.level.autoscroll) this.syncRideMusic();
+            else this.audio.startMusic(this.level.theme);
           } else {
             this.setScene('gameover');
             this.audio.play('gameover');
@@ -616,6 +695,8 @@ export class GameWorld implements World {
         if (this.player.drinkDone) {
           st.timeBonus = Math.max(0, Math.floor(TIME_BONUS_PAR - st.elapsed)) * TIME_BONUS_RATE;
           st.score += st.timeBonus;
+          // Fase 5: avaliação da corrida (bônus = UBER.starBonus × estrelas)
+          if (this.level.autoscroll) st.score += UBER.starBonus * uberStars(st.rideHits);
           this.setScene('win');
         }
         break;
@@ -694,14 +775,30 @@ export class GameWorld implements World {
     input.endStep();
   }
 
+  /**
+   * Fase 5: (re)começa a faixa do autoscroller EM FASE com o mapa — a posição na música é o tempo que a
+   * rolagem de cruzeiro leva da coluna 0 até a câmera atual (t = camera.x / UBER.speed; camera.x = 0 ⇒ t = 0),
+   * então o tempo 1 de cada compasso do mapa (12 colunas = 1,6 s a 150 BPM) cai no início de um compasso da
+   * música. Chamado sempre que a cena entra em 'playing' (fim da intro, despausar, renascer).
+   */
+  private syncRideMusic(): void {
+    this.audio.stopMusic();
+    this.audio.startMusic(this.level.theme, Math.max(0, this.camera.x) / UBER.speed);
+  }
+
   /** Ordem do PLAN §3. */
   private stepPlaying(dt: number): void {
+    if (this.level.autoscroll) this.advanceScroll(dt);
+    else this.scrollSpeed = 0;
     this.updateEntities(dt);
     this.player.update(dt, this, this.input);
     if (!this.player.dead) {
       this.resolvePunch();
       this.resolveContacts();
       this.checkCheckpoints();
+      // Fase 5: rede de segurança da cutscene — pousou ao lado do totem e o toque não disparou a vitória
+      const p = this.player;
+      if (this.state.scene === 'playing' && p.arrivePhase === 'landed' && p.arriveTime >= ARRIVE_WIN_FALLBACK) this.win();
     }
     this.updateParticles(dt);
     this.updatePopups(dt);
@@ -740,9 +837,12 @@ export class GameWorld implements World {
   private updateEntities(dt: number): void {
     const minX = this.camera.x - ACTIVE_MARGIN;
     const maxX = this.camera.x + VIEW_W + ACTIVE_MARGIN;
+    // Fase 5: depois que o Pardo desce do teto na chegada, o carro (que se centraliza sob ele) fica estacionado
+    const carParked = this.player.carParked;
     for (const e of this.entities) {
       if (e.dead) continue;
-      if (e.x + e.w < minX || e.x > maxX) continue;
+      if ((e.x + e.w < minX || e.x > maxX) && !NO_CULL_KINDS.has(e.kind)) continue;
+      if (carParked && e.kind === 'uber_car') continue;
       e.update(dt, this);
     }
   }
@@ -899,8 +999,9 @@ export class GameWorld implements World {
 
   private snapCamera(): void {
     if (this.level.autoscroll) {
-      this.camera.x = this.player.centerX - 72;
-      this.camera.y = this.player.y + this.player.h / 2 - VIEW_H * CAM_ANCHOR_Y;
+      // Fase 5: Pardo na posição neutra; câmera Y travada
+      this.camera.x = this.player.centerX - UBER.screenNeutral;
+      this.camera.y = UBER.camY;
       this.clampCamera();
       return;
     }
@@ -914,17 +1015,8 @@ export class GameWorld implements World {
     const p = this.player;
     const c = this.camera;
     if (this.level.autoscroll) {
-      if (this.state.scene === 'playing' && !p.dead) {
-        c.x = Math.min(Math.max(0, this.level.widthPx - VIEW_W), c.x + UBER_SPEED * dt);
-      }
-      const t = this.cameraTarget();
-      if (!p.dead) {
-        c.y += (t.y - c.y) * Math.min(1, dt * CAM_FOLLOW_Y);
-        const top = p.y - 24;
-        const bottom = p.y + p.h + 16;
-        if (top < c.y) c.y = top;
-        if (bottom > c.y + VIEW_H) c.y = bottom - VIEW_H;
-      }
+      // X avança em advanceScroll (início do passo); Y travada
+      c.y = UBER.camY;
       this.clampCamera();
       this.updateShake(dt);
       return;
@@ -1004,7 +1096,8 @@ export class GameWorld implements World {
     const minX = camX - 64;
     const maxX = camX + VIEW_W + 64;
     for (const e of this.entities) {
-      if (e.dead || e.x + e.w < minX || e.x > maxX) continue;
+      if (e.dead) continue;
+      if ((e.x + e.w < minX || e.x > maxX) && !NO_CULL_KINDS.has(e.kind)) continue;
       e.draw(ctx, this);
     }
     this.player.draw(ctx, this);

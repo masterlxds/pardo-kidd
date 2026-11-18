@@ -1,498 +1,423 @@
-import type { Entity, Rect, World } from '../core/types';
-import { TILE } from '../core/constants';
-import { moveBody } from '../core/physics';
-import { createPopCoin } from './objects';
+import type { Entity, World } from '../core/types';
+import { VIEW_W } from '../core/constants';
+import { LEVEL5_RAMP_COLS } from './level5';
+import {
+  UBER,
+  UBER_DRONE,
+  UBER_ENEMIES,
+  UBER_PICHADOR,
+  uberDronePos,
+  uberEnemyBottom,
+  uberEnemyHopping,
+  uberEnemyX,
+  uberRampOffset,
+  type UberDronePhase,
+  type UberLinearKind,
+} from './uberRules';
 
-/** Inimigos da Fase 5 — Transportadora de São Paulo (level-5-refs/gdd_bestiario_e_maia.md §1). */
-export type SampaEnemyKind = 'rato' | 'carregador' | 'empilhadeira' | 'arremessador';
+/**
+ * Inimigos da Fase 5 — Marginal de São Paulo (dono: agente ENEMY).
+ * Todos morrem com 1 soco e têm posição (x e y) em função PURA de `world.camera.x` (src/game/uberRules.ts):
+ * nenhum guarda estado que mude a trajetória. O único estado é vivo/arremessado e timers cosméticos
+ * (som de entrada, bip do drone, poeira da decolagem, giro do arremesso). Motoboys e patinetes rodam no
+ * ASFALTO e saltam ao chegar perto (uberEnemyBottom); só cruzam o x do carro já no ar. Design: level-5-refs/gdd_bestiario_fase5.md §1 e §3.
+ *
+ * game.ts já toca 'hit' e `fx('impact')` quando `onPunch` retorna true; aqui só entram os pontos
+ * e os efeitos próprios (caixa: 'crate' + 'debris').
+ */
+export type UberEnemyKind = 'motoboy' | 'motoboy_fast' | 'patinete' | 'drone' | 'pichador';
 
 type Dir = 1 | -1;
 
-const GRAV = 900;
-const MAX_FALL = 360;
-const PKG_GRAV = 520;
+/** Gravidade e impulso do arremesso cosmético (o inimigo sai girando para cima e para a DIREITA da tela). */
+const THROW_GRAV = 900;
+const THROW_VX = UBER.speed + 90;
+const THROW_VY = -210;
+const THROW_SPIN = 12;
 
-interface SpriteRef {
-  name: string;
-  frame: number;
-  flip: boolean;
-}
-
+/** Fora da tela pela esquerda (com folga) → some. */
+const LEFT_MARGIN = 32;
 /**
- * Resultado de soco:
- * - 'kill': derrota e arremessa para fora da tela
- * - 'stun': soco conecta sem pontuar nem arremessar (1º soco do carregador)
- * - 'bounce': soco rebatido (retorna false em onPunch)
+ * Teto para `e.x` enquanto a posição real está além da borda direita: game.ts só atualiza/desenha
+ * entidades perto da câmera usando `e.x`; sem o teto um inimigo que vem de frente "congela" longe
+ * à direita e reaparece atrasado. O valor fica fora da tela (nunca é visto nem toca o Pardo) e a
+ * posição real é recalculada da câmera a cada passo, então a trajetória continua pura.
  */
-type PunchOutcome = 'kill' | 'stun' | 'bounce';
-
-interface EnemyAi {
-  update(e: Entity, dt: number, world: World): void;
-  sprite(): SpriteRef;
-  onHit?(e: Entity, dir: Dir, world: World): PunchOutcome;
-  harmless?(): boolean;
-}
+const RIGHT_PARK = VIEW_W + 40;
 
 interface Thrown {
   rot: number;
-  spin: number;
-  dir: Dir;
 }
 
-const cx = (r: Rect): number => r.x + r.w / 2;
-
-/** Fase determinística [0..1) a partir da posição para dessincronizar ciclos. */
-function phase01(x: number, y: number): number {
-  const v = Math.sin(x * 0.0713 + y * 0.0539) * 43758.5453;
-  return v - Math.floor(v);
+/** Desenha um sprite com a base e o centro alinhados à hitbox. */
+function drawAligned(
+  e: Entity,
+  world: World,
+  ctx: CanvasRenderingContext2D,
+  name: string,
+  frame: number,
+  flip: boolean,
+): void {
+  const size = world.sprites.size(name);
+  world.sprites.draw(ctx, name, frame, e.x + e.w / 2 - size.w / 2, e.y + e.h - size.h, flip);
 }
 
-/** Empurra levemente em X no 1º frame caso uma hitbox mais larga que 16px nasça encostada em parede. */
-function unstuckSpawnX(e: Entity, world: World): void {
-  const r0 = Math.floor(e.y / TILE);
-  const r1 = Math.floor((e.y + e.h - 0.001) / TILE);
-  const txL = Math.floor(e.x / TILE);
-  const txR = Math.floor((e.x + e.w - 0.001) / TILE);
-  if (txL >= txR) return;
-  let solidL = false;
-  let solidR = false;
-  for (let ty = r0; ty <= r1; ty++) {
-    if (world.level.isSolid(txL, ty)) solidL = true;
-    if (world.level.isSolid(txR, ty)) solidR = true;
-  }
-  if (solidL && !solidR) e.x = (txL + 1) * TILE;
-  else if (solidR && !solidL) e.x = txR * TILE - e.w;
+/** Desenha girando em torno do centro da hitbox (arremessado). */
+function drawSpinning(
+  e: Entity,
+  world: World,
+  ctx: CanvasRenderingContext2D,
+  name: string,
+  frame: number,
+  flip: boolean,
+  rot: number,
+): void {
+  const size = world.sprites.size(name);
+  ctx.save();
+  ctx.translate(Math.round(e.x + e.w / 2), Math.round(e.y + e.h / 2));
+  ctx.rotate(rot);
+  world.sprites.draw(ctx, name, frame, -size.w / 2, -size.h / 2, flip);
+  ctx.restore();
 }
 
-/** Há chão seguro (sólido ou one-way) à frente-abaixo e sem perigo (`isHazard`) à frente? */
-function safeGroundAhead(e: Entity, dir: Dir, world: World): boolean {
-  const ax = dir > 0 ? e.x + e.w + 1 : e.x - 1;
-  const tx = Math.floor(ax / TILE);
-  const tyBelow = Math.floor((e.y + e.h + 1) / TILE);
-  if (!world.level.isSolid(tx, tyBelow) && !world.level.isOneWay(tx, tyBelow)) return false;
-  if (world.level.isHazard(tx, tyBelow)) return false;
-  const r0 = Math.floor(e.y / TILE);
-  const r1 = Math.floor((e.y + e.h - 0.001) / TILE);
-  for (let ty = r0; ty <= r1; ty++) {
-    if (world.level.isHazard(tx, ty)) return false;
-  }
-  return true;
+/** Passo do arremesso (cosmético; integra com dt, mas não afeta mais nada do jogo). */
+function stepThrown(e: Entity, t: Thrown, dt: number, world: World): void {
+  e.vy = Math.min(e.vy + THROW_GRAV * dt, 520);
+  e.x += e.vx * dt;
+  e.y += e.vy * dt;
+  t.rot += THROW_SPIN * dt;
+  const cam = world.camera;
+  if (e.y > cam.y + 220 || e.x > cam.x + VIEW_W + 64) e.dead = true;
 }
 
-function fall(e: Entity, dt: number, world: World) {
-  e.vy = Math.min(e.vy + GRAV * dt, MAX_FALL);
-  return moveBody(e, world.level, dt);
+function startThrow(e: Entity): Thrown {
+  e.vx = THROW_VX;
+  e.vy = THROW_VY;
+  return { rot: 0 };
 }
 
-function guardDead(e: Entity, world: World): void {
-  if (e.y > world.level.heightPx + 60) e.dead = true;
+/** Posiciona a hitbox centrada em `cx` (com teto à direita) e marca dead depois de sair pela esquerda. */
+function placeX(e: Entity, cx: number, world: World): void {
+  const camX = world.camera.x;
+  e.x = Math.min(cx - e.w / 2, camX + RIGHT_PARK);
+  if (e.x + e.w < camX - LEFT_MARGIN) e.dead = true;
 }
 
-/** Monta a entidade de um inimigo da Sampa com arremesso ao morrer, colisão e renderização. */
-function buildSampaEnemy(
-  kind: SampaEnemyKind,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  points: number,
-  makeAi: (e: Entity) => EnemyAi,
-  deathSfx: 'hit' | 'squeak' = 'hit',
-): Entity {
+const onScreen = (e: Entity, world: World): boolean =>
+  e.x < world.camera.x + VIEW_W && e.x + e.w > world.camera.x;
+
+// ── Trajetória reta no asfalto + salto: motoboy, motoboy rápido, patinete ─────────────
+/** Início das rampas em px de mundo (mesma conta de objects5.ts), para saber onde o carro está desenhado. */
+const RAMP_STARTS_PX: readonly number[] = LEVEL5_RAMP_COLS.map((c) => c * UBER.tile);
+/** Carro da Uber: 64×24, centrado sob o Pardo, teto em UBER.roofY − uberRampOffset (ver objects5.ts). */
+const CAR_W = 64;
+const CAR_H = 24;
+
+/**
+ * Recorta do desenho a faixa ocupada pelo carro: um veículo que ainda roda no asfalto ao lado do carro
+ * (decolagem do patinete, pouso atrás do carro) fica "atrás" dele em vez de atravessá-lo.
+ */
+function clipOutCar(ctx: CanvasRenderingContext2D, world: World): void {
+  const cx = world.player.x + world.player.w / 2;
+  const carL = Math.round(cx - CAR_W / 2);
+  const carT = Math.round(UBER.roofY - uberRampOffset(cx, RAMP_STARTS_PX));
+  const camX = world.camera.x;
+  const camY = world.camera.y;
+  const x0 = camX - 64;
+  const x1 = camX + VIEW_W + 64;
+  const y0 = camY - 64;
+  const y1 = camY + 260;
+  ctx.beginPath();
+  ctx.rect(x0, y0, carL - x0, y1 - y0); // à esquerda do carro
+  ctx.rect(carL + CAR_W, y0, x1 - (carL + CAR_W), y1 - y0); // à direita do carro
+  ctx.rect(carL, y0, CAR_W, carT - y0); // acima do carro
+  ctx.rect(carL, carT + CAR_H, CAR_W, y1 - (carT + CAR_H)); // abaixo do carro
+  ctx.clip();
+}
+
+function createLinear(kind: 'motoboy' | 'motoboy_fast' | 'patinete', encontroX: number): Entity {
+  const spec = UBER_ENEMIES[kind];
+  const jumpSprite = kind === 'motoboy' ? 'motoboy_jump' : kind === 'motoboy_fast' ? 'motoboy_fast_jump' : 'patinete_jump';
+  const flip = spec.v > 0; // vem de frente → espelhado; patinete anda no mesmo sentido → sem flip
+  const animDt = kind === 'motoboy_fast' ? 0.07 : 0.1;
   let thrown: Thrown | null = null;
-  let ai!: EnemyAi;
+  let revved = kind === 'patinete'; // patinete não ronca
+  /** no ar neste passo (função pura da câmera); null antes do 1º update (não solta poeira ao nascer no ar) */
+  let hopping: boolean | null = null;
 
   const e: Entity = {
     kind,
     dead: false,
-    x,
-    y,
-    w,
-    h,
+    x: encontroX - spec.w / 2,
+    y: spec.bottom - spec.h,
+    w: spec.w,
+    h: spec.h,
     vx: 0,
     vy: 0,
     update(dt, world) {
       if (thrown) {
-        e.vy = Math.min(e.vy + GRAV * dt, 520);
-        e.x += e.vx * dt;
-        e.y += e.vy * dt;
-        thrown.rot += thrown.spin * dt;
-        if (e.y > world.level.heightPx + 60) e.dead = true;
+        stepThrown(e, thrown, dt, world);
         return;
       }
-      ai.update(e, dt, world);
+      const camX = world.camera.x;
+      placeX(e, uberEnemyX(encontroX, spec.v, camX), world);
+      e.y = uberEnemyBottom(kind, encontroX, camX) - spec.h;
+      const nowHop = uberEnemyHopping(kind, encontroX, camX);
+      if (hopping === false && nowHop && onScreen(e, world)) {
+        // decolagem: poeira na roda de trás (a roda de trás fica do lado oposto ao sentido de marcha)
+        const back: Dir = flip ? 1 : -1;
+        world.fx('dust', e.x + e.w / 2 + back * (e.w / 2 - 2), spec.bottom - 2, back);
+      }
+      hopping = nowHop;
+      if (!revved && onScreen(e, world)) {
+        revved = true;
+        world.audio.play('rev');
+      }
     },
     draw(ctx, world) {
-      const s = ai.sprite();
-      const size = world.sprites.size(s.name);
-      const sx = e.x + e.w / 2 - size.w / 2;
-      const sy = e.y + e.h - size.h;
+      const frame = Math.floor(world.time / animDt) % 2;
       if (thrown) {
-        ctx.save();
-        ctx.translate(Math.round(e.x + e.w / 2), Math.round(e.y + e.h / 2));
-        ctx.rotate(thrown.rot);
-        world.sprites.draw(ctx, s.name, s.frame, -size.w / 2, -size.h / 2, thrown.dir < 0);
-        ctx.restore();
+        drawSpinning(e, world, ctx, hopping ? jumpSprite : kind, hopping ? 0 : frame, flip, thrown.rot);
         return;
       }
-      world.sprites.draw(ctx, s.name, s.frame, sx, sy, s.flip);
-    },
-    onPunch(world, dir) {
-      if (thrown) return false;
-      if (ai.onHit) {
-        const res = ai.onHit(e, dir, world);
-        if (res === 'bounce') return false;
-        if (res === 'stun') return true;
+      if (hopping) {
+        drawAligned(e, world, ctx, jumpSprite, 0, flip);
+        return;
       }
-      thrown = { rot: 0, spin: dir * 12, dir };
-      e.vx = dir * 150;
-      e.vy = -210;
-      world.audio.play(deathSfx);
-      world.addScore(points, cx(e), e.y);
+      ctx.save();
+      clipOutCar(ctx, world);
+      drawAligned(e, world, ctx, kind, frame, flip);
+      ctx.restore();
+    },
+    onPunch(world, _dir: Dir) {
+      if (thrown) return false;
+      thrown = startThrow(e);
+      world.addScore(spec.points, e.x + e.w / 2, e.y);
       return true;
     },
     onTouchPlayer(world) {
-      if (thrown || world.player.dead || ai.harmless?.()) return;
-      world.player.hurt(world, cx(e), 1);
+      if (thrown || world.player.dead) return;
+      world.player.hurt(world, e.x + e.w / 2, 1);
     },
   };
-
-  ai = makeAi(e);
   return e;
 }
 
-const RATO_LEASH = 7 * TILE;
+// ── Drone de Delivery: paira na faixa alta, avisa, rasante para a faixa baixa ─────────
+function createDrone(encontroX: number): Entity {
+  const D = UBER_DRONE;
+  let thrown: Thrown | null = null;
+  let phase: UberDronePhase = 'hover';
+  let beeped = false;
 
-// ── 1. Rato de Galpão: corre a 55 px/s, vira em bordas e paredes ─────────────────────
-function ratoAi(e: Entity): EnemyAi {
-  let dir: Dir = phase01(e.x, e.y) < 0.5 ? -1 : 1;
-  let t = 0;
-  let spawned = false;
-  // território: o rato não se afasta mais que RATO_LEASH da toca (não invade a copa nem os checkpoints)
-  const homeX = e.x;
-  return {
-    update(_e, dt, world) {
-      if (!spawned) {
-        spawned = true;
-        unstuckSpawnX(e, world);
-      }
-      t += dt;
-      if (e.x - homeX > RATO_LEASH) dir = -1;
-      else if (homeX - e.x > RATO_LEASH) dir = 1;
-      e.vx = dir * 55;
-      const c = fall(e, dt, world);
-      if (c.left || c.right) dir = c.left ? 1 : -1;
-      else if (c.bottom && !safeGroundAhead(e, dir, world)) dir = (dir * -1) as Dir;
-      guardDead(e, world);
-    },
-    sprite() {
-      return { name: 'rato', frame: Math.floor(t / 0.09) % 2, flip: dir < 0 };
-    },
-  };
-}
-
-// ── 2. Carregador de Caixa: 2 socos (caixa quebra → bravo) ───────────────────────────
-function carregadorAi(e: Entity, homeX: number): EnemyAi {
-  type State = 'walk' | 'surprise' | 'angry';
-  const RANGE = 4 * TILE;
-  const WALK = 32;
-  const RUN = 70;
-  const SURPRISE = 0.6;
-
-  let state: State = 'walk';
-  let dir: Dir = phase01(homeX, e.y) < 0.5 ? -1 : 1;
-  let timer = 0;
-  let t = 0;
-  let spawned = false;
-
-  const atLimit = (d: Dir): boolean => (d > 0 ? cx(e) >= homeX + RANGE : cx(e) <= homeX - RANGE);
-
-  return {
-    update(_e, dt, world) {
-      if (!spawned) {
-        spawned = true;
-        unstuckSpawnX(e, world);
-      }
-      t += dt;
-
-      if (state === 'walk') {
-        e.vx = dir * WALK;
-        const c = fall(e, dt, world);
-        if (c.left || c.right) dir = c.left ? 1 : -1;
-        else if (c.bottom && !safeGroundAhead(e, dir, world)) dir = (dir * -1) as Dir;
-        else if (atLimit(dir)) dir = (dir * -1) as Dir;
-      } else if (state === 'surprise') {
-        // knockback curto que decai rapidamente, sem cair de bordas
-        e.vx *= Math.max(0, 1 - 10 * dt);
-        if (Math.abs(e.vx) > 1) {
-          const sd: Dir = e.vx > 0 ? 1 : -1;
-          if (!safeGroundAhead(e, sd, world)) e.vx = 0;
-        } else {
-          e.vx = 0;
-        }
-        fall(e, dt, world);
-        timer -= dt;
-        if (timer <= 0) {
-          state = 'angry';
-          e.vx = 0;
-        }
-      } else {
-        const p = world.player;
-        if (!p.dead) {
-          const dx = cx(p) - cx(e);
-          if (Math.abs(dx) > 4) dir = dx > 0 ? 1 : -1;
-        }
-        // não sai do trecho, não cai de bordas e não atravessa paredes: fica parado no limite
-        const blocked = atLimit(dir) || !safeGroundAhead(e, dir, world);
-        e.vx = blocked ? 0 : dir * RUN;
-        const c = fall(e, dt, world);
-        if (c.left || c.right) e.vx = 0;
-      }
-
-      guardDead(e, world);
-    },
-    sprite() {
-      if (state === 'walk') return { name: 'carregador', frame: Math.floor(t / 0.22) % 2, flip: dir < 0 };
-      if (state === 'surprise') return { name: 'carregador_bravo', frame: 0, flip: dir < 0 };
-      const moving = Math.abs(e.vx) > 1;
-      return { name: 'carregador_bravo', frame: moving ? Math.floor(t / 0.1) % 2 : 0, flip: dir < 0 };
-    },
-    onHit(_e, punchDir, world) {
-      if (state !== 'walk') return 'kill';
-      // caixa quebra: troca hitbox 14×24 → 12×20 mantendo pés e centro
-      const feet = e.y + e.h;
-      const mid = cx(e);
-      e.w = 12;
-      e.h = 20;
-      e.x = mid - e.w / 2;
-      e.y = feet - e.h;
-
-      state = 'surprise';
-      timer = SURPRISE;
-      dir = (punchDir * -1) as Dir; // vira para quem bateu
-      e.vx = safeGroundAhead(e, punchDir, world) ? punchDir * 60 : 0;
-      e.vy = -30;
-      world.audio.play('crate');
-      world.fx('debris', mid, e.y + 4);
-      world.spawn(createPopCoin(mid - 4, e.y - 6));
-      return 'stun';
-    },
-    harmless: () => state === 'surprise',
-  };
-}
-
-// ── 3. Empilhadeira: indestrutível, patrulha + arrancada telegrafada ─────────────────
-function empilhadeiraAi(e: Entity): EnemyAi {
-  type State = 'patrol' | 'tele' | 'dash' | 'rest';
-  const SIGHT = 6 * TILE;
-  let state: State = 'patrol';
-  let dir: Dir = phase01(e.x, e.y) < 0.5 ? -1 : 1;
-  let timer = 0;
-  let t = 0;
-  let spawned = false;
-
-  return {
-    update(_e, dt, world) {
-      if (!spawned) {
-        spawned = true;
-        unstuckSpawnX(e, world);
-      }
-      t += dt;
-      const p = world.player;
-      const active = !p.dead && world.state.scene === 'playing';
-
-      if (state === 'patrol') {
-        e.vx = dir * 28;
-        const c = fall(e, dt, world);
-        if (c.left || c.right) dir = c.left ? 1 : -1;
-        else if (c.bottom && !safeGroundAhead(e, dir, world)) dir = (dir * -1) as Dir;
-
-        const dx = cx(p) - cx(e);
-        const dy = p.y + p.h - (e.y + e.h);
-        if (c.bottom && active && dx * dir > 0 && Math.abs(dx) <= SIGHT && Math.abs(dy) <= 16) {
-          state = 'tele';
-          timer = 0.4;
-          e.vx = 0;
-          world.audio.play('beep');
-        }
-      } else if (state === 'tele') {
-        e.vx = 0;
-        fall(e, dt, world);
-        timer -= dt;
-        if (timer <= 0) {
-          state = 'dash';
-          timer = 0.6;
-          world.fx('dust', cx(e) - dir * 14, e.y + e.h, (dir * -1) as Dir);
-        }
-      } else if (state === 'dash') {
-        if (!safeGroundAhead(e, dir, world)) {
-          e.vx = 0;
-          state = 'rest';
-          timer = 0.8;
-          fall(e, dt, world);
-        } else {
-          e.vx = dir * 150;
-          const c = fall(e, dt, world);
-          timer -= dt;
-          if (c.left || c.right) {
-            e.vx = 0;
-            state = 'rest';
-            timer = 0.8;
-          } else if (c.bottom && !safeGroundAhead(e, dir, world)) {
-            e.vx = 0;
-            state = 'rest';
-            timer = 0.8;
-          } else if (timer <= 0) {
-            e.vx = 0;
-            state = 'rest';
-            timer = 0.8;
-          }
-        }
-      } else {
-        e.vx = 0;
-        fall(e, dt, world);
-        timer -= dt;
-        if (timer <= 0) {
-          state = 'patrol';
-          dir = (dir * -1) as Dir; // vira após descansar para não repetir contra parede/borda
-        }
-      }
-
-      guardDead(e, world);
-    },
-    sprite() {
-      if (state === 'tele' || state === 'dash') return { name: 'empilhadeira_dash', frame: 0, flip: dir < 0 };
-      const frame = state === 'patrol' ? Math.floor(t / 0.18) % 2 : 0;
-      return { name: 'empilhadeira', frame, flip: dir < 0 };
-    },
-    onHit(_e, punchDir, world) {
-      world.audio.play('hit');
-      world.fx('impact', cx(e) - punchDir * (e.w / 2), e.y + e.h / 2, punchDir);
-      return 'bounce';
-    },
-  };
-}
-
-// ── Projétil do Arremessador (`pacote`): arco, socável (+10 pts) ─────────────────────
-function createPacote(spawnX: number, spawnY: number, dir: Dir): Entity {
-  let t = 0;
-  const d: Entity = {
-    kind: 'pacote',
+  const e: Entity = {
+    kind: 'drone',
     dead: false,
-    x: spawnX - 4,
-    y: spawnY - 4,
-    w: 8,
-    h: 8,
-    vx: 90 * dir,
-    vy: -200,
+    x: encontroX - D.w / 2,
+    y: D.hoverCy - D.h / 2,
+    w: D.w,
+    h: D.h,
+    vx: 0,
+    vy: 0,
     update(dt, world) {
-      t += dt;
-      d.vy = Math.min(d.vy + PKG_GRAV * dt, MAX_FALL);
-      const c = moveBody(d, world.level, dt);
-      if (c.bottom || c.top || c.left || c.right) {
-        world.fx('debris', d.x + d.w / 2, d.y + d.h / 2);
-        d.dead = true;
-      } else if (d.y > world.level.heightPx + 60 || d.x < -24 || d.x > world.level.widthPx + 24) {
-        d.dead = true;
+      if (thrown) {
+        stepThrown(e, thrown, dt, world);
+        return;
+      }
+      const p = uberDronePos(encontroX, world.camera.x);
+      phase = p.phase;
+      placeX(e, p.cx, world);
+      e.y = p.cy - D.h / 2;
+      if (phase === 'warn' && !beeped) {
+        beeped = true;
+        world.audio.play('beep');
       }
     },
     draw(ctx, world) {
-      world.sprites.draw(ctx, 'pacote', Math.floor(t / 0.1) % 2, d.x, d.y);
+      if (thrown) {
+        drawSpinning(e, world, ctx, 'drone_dive', 0, true, thrown.rot);
+        return;
+      }
+      if (phase === 'hover') {
+        drawAligned(e, world, ctx, 'drone', Math.floor(world.time / 0.05) % 2, true);
+        return;
+      }
+      // aviso: pisca (meia transparência alternada) · rasante/reta final: sólido
+      const blinkOff = phase === 'warn' && Math.floor(world.time / 0.06) % 2 === 1;
+      if (blinkOff) {
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        drawAligned(e, world, ctx, 'drone_dive', 0, true);
+        ctx.restore();
+      } else {
+        drawAligned(e, world, ctx, 'drone_dive', 0, true);
+      }
     },
-    onPunch(world) {
-      if (d.dead) return false;
-      d.dead = true;
-      world.audio.play('hit');
-      world.fx('debris', d.x + d.w / 2, d.y + d.h / 2);
-      world.addScore(10, d.x + d.w / 2, d.y);
+    onPunch(world, _dir: Dir) {
+      if (thrown) return false;
+      thrown = startThrow(e);
+      world.addScore(D.points, e.x + e.w / 2, e.y);
       return true;
     },
     onTouchPlayer(world) {
-      if (d.dead || world.player.dead) return;
-      d.dead = true;
-      world.player.hurt(world, d.x + d.w / 2, 1);
+      if (thrown || world.player.dead) return;
+      world.player.hurt(world, e.x + e.w / 2, 1);
     },
   };
-  return d;
+  return e;
 }
 
-// ── 4. Arremessador de Encomendas: parado, espera 1,6 s → aviso 0,45 s → pacote ──────
-function arremessadorAi(e: Entity, homeX: number): EnemyAi {
-  type State = 'wait' | 'warn' | 'release';
-  const RANGE = 8 * TILE;
-  const WAIT = 1.6;
-  const WARN = 0.45;
-  const RELEASE = 0.25;
+// ── Pichador de Rapel: DUAS entidades ─────────────────────────────────────────────────
+// Corpo (kind 'pichador'): socável, fere ao toque, faixa alta.
+// Spray (kind 'pichador_spray'): SEM onPunch (o soco nunca "gasta" o golpe nele), só fere ao toque;
+// é criado junto com o corpo e entra no mundo via world.spawn no 1º update do corpo. Quando o corpo
+// é socado, o spray é marcado dead no mesmo passo (some antes de resolveContacts).
+function createPichador(encontroX: number): Entity {
+  const B = UBER_PICHADOR.body;
+  const S = UBER_PICHADOR.spray;
+  let thrown: Thrown | null = null;
+  let spawnedSpray = false;
 
-  let state: State = 'wait';
-  let timer = 0.4 + phase01(homeX, e.y) * 1.0;
-  let face: Dir = -1;
-  let t = 0;
-  let spawned = false;
-
-  return {
-    update(_e, dt, world) {
-      if (!spawned) {
-        spawned = true;
-        unstuckSpawnX(e, world);
-      }
-      t += dt;
-      const p = world.player;
-      const active = !p.dead && world.state.scene === 'playing';
-      const dx = cx(p) - cx(e);
-
-      e.vx = 0;
-      fall(e, dt, world);
-
-      if (state !== 'release' && !p.dead && Math.abs(dx) > 1) face = dx >= 0 ? 1 : -1;
-
-      if (state === 'wait') {
-        if (active && Math.abs(dx) <= RANGE) {
-          timer -= dt;
-          if (timer <= 0) {
-            state = 'warn';
-            timer = WARN;
-          }
-        } else {
-          // fora de alcance: o ciclo espera pronto, sem passar de WAIT
-          timer = Math.min(Math.max(timer, 0.35), WAIT);
-        }
-      } else if (state === 'warn') {
-        timer -= dt;
-        if (timer <= 0) {
-          state = 'release';
-          timer = RELEASE;
-          world.audio.play('throw');
-          world.spawn(createPacote(cx(e) + face * 6, e.y + 4, face));
-        }
-      } else {
-        timer -= dt;
-        if (timer <= 0) {
-          state = 'wait';
-          timer = WAIT;
-        }
-      }
-
-      guardDead(e, world);
+  const spray: Entity = {
+    kind: 'pichador_spray',
+    dead: false,
+    x: encontroX - S.w / 2,
+    y: S.y,
+    w: S.w,
+    h: S.h,
+    vx: 0,
+    vy: 0,
+    update(_dt, world) {
+      if (thrown || body.dead) spray.dead = true;
+      else if (spray.x + spray.w < world.camera.x - LEFT_MARGIN) spray.dead = true;
     },
-    sprite() {
-      if (state === 'warn') return { name: 'arremessador_throw', frame: 0, flip: face < 0 };
-      if (state === 'release') return { name: 'arremessador_throw', frame: 1, flip: face < 0 };
-      return { name: 'arremessador', frame: Math.floor(t / 0.3) % 2, flip: face < 0 };
+    draw(ctx, world) {
+      if (thrown) return;
+      drawAligned(spray, world, ctx, 'spray_cloud', Math.floor(world.time / 0.08) % 2, true);
+    },
+    onTouchPlayer(world) {
+      if (thrown || body.dead || world.player.dead) return;
+      world.player.hurt(world, spray.x + spray.w / 2, 1);
     },
   };
+
+  const body: Entity = {
+    kind: 'pichador',
+    dead: false,
+    x: encontroX - B.w / 2,
+    y: B.y,
+    w: B.w,
+    h: B.h,
+    vx: 0,
+    vy: 0,
+    update(dt, world) {
+      if (!spawnedSpray) {
+        spawnedSpray = true;
+        world.spawn(spray);
+      }
+      if (thrown) {
+        stepThrown(body, thrown, dt, world);
+        return;
+      }
+      body.x = encontroX - B.w / 2;
+      body.y = B.y;
+      if (body.x + body.w < world.camera.x - LEFT_MARGIN) {
+        body.dead = true;
+        spray.dead = true;
+      }
+    },
+    draw(ctx, world) {
+      const frame = Math.floor(world.time / 0.15) % 2;
+      if (thrown) {
+        drawSpinning(body, world, ctx, 'pichador_rapel', frame, true, thrown.rot);
+        return;
+      }
+      // corda do topo da tela até o topo do sprite (o sprite já desenha o trecho de cima do corpo)
+      const size = world.sprites.size('pichador_rapel');
+      const spriteTop = body.y + body.h - size.h;
+      const top = world.camera.y - 2;
+      if (spriteTop > top) {
+        ctx.fillStyle = '#c8b48a';
+        ctx.fillRect(Math.round(encontroX), Math.round(top), 1, Math.round(spriteTop - top) + 1);
+      }
+      drawAligned(body, world, ctx, 'pichador_rapel', frame, true);
+    },
+    onPunch(world, _dir: Dir) {
+      if (thrown) return false;
+      thrown = startThrow(body);
+      spray.dead = true; // a nuvem some no mesmo passo
+      world.addScore(UBER_PICHADOR.points, body.x + body.w / 2, body.y);
+      return true;
+    },
+    onTouchPlayer(world) {
+      if (thrown || world.player.dead) return;
+      world.player.hurt(world, body.x + body.w / 2, 1);
+    },
+  };
+  return body;
 }
 
-/** (centerX, footY) = centro horizontal e base dos pés. CONTRATO: assinatura e `kind` não mudam. */
-export function createSampaEnemy(kind: SampaEnemyKind, centerX: number, footY: number): Entity {
+/** `encontroX` = centro da célula do marcador (ponto de encontro na posição neutra; no pichador, onde ele está pendurado). */
+export function createUberEnemy(kind: UberEnemyKind, encontroX: number): Entity {
   switch (kind) {
-    case 'rato':
-      return buildSampaEnemy(kind, centerX - 6, footY - 8, 12, 8, 100, ratoAi, 'squeak');
-    case 'carregador':
-      return buildSampaEnemy(kind, centerX - 7, footY - 24, 14, 24, 500, (e) => carregadorAi(e, centerX));
-    case 'empilhadeira':
-      return buildSampaEnemy(kind, centerX - 14, footY - 24, 28, 24, 0, empilhadeiraAi);
-    case 'arremessador':
-      return buildSampaEnemy(kind, centerX - 6, footY - 20, 12, 20, 400, (e) => arremessadorAi(e, centerX));
+    case 'motoboy':
+    case 'motoboy_fast':
+    case 'patinete':
+      return createLinear(kind, encontroX);
+    case 'drone':
+      return createDrone(encontroX);
+    case 'pichador':
+      return createPichador(encontroX);
   }
+}
+
+/** Caixa arremessada pelo caminhão-baú: `alta` = faixa alta (X), senão faixa baixa (x). */
+export function createCaixa(encontroX: number, alta: boolean): Entity {
+  const kind: UberLinearKind = alta ? 'caixa_alta' : 'caixa_baixa';
+  const spec = UBER_ENEMIES[kind];
+  let thrown: Thrown | null = null;
+  /** Ainda dentro do baú: invisível, sem dano, sem soco. Recalculado da câmera a cada passo. */
+  let hidden = true;
+
+  const e: Entity = {
+    kind,
+    dead: false,
+    x: encontroX - spec.w / 2,
+    y: spec.bottom - spec.h,
+    w: spec.w,
+    h: spec.h,
+    vx: 0,
+    vy: 0,
+    update(dt, world) {
+      if (thrown) {
+        stepThrown(e, thrown, dt, world);
+        return;
+      }
+      placeX(e, uberEnemyX(encontroX, spec.v, world.camera.x), world);
+      e.y = spec.bottom - spec.h;
+      hidden = e.x > world.camera.x + UBER.truckScreenX + 8;
+    },
+    draw(ctx, world) {
+      const frame = Math.floor(world.time / 0.08) % 2;
+      if (thrown) {
+        drawSpinning(e, world, ctx, 'caixa', frame, true, thrown.rot);
+        return;
+      }
+      if (hidden) return;
+      drawAligned(e, world, ctx, 'caixa', frame, true);
+    },
+    onPunch(world, _dir: Dir) {
+      if (thrown || hidden) return false;
+      thrown = startThrow(e);
+      world.audio.play('crate');
+      world.fx('debris', e.x + e.w / 2, e.y + e.h / 2);
+      world.addScore(spec.points, e.x + e.w / 2, e.y);
+      return true;
+    },
+    onTouchPlayer(world) {
+      if (thrown || hidden || world.player.dead) return;
+      world.player.hurt(world, e.x + e.w / 2, 1);
+    },
+  };
+  return e;
 }

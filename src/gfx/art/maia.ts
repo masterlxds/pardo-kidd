@@ -1,9 +1,9 @@
 import type { SpriteArt } from '../artTypes';
 
 /**
- * Arte da Fase 5 — Renan Maia (o colega da transportadora), xícara de café e Pardo bebendo.
- * Referência visual: level-5-refs/maia.jpg, level-5-refs/maia_conceito.png (grade aprovada em
- * maia_conceito.txt) e level-5-refs/gdd_bestiario_e_maia.md §2.
+ * Arte da Fase 6 — Renan Maia (o colega da transportadora), xícara de café e Pardo bebendo.
+ * Referência visual: level-6-refs/maia.jpg, level-6-refs/maia_conceito.png (grade aprovada em
+ * maia_conceito.txt) e level-6-refs/gdd_bestiario_e_maia.md §2.
  * Identidade do Maia (não descaracterizar): alto e largo, camisa do São Paulo FC com listras
  * verticais vermelho · branco · preto, mangas e gola V pretas, escudo pequeno, cabelo preto curto,
  * barba fina separada do cabelo por uma faixa de pele, bermuda preta, descalço.

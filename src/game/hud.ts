@@ -2,6 +2,7 @@ import type { World } from '../core/types';
 import { AIR_COUNTDOWN, VIEW_H, VIEW_W } from '../core/constants';
 import { PALETTE as P } from '../gfx/palette';
 import { drawText, textWidth } from '../gfx/font';
+import { UBER, uberStars } from './uberRules';
 
 const pad6 = (n: number): string => String(Math.max(0, Math.floor(n))).padStart(6, '0');
 const blink = (t: number, period = 0.5): boolean => Math.floor(t / period) % 2 === 0;
@@ -64,7 +65,29 @@ export function drawHud(ctx: CanvasRenderingContext2D, world: World): void {
     drawText(ctx, pad6(st.score), VIEW_W - 4, 3, { ...o, color: P.w, align: 'right' });
     if (st.scene === 'playing') drawAirAlert(ctx, world);
   }
+  if (world.level.theme === 'uber' && st.scene === 'playing') {
+    // nota atual da corrida: 5 − gotas perdidas (mín. 1), discreta no centro da barra
+    const stars = uberStars(st.rideHits);
+    for (let i = 0; i < UBER.maxStars; i++) drawStar(ctx, 150 + i * 11, 6, 4, i < stars);
+  }
   if (st.dialogue) drawDialogue(ctx, world);
+}
+
+/** Estrela de 5 pontas (centro cx,cy; raio r) preenchida ou só contorno; sem depender de glifo da fonte. */
+function drawStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, filled: boolean): void {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const rr = i % 2 === 0 ? r : r * 0.42;
+    const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = filled ? P.Y : 'rgba(26,20,35,0.35)';
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = filled ? P.k : P.K;
+  ctx.stroke();
 }
 
 /** Contagem regressiva sobre o Pardo + vinheta vermelha pulsante (air <= 1). */
@@ -418,8 +441,12 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
     drawText(ctx, 'O PARDO TOMOU O CAFÉ', 160, py + 128, { color: P.R, align: 'center' });
     drawText(ctx, 'NA TRANSPORTADORA', 160, py + 138, { color: P.R, align: 'center' });
   } else if (uber) {
-    drawText(ctx, 'O PARDO CHEGOU DE UBER', 160, py + 104, { color: P.D, align: 'center' });
-    drawText(ctx, '5 ESTRELAS NA TRANSPORTADORA!', 160, py + 114, { color: P.B, align: 'center' });
+    const stars = uberStars(st.rideHits);
+    const shown = Math.ceil(stars * k);
+    drawText(ctx, 'AVALIAÇÃO DA CORRIDA', 160, py + 88, { color: P.D, align: 'center' });
+    for (let i = 0; i < UBER.maxStars; i++) drawStar(ctx, 160 + (i - 2) * 14, py + 103, 6, i < shown);
+    drawText(ctx, `BÔNUS +${cnt(UBER.starBonus * stars)}`, 160, py + 114, { color: P.B, align: 'center' });
+    drawText(ctx, 'O PARDO CHEGOU DE UBER', 160, py + 126, { color: P.D, align: 'center' });
   } else if (rio) {
     drawText(ctx, 'PARDO SE HIDRATOU', 160, py + 104, { color: P.B, align: 'center' });
     drawText(ctx, 'COM A ÁGUA DO AMARO', 160, py + 114, { color: P.B, align: 'center' });

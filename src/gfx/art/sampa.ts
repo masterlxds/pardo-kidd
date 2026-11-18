@@ -1,7 +1,7 @@
 import type { SpriteArt } from '../artTypes';
 
 /**
- * Arte da Fase 5 — tiles, objetos interativos e decoração da transportadora de São Paulo
+ * Arte da Fase 6 — tiles, objetos interativos e decoração da transportadora de São Paulo
  * em alta resolução (2× o tamanho lógico de src/gfx/spec.ts). Concreto frio + papelão + zebrado.
  */
 export const SAMPA: SpriteArt = {
