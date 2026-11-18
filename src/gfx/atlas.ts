@@ -17,7 +17,15 @@ import { AMARO } from './art/amaro';
 import { ENEMIES4 } from './art/enemies4';
 import { RIO } from './art/rio';
 
-interface Entry { w: number; h: number; frames: number; sheet: HTMLCanvasElement; flipped: HTMLCanvasElement }
+/** `pad` = margem (px reais) em volta de cada quadro na tira, usada pelo halo de contorno. */
+interface Entry { w: number; h: number; frames: number; pad: number; sheet: HTMLCanvasElement; flipped: HTMLCanvasElement }
+
+/**
+ * Halo de 1px real em volta da silhueta: destaca do casario colorido do fundo os sprites que ficam
+ * soltos sobre ele na Fase 4 (inimigos, projéteis e plataformas finas).
+ */
+const HALO_COLOR = '#fff7d6';
+const HALO_SPRITES = new Set<string>([...Object.keys(ENEMIES4), 'platform_scaffold', 'platform_zinc']);
 
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
@@ -47,8 +55,10 @@ export function createAtlas(): SpriteAtlas {
     // Texturas em resolução real (D× o tamanho lógico). Arte autorada em D× é usada direto;
     // arte legada em 1× é ampliada por vizinho mais próximo.
     const W = w * D, H = h * D;
-    const [sheet, sctx] = makeCanvas(W * frames, H);
-    const img = sctx.createImageData(W * frames, H);
+    const pad = HALO_SPRITES.has(name) ? 1 : 0;
+    const FW = W + pad * 2, FH = H + pad * 2; // quadro na tira, com a margem do halo
+    const [sheet, sctx] = makeCanvas(FW * frames, FH);
+    const img = sctx.createImageData(FW * frames, FH);
     const data = art[name];
     for (let f = 0; f < frames; f++) {
       const rows = data?.[f] ?? data?.[0];
@@ -56,7 +66,7 @@ export function createAtlas(): SpriteAtlas {
       for (let y = 0; y < H; y++) {
         const row = rows?.[Math.floor(y / k)] ?? '';
         for (let x = 0; x < W; x++) {
-          const i = (y * W * frames + f * W + x) * 4;
+          const i = ((y + pad) * FW * frames + f * FW + pad + x) * 4;
           if (!rows) {
             const on = ((x >> 3) + (y >> 3)) % 2 === 0;
             img.data[i] = on ? 255 : 60; img.data[i + 1] = 0; img.data[i + 2] = on ? 255 : 60; img.data[i + 3] = 255;
@@ -68,17 +78,33 @@ export function createAtlas(): SpriteAtlas {
         }
       }
     }
+    if (pad) {
+      const [hr, hg, hb] = hexToRgb(HALO_COLOR);
+      const SW = FW * frames, px = img.data;
+      const solid = new Uint8Array(SW * FH);
+      for (let i = 0; i < solid.length; i++) solid[i] = px[i * 4 + 3] ? 1 : 0;
+      for (let y = 0; y < FH; y++) {
+        for (let x = 0; x < SW; x++) {
+          const i = y * SW + x, fx = x % FW;
+          if (solid[i]) continue;
+          // vizinhança-4, sem vazar para o quadro ao lado na tira
+          if ((fx > 0 && solid[i - 1]) || (fx < FW - 1 && solid[i + 1]) || (y > 0 && solid[i - SW]) || (y < FH - 1 && solid[i + SW])) {
+            px[i * 4] = hr; px[i * 4 + 1] = hg; px[i * 4 + 2] = hb; px[i * 4 + 3] = 255;
+          }
+        }
+      }
+    }
     if (!data && import.meta.env.DEV) console.warn(`[atlas] sprite sem arte: ${name}`);
     sctx.putImageData(img, 0, 0);
-    const [flipped, fctx] = makeCanvas(W * frames, H);
+    const [flipped, fctx] = makeCanvas(FW * frames, FH);
     for (let f = 0; f < frames; f++) {
       fctx.save();
-      fctx.translate(f * W + W, 0);
+      fctx.translate(f * FW + FW, 0);
       fctx.scale(-1, 1);
-      fctx.drawImage(sheet, f * W, 0, W, H, 0, 0, W, H);
+      fctx.drawImage(sheet, f * FW, 0, FW, FH, 0, 0, FW, FH);
       fctx.restore();
     }
-    entries.set(name, { w, h, frames, sheet, flipped });
+    entries.set(name, { w, h, frames, pad, sheet, flipped });
   }
 
   const get = (name: string): Entry => {
@@ -92,7 +118,8 @@ export function createAtlas(): SpriteAtlas {
       const e = get(name);
       const f = ((Math.floor(frame) % e.frames) + e.frames) % e.frames;
       // posição alinhada à grade de pixels reais (meio pixel lógico)
-      ctx.drawImage(flipX ? e.flipped : e.sheet, f * e.w * D, 0, e.w * D, e.h * D, Math.round(x * D) / D, Math.round(y * D) / D, e.w, e.h);
+      const fw = e.w * D + e.pad * 2, fh = e.h * D + e.pad * 2, m = e.pad / D;
+      ctx.drawImage(flipX ? e.flipped : e.sheet, f * fw, 0, fw, fh, Math.round(x * D) / D - m, Math.round(y * D) / D - m, fw / D, fh / D);
     },
     has: (name) => entries.has(name),
     size(name) {

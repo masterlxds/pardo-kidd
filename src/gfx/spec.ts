@@ -314,13 +314,13 @@ export const SPRITE_SPEC = {
   // ── Tiles do Rio 16x16 (art/rio.ts)
   /** laje/calçada de concreto cinza sobre topo de tijolo */
   tile_rj_top: [16, 16, 2],
-  /** alvenaria de tijolo baiano aparente */
+  /** alvenaria de tijolo em tom ardósia frio/escuro (contraste contra o casario do fundo) */
   tile_rj_ground: [16, 16, 2],
   /** concreto armado / pedra carioca com grafite/musgo — indestrutível */
   tile_rj_rock: [16, 16, 2],
   /** muro com cacos de vidro coloridos fincados — perigo letal */
   tile_rj_spike: [16, 16, 1],
-  /** mureta de tijolo rachado (quebrável com soco) */
+  /** mureta de bloco de concreto rachado, cinza-claro (quebrável com soco) */
   tile_rj_block: [16, 16, 1],
   /** bloco de tijolo caiado com estrela/sol dourado (guarda item) */
   tile_rj_block_item: [16, 16, 1],

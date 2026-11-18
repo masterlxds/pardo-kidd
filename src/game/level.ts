@@ -56,6 +56,8 @@ export interface LevelDef {
   groundRow?: number;
   /** borda desenhada no topo de Rock exposto (sem sólido acima): [linha clara, linha de musgo] */
   rockEdge?: [string, string];
+  /** contorno (1px) nas laterais/base expostas do terreno sólido: destaca o primeiro plano do cenário */
+  terrainOutline?: string;
   /** cores da sombra de abismo [borda, meio, fundo] */
   pitColors: [string, string, string];
   /** cores da bandeira de checkpoint [não alcançado, alcançado] */
@@ -241,6 +243,12 @@ export function buildLevel(def: LevelDef): Level {
             ctx.fillStyle = def.rockEdge[1];
             ctx.fillRect(px, py + 1, TILE, 1);
           }
+          if (def.terrainOutline && (t === Tile.Ground || t === Tile.GroundTop || t === Tile.Rock)) {
+            ctx.fillStyle = def.terrainOutline;
+            if (tx > 0 && !isSolid(tx - 1, ty)) ctx.fillRect(px, py, 1, TILE);
+            if (tx < cols - 1 && !isSolid(tx + 1, ty)) ctx.fillRect(px + TILE - 1, py, 1, TILE);
+            if (ty < rows - 1 && !isSolid(tx, ty + 1)) ctx.fillRect(px, py + TILE - 1, TILE, 1);
+          }
         }
       }
     },
@@ -408,7 +416,8 @@ export function createLevel4(): Level {
       [Tile.OneWay]: 'tile_rj_oneway',
     },
     tileVariants: [Tile.GroundTop, Tile.Ground, Tile.Rock],
-    pitColors: ['#4a2a1e', '#2e1812', '#1a0e0c'],
+    terrainOutline: '#1a1423',
+    pitColors: ['#2d2c52', '#211f3a', '#141024'],
     flagColors: ['#c9c1a9', '#2ec4b6'],
     marker(ch, { left, top, cx, mover }) {
       switch (ch) {

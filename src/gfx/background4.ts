@@ -424,30 +424,48 @@ function drawKites(ctx: Ctx, camX: number, dySky: number, time: number): void {
 
 // ─── 3. Horizonte Cartão-Postal (0.10x): Cristo, Pão de Açúcar e Baía ────────
 
-/** Silhueta 2× (21×22 px reais) do Cristo Redentor de braços abertos + pedestal no Corcovado. */
+/**
+ * Cristo Redentor 2× (29×36 px reais), nas proporções da estátua real: braços retos na horizontal com
+ * envergadura quase igual à altura (28 m × 30 m), cabeça levemente inclinada, mangas caindo junto ao
+ * corpo, túnica esguia e pedestal quadrado de 8 m. Pedra-sabão clara iluminada pelo sol à direita.
+ */
 const CRISTO_BITMAP: readonly string[] = [
-  '.........MLG.........',
-  '.........DML.........',
-  '.........DML.........',
-  '.GGGGGGGGDMLGGGGGGGG.',
-  'GDDDDDDDDDMLDDDDDDDML',
-  '.DDDMMMMMDMLMMMMMDDM.',
-  '....DDMMMDMLMMMML....',
-  '.......DDDMLML.......',
-  '.......DDDMLML.......',
-  '.......DDMMLML.......',
-  '.......DDMMLML.......',
-  '.......DDMMLML.......',
-  '......DDDMMLMML......',
-  '......DDDMMLMML......',
-  '......DDDMMLMML......',
-  '......DDDMMLMML......',
-  '......DDDMMLMML......',
-  '.....DDDDMMLMMML.....',
-  '....DDDDMMMMMMMLL....',
-  '....DDDDMMMMMMMLL....',
-  '...DDDDDMMMMMMMLLL...',
-  '..DDDDDDMMMMMMMMLLL..',
+  '.............DML.............',
+  '.............DML.............',
+  '.............DMLL............',
+  '.............DML.............',
+  '..............M..............',
+  '.LLLLLLLLLLLLMMLLLLLLLLLLLLL.',
+  'DMMMMMMMMMMMMMMLMMMMMMMMMMMML',
+  '.DDDMMMMMMMMMMMLMMMMMMMMMMMM.',
+  '.....DDDDMMMMMMLMMMMMMML.....',
+  '.........DDDMMMLMMML.........',
+  '...........DDMMLML...........',
+  '............DMMLL............',
+  '............DMMLL............',
+  '............DMMML............',
+  '............DMMML............',
+  '............DMLML............',
+  '............DMLML............',
+  '............DMLML............',
+  '............DDMLL............',
+  '............DDMLL............',
+  '............DDMML............',
+  '............DDMML............',
+  '...........DDMMML............',
+  '...........DDMLMLL...........',
+  '...........DDMLMML...........',
+  '...........DDMLMML...........',
+  '...........DDMMLML...........',
+  '...........DDMMLML...........',
+  '...........DDMMMML...........',
+  '..........qqqqqqppp..........',
+  '...........QQQQqqp...........',
+  '...........QQQQqqp...........',
+  '...........QQQQqqp...........',
+  '...........QQQQqqp...........',
+  '..........QQQQQqqpp..........',
+  '..........QQQQQqqpp..........',
 ];
 
 const BAY_Y = 93;
@@ -553,12 +571,14 @@ function buildHorizon(): Cv {
 
   // Estátua do Cristo Redentor no topo do Corcovado
   const cristoMap: Record<string, number> = {
-    D: mtnDark,
-    M: mtnMid,
-    L: mtnSun,
-    G: mtnGold,
+    L: hex('#fff7e6'), // pedra-sabão ao sol
+    M: hex('#c9bfc9'), // pedra-sabão à meia-luz
+    D: hex('#8e7f9e'), // lado na sombra (lilás do entardecer)
+    p: mtnSun, // pedestal: face iluminada
+    q: mtnMid,
+    Q: mtnDark,
   };
-  const cristoX0 = X(corcCx) - 10;
+  const cristoX0 = X(corcCx) - 14;
   const cristoY0 = Y(45) - CRISTO_BITMAP.length + 2;
   CRISTO_BITMAP.forEach((row, ry) => {
     for (let rx = 0; rx < row.length; rx++) {
