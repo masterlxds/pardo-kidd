@@ -2,7 +2,7 @@ import type { Entity, World } from '../core/types';
 import { LEVEL5_RAMP_COLS } from './level5';
 import {
   UBER,
-  UBER_BARREIRA,
+  UBER_SACO,
   UBER_ISOPOR,
   UBER_OBSTACLES,
   uberRampOffset,
@@ -12,7 +12,7 @@ import {
 
 /**
  * Objetos da Fase 5 — Marginal de São Paulo (dono: agente OBJECTS).
- * Carro da Uber, obstáculos, barreira, isopor, rampa, caminhão-baú, placas de tutorial e desembarque.
+ * Carro da Uber, obstáculos, saco de entulho, isopor, rampa, caminhão-baú, placas de tutorial e desembarque.
  * Números (zonas que ferem, rampa, caminhão) em src/game/uberRules.ts. Design: gdd_bestiario_fase5.md §2, §4, §5.
  * `left` = canto esquerdo da célula do marcador (px de mundo).
  *
@@ -65,39 +65,33 @@ function playerCenterX(world: World): number {
 /**
  * Carro preto da Uber (kind 'uber_car', 64x24). NÃO é plataforma do sistema genérico: o chão do Pardo é
  * calculado por player.ts (UBER.roofY − uberRampOffset). O carro apenas se desenha centrado sob o Pardo,
- * todo passo, em qualquer lugar da fase (game.ts o isenta do culling por distância).
+ * todo passo, em qualquer lugar da fase (game.ts o isenta do culling por distância). Não há direcional:
+ * o carro não acelera nem freia por comando; na cutscene de chegada o CORE move o Pardo e o carro acompanha.
  */
 export function createUberCar(centerX: number): Entity {
-  let lastCamX: number | null = null;
-  /** velocidade estimada da rolagem (px/s), suavizada */
-  let scrollV = 0;
-  /** inclinação visual atual (px, + = nariz para cima) */
-  let tilt = 0;
+  let lastX: number | null = null;
+  /** velocidade estimada do carro no mundo (px/s), suavizada — rola na rolagem e na cutscene de chegada */
+  let carV = 0;
   let rampOff = 0;
   let dustTimer = 0.18;
 
   const e: Entity = {
     ...base('uber_car', centerX - 32, UBER.roofY, 64, 24),
     update(dt, world) {
-      // Velocidade da rolagem = deslocamento da câmera entre passos
-      const camX = world.camera.x;
-      if (lastCamX !== null && dt > 0) {
-        const v = (camX - lastCamX) / dt;
-        scrollV += (v - scrollV) * Math.min(1, dt * 20);
-      }
-      lastCamX = camX;
-
       const cx = playerCenterX(world);
       rampOff = uberRampOffset(cx, RAMP_STARTS_PX);
       e.x = cx - 32;
       e.y = UBER.roofY - rampOff;
 
-      // Inclinação ±2 px: acelera → nariz sobe; freia → nariz desce
-      const rel = world.player.vx - scrollV;
-      const want = clamp((rel / UBER.steer) * 2, -2, 2);
-      tilt += (want - tilt) * Math.min(1, dt * 10);
+      // Velocidade do carro = deslocamento entre passos (rodas giram e soltam poeira enquanto ele anda)
+      if (lastX !== null && dt > 0) {
+        const v = (e.x - lastX) / dt;
+        carV += (v - carV) * Math.min(1, dt * 20);
+      }
+      lastX = e.x;
 
-      const rolling = scrollV > 1 && world.state.scene === 'playing';
+      const scene = world.state.scene;
+      const rolling = carV > 1 && (scene === 'playing' || scene === 'winning');
       if (rolling && rampOff <= 0) {
         dustTimer -= dt;
         if (dustTimer <= 0) {
@@ -112,8 +106,10 @@ export function createUberCar(centerX: number): Entity {
     },
     draw(ctx, world) {
       const rx = Math.round(e.x);
-      const ry = Math.round(e.y);
-      const rolling = scrollV > 1 && world.state.scene === 'playing';
+      const rolling = carV > 1;
+      // Balanço sutil de suspensão (1 px) enquanto roda no asfalto
+      const bounce = rolling && rampOff <= 0 ? Math.floor(world.time * 8) & 1 : 0;
+      const ry = Math.round(e.y) - bounce;
 
       ctx.save();
 
@@ -125,7 +121,7 @@ export function createUberCar(centerX: number): Entity {
 
       // Cone de luz dos faróis à frente (44 px)
       const hx = rx + e.w - 2;
-      const hy = ry + 11 - Math.round(tilt);
+      const hy = ry + 11;
       const grad = ctx.createLinearGradient(hx, hy, hx + 44, hy);
       grad.addColorStop(0, 'rgba(255, 230, 130, 0.22)');
       grad.addColorStop(1, 'rgba(255, 230, 130, 0)');
@@ -138,18 +134,10 @@ export function createUberCar(centerX: number): Entity {
       ctx.closePath();
       ctx.fill();
 
-      // Lanterna traseira (mais forte ao frear)
-      const brake = tilt < -0.5;
-      ctx.fillStyle = brake ? 'rgba(255, 60, 60, 0.45)' : 'rgba(230, 50, 50, 0.25)';
-      ctx.fillRect(rx - 6, ry + 10 + Math.round(tilt), 6, 5);
+      // Lanterna traseira (acende forte quando o carro está parado: chegada)
+      ctx.fillStyle = rolling ? 'rgba(230, 50, 50, 0.25)' : 'rgba(255, 60, 60, 0.45)';
+      ctx.fillRect(rx - 6, ry + 10, 6, 5);
 
-      // Carro com cisalhamento vertical em torno do centro: ±2 px nas pontas
-      const k = -tilt / 32;
-      const pivX = rx + 32;
-      const pivY = ry + 24;
-      ctx.translate(pivX, pivY);
-      ctx.transform(1, k, 0, 1, 0, 0);
-      ctx.translate(-pivX, -pivY);
       const frame = rolling ? Math.floor(world.time * 18) % 2 : 0;
       world.sprites.draw(ctx, 'uber_car', frame, rx, ry);
 
@@ -224,14 +212,20 @@ export function createObstaculo(tipo: UberObstacleKind, left: number): Entity {
   return e;
 }
 
-/** B — barreira da CET: fere ao toque, quebra com 1 soco (+50). */
-export function createBarreira(left: number): Entity {
-  const z = zoneRect(UBER_BARREIRA, left);
-  /** > 0: rachada, mostrando o frame do golpe antes de sumir */
+/**
+ * B — saco de entulho pendurado num guincho de obra (kind 'saco_entulho'): fere ao toque, estoura com 1 soco (+50).
+ * Sprite 16x24: 8 px de cima = gancho/corrente, 16 px de baixo = saco, que coincide com a zona UBER_SACO.
+ * O cabo do guincho desce do topo da tela até o gancho, com balanço de 1 px (só no desenho; a zona não se move).
+ */
+export function createSaco(left: number): Entity {
+  const z = zoneRect(UBER_SACO, left);
+  const spriteTop = z.y - 8;
+  const phase = (hashCol(Math.floor(left / T)) % 628) / 100;
+  /** > 0: estourando, mostrando o frame do golpe antes de sumir */
   let breaking = 0;
 
   const e: Entity = {
-    ...base('barreira_cet', z.x, z.y, z.w, z.h),
+    ...base('saco_entulho', z.x, z.y, z.w, z.h),
     update(dt) {
       if (breaking > 0) {
         breaking -= dt;
@@ -239,7 +233,15 @@ export function createBarreira(left: number): Entity {
       }
     },
     draw(ctx, world) {
-      world.sprites.draw(ctx, 'barreira_cet', breaking > 0 ? 1 : 0, left, z.y + z.h - 16);
+      const sway = breaking > 0 ? 0 : Math.round(Math.sin(world.time * 2.2 + phase));
+      const sx = left + sway;
+      // Cabo de aço do guincho: do topo da tela até o topo do sprite (gancho)
+      const top = world.camera.y - 2;
+      ctx.fillStyle = '#8a8f9a';
+      ctx.fillRect(sx + 7, top, 1, spriteTop - top + 1);
+      ctx.fillStyle = '#5a5f6a';
+      ctx.fillRect(sx + 8, top, 1, spriteTop - top + 1);
+      world.sprites.draw(ctx, 'saco_entulho', breaking > 0 ? 1 : 0, sx, spriteTop);
     },
     onTouchPlayer(world) {
       if (breaking > 0) return;
@@ -390,7 +392,12 @@ export function createTutorialSign(left: number, frame: number): Entity {
   return e;
 }
 
-/** A — desembarque VIP 5★ (kind 'uber_goal'): toque → world.win(). footY = y do asfalto (160). */
+/**
+ * A — desembarque VIP 5★ (kind 'uber_goal'): toque → world.win(). footY = y do asfalto (160).
+ * Parado; `e.x + e.w/2` = centro do totem (game.ts depende disso para a cutscene de chegada).
+ * A garrafa d'água de cortesia fica no alto do totem, brilhando: a chegada lê como "o carro chegou na água".
+ * Ela some do totem quando o Pardo começa a beber (fase 'sip'/'done').
+ */
 export function createUberGoal(centerX: number, footY: number): Entity {
   const HW = 22;
   const HH = 32;
@@ -398,6 +405,10 @@ export function createUberGoal(centerX: number, footY: number): Entity {
   let delivered = false;
   let idleSparkleTimer = 0.9;
   let winSparkleTimer = 0;
+  /** garrafa de água (mineral_bottle 8x14) apoiada numa bandeja no alto do totem */
+  const BW = 8;
+  const BH = 14;
+  const BOTTLE_Y = footY - 40 - BH - 2;
 
   const e: Entity = {
     ...base('uber_goal', centerX - HW / 2, footY - HH, HW, HH),
@@ -408,7 +419,7 @@ export function createUberGoal(centerX: number, footY: number): Entity {
         idleSparkleTimer -= dt;
         if (idleSparkleTimer <= 0) {
           idleSparkleTimer = 0.9;
-          world.fx('sparkle', centerX + (Math.random() - 0.5) * 16, footY - 28);
+          world.fx('sparkle', centerX + (Math.random() - 0.5) * 12, BOTTLE_Y + 4 + (Math.random() - 0.5) * 8);
         }
         return;
       }
@@ -431,17 +442,47 @@ export function createUberGoal(centerX: number, footY: number): Entity {
     },
     draw(ctx, world) {
       const t = world.time;
+      const pulse = Math.sin(t * 4);
 
       // Halo dourado pulsante atrás do totem
       ctx.save();
-      ctx.globalAlpha = 0.16 + 0.07 * Math.sin(t * 4);
+      ctx.globalAlpha = 0.16 + 0.07 * pulse;
       ctx.fillStyle = '#fff4a0';
       ctx.beginPath();
-      ctx.arc(centerX, footY - 20, 18 + Math.sin(t * 4) * 1.5, 0, Math.PI * 2);
+      ctx.arc(centerX, footY - 20, 18 + pulse * 1.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
 
       world.sprites.draw(ctx, 'uber_goal', Math.floor(t * 3) & 1, Math.round(centerX - 16), footY - 40);
+
+      const stage = drinkStage(world);
+      const taken = won && (stage === 'sip' || stage === 'done');
+      if (taken) return;
+
+      // Bandeja de cortesia no topo do totem
+      const bx = Math.round(centerX - BW / 2);
+      ctx.fillStyle = '#c8ccd6';
+      ctx.fillRect(bx - 3, BOTTLE_Y + BH, BW + 6, 2);
+      ctx.fillStyle = '#5a5f6a';
+      ctx.fillRect(bx - 3, BOTTLE_Y + BH + 2, BW + 6, 1);
+
+      // Brilho azul-claro em volta da garrafa (água gelada) + raios em cruz piscando
+      ctx.save();
+      ctx.globalAlpha = 0.28 + 0.12 * pulse;
+      ctx.fillStyle = '#bff4ff';
+      ctx.beginPath();
+      ctx.arc(centerX, BOTTLE_Y + BH / 2, 11 + pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.55 + 0.25 * pulse;
+      ctx.fillStyle = '#ffffff';
+      const ray = 4 + Math.round(2 + 2 * pulse);
+      ctx.fillRect(Math.round(centerX), BOTTLE_Y - ray - 1, 1, ray);
+      ctx.fillRect(Math.round(centerX), BOTTLE_Y + BH + 4, 1, Math.max(1, ray - 3));
+      ctx.fillRect(bx - ray - 2, BOTTLE_Y + 5, ray, 1);
+      ctx.fillRect(bx + BW + 2, BOTTLE_Y + 5, ray, 1);
+      ctx.restore();
+
+      world.sprites.draw(ctx, 'mineral_bottle', Math.floor(t * 4) & 1, bx, BOTTLE_Y);
     },
     onTouchPlayer(world) {
       if (won) return;

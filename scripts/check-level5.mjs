@@ -10,26 +10,29 @@
  * Importa `level5.ts` e `uberRules.ts` DIRETO (ambos sem imports; o Node faz type stripping), então
  * nenhum número da fase é duplicado aqui. Só o Pardo é portado à mão (PHYS/FEEL/punchBox, abaixo).
  *
- * MODELO DO BOT (60 Hz, Pardo na posição neutra, sem direcional):
+ * MODELO DO BOT (60 Hz; o centro do Pardo fica fixo em x de tela = UBER.screenNeutral — a fase não tem direcional):
  *  - quadro f: centro do Pardo em x = 72 + 2f, câmera em x = 2f; chão = UBER.roofY − uberRampOffset;
  *  - pulo: vy = −jumpVel no quadro do aperto, corte ×jumpCut ao soltar subindo, gravidade e maxFall de PHYS;
  *    não decola nos 9 primeiros quadros do soco (preparo + ativo), decola na recuperação cancelando o soco;
  *    coyote e buffer de pulo NÃO são usados (o bot é mais conservador que o jogo);
  *  - soco: 14 quadros no total, caixa ativa nos quadros 3..8 depois do aperto (20×12 em x+w−2, y+4);
  *  - por quadro, como em game.ts: primeiro os socos (alvo acertado some; pichador socado leva o spray junto),
- *    depois os toques (zona de obstáculo, inimigo, barreira ou spray = dano);
+ *    depois os toques (zona de obstáculo, inimigo, saco de entulho ou spray = dano);
+ *  - motoboys e patinetes rodam no asfalto e SALTAM no encontro: a base da hitbox vem de `uberEnemyBottom`
+ *    a cada quadro (fora do salto ficam abaixo do teto do carro, fora do alcance do soco e do Pardo);
  *  - a busca é uma DP sobre (quadro, quadros no ar, quadro em que soltou o pulo, relógio do soco, alvos
  *    próximos já socados), para a frente (alcançável sem dano) e para trás (ainda fecha a fase sem dano),
  *    em janelas de 96 quadros.
- * Não simulado: a frenagem dos 3 últimos compassos (por isso moedas ali só na linha 8) e o direcional.
+ * Não simulado: a frenagem (UBER.stopBars) e a cutscene de chegada — por isso os 3 últimos compassos não têm
+ * ameaça e as moedas ali ficam só na linha 8.
  */
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import * as RULES from '../src/game/uberRules.ts';
 
 const {
-  UBER, UBER_BANDS, UBER_OBSTACLES, UBER_BARREIRA, UBER_ISOPOR, UBER_ENEMIES, UBER_DRONE, UBER_PICHADOR,
-  uberEnemyX, uberDronePos, uberRampOffset,
+  UBER, UBER_BANDS, UBER_OBSTACLES, UBER_SACO, UBER_ISOPOR, UBER_ENEMIES, UBER_DRONE, UBER_PICHADOR,
+  uberEnemyX, uberEnemyBottom, uberDronePos, uberRampOffset,
 } = RULES;
 
 const levelUrl = process.env.LEVEL5_FILE
@@ -332,11 +335,12 @@ function buildEntities(all) {
       const z = UBER_OBSTACLES[OBST_KIND[m.ch]];
       ents.push({ ...base, encX: left + z.dx + z.w / 2, boxes: () => [[left + z.dx, z.y, z.w, z.h]] });
     } else if (m.ch === 'B' || m.ch === 'W') {
-      const z = m.ch === 'B' ? UBER_BARREIRA : UBER_ISOPOR;
+      const z = m.ch === 'B' ? UBER_SACO : UBER_ISOPOR;
       ents.push({ ...base, harmful: m.ch === 'B', punchable: true, encX: left + z.dx + z.w / 2, boxes: () => [[left + z.dx, z.y, z.w, z.h]] });
     } else if (LINEAR_KIND[m.ch]) {
-      const k = UBER_ENEMIES[LINEAR_KIND[m.ch]];
-      ents.push({ ...base, punchable: true, encX: mid, boxes: (f) => [[uberEnemyX(mid, k.v, cameraAt(f)) - k.w / 2, k.bottom - k.h, k.w, k.h]] });
+      const kind = LINEAR_KIND[m.ch];
+      const k = UBER_ENEMIES[kind];
+      ents.push({ ...base, punchable: true, encX: mid, boxes: (f) => { const cam = cameraAt(f); return [[uberEnemyX(mid, k.v, cam) - k.w / 2, uberEnemyBottom(kind, mid, cam) - k.h, k.w, k.h]]; } });
     } else if (m.ch === 'u') {
       const D = UBER_DRONE;
       ents.push({ ...base, punchable: true, encX: mid, boxes: (f) => { const p = uberDronePos(mid, cameraAt(f)); return [[p.cx - D.w / 2, p.cy - D.h / 2, D.w, D.h]]; } });
@@ -364,19 +368,11 @@ const pack = (k, h, p, mask, air) => k | (h << K_BITS) | (p << (K_BITS + H_BITS)
 
 /**
  * @param ents entidades de buildEntities
- * @param opt { jumpScale, steer } — steer ≠ 0 desloca cada entidade por steer × (tempo até o encontro):
- *        a aproximação passa a ser (120 + steer) px/s mantendo o encontro no mesmo instante.
+ * @param opt { jumpScale } — fração do pulo (passada 1 usa 0,95)
  */
 function makeSim(ents, coins, opt) {
   const jumpVel = PHYS.jumpVel * (opt.jumpScale ?? 1);
-  const steer = opt.steer ?? 0;
-  const shift = (e, f) => (steer * (e.fEnc - f)) / HZ;
-  const boxesAt = (e, f) => {
-    const bs = e.boxes(f);
-    if (steer === 0) return bs;
-    const s = shift(e, f);
-    return bs.map((b) => [b[0] + s, b[1], b[2], b[3]]);
-  };
+  const boxesAt = (e, f) => e.boxes(f);
 
   // faixa de quadros em que a entidade pode tocar o Pardo ou ser alcançada pelo soco
   const act = Array.from({ length: NFRAMES + 2 }, () => []);
@@ -673,7 +669,7 @@ if (st) {
   const fw2 = sim2.forward();
   for (const x of fw2.fails) err(`passada 2 (envelope real): dano inevitável em ${describeFail(x)}`);
   const an2 = sim2.analyze(fw2);
-  coins.forEach((c, i) => { if (!an2.coinOk[i]) err(`passada 2: moeda de ${pos(c.col)} (linha ${c.row}) não é coletável sem direcional e sem dano`); });
+  coins.forEach((c, i) => { if (!an2.coinOk[i]) err(`passada 2: moeda de ${pos(c.col)} (linha ${c.row}) não é coletável sem dano`); });
   const rows = [];
   let minPunch = null, minTake = null;
   for (const e of ents) {
@@ -699,24 +695,14 @@ if (st) {
     rows.push(row);
   }
 
-  // Passada 3 — robustez (só avisa): aproximação de 80 e de 160 px/s
-  const robust = [];
-  for (const s of [-UBER.steer, UBER.steer]) {
-    const fw3 = makeSim(ents, coins, { steer: s }).forward();
-    for (const x of fw3.fails) {
-      const msg = `robustez (aproximação de ${UBER.speed + s} px/s): sem solução em ${describeFail(x)}`;
-      warn(msg);
-      robust.push({ speed: UBER.speed + s, bar: frameBar(x.f) });
-    }
-  }
-  report = { ents, coins, rows, path, minPunch, minTake, robust, maxStates: Math.max(fw1.maxStates, fw2.maxStates) };
+  report = { ents, coins, rows, path, minPunch, minTake, maxStates: Math.max(fw1.maxStates, fw2.maxStates) };
 }
 
 // ── --print ─────────────────────────────────────────────────────────────────────────────────────────────────
 if (PRINT && report) {
   const { ents, rows, path } = report;
   const win = (w) => (w ? (w[0] ? `${String(w[0]).padStart(2)}q` : ' —') : '   ');
-  console.log('PARTITURA — encontro na posição neutra · resposta · janelas (quadros de 1/60 s)');
+  console.log('PARTITURA — encontro · resposta · janelas (quadros de 1/60 s)');
   console.log('compasso   encontro  marc.  soco  decol.  resposta');
   let lastBar = 0;
   for (const r of rows) {
@@ -764,5 +750,5 @@ if (errors.length) {
   console.error(`level5 FALHOU (${errors.length} erro${errors.length > 1 ? 's' : ''})`);
   process.exit(1);
 }
-console.log(`passada 1 (pulo a 95 %): fecha sem dano · passada 2 (envelope real): moedas, alvos e R10 conferidos · passada 3: ${warnings.length} aviso(s)`);
+console.log(`passada 1 (pulo a 95 %): fecha sem dano · passada 2 (envelope real): moedas, alvos e R10 conferidos`);
 console.log('level5 OK');

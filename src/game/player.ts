@@ -1,6 +1,6 @@
 import type { Entity, Player, PlayerState, Rect, World } from '../core/types';
 import { Tile } from '../core/types';
-import { PHYS, PLAYER_H, PLAYER_W, SWIM, TILE, SWIM_CEILING, VIEW_W } from '../core/constants';
+import { PHYS, PLAYER_H, PLAYER_W, SWIM, TILE, SWIM_CEILING } from '../core/constants';
 import { UBER, uberRampOffset } from './uberRules';
 import { LEVEL5_RAMP_COLS } from './level5';
 import { moveBody } from '../core/physics';
@@ -84,11 +84,18 @@ export const SWIM_FEEL = {
 } as const;
 
 /**
- * Autoscroller (Fase 5, `level.autoscroll`): aceleração do direcional relativa à rolagem (px/s²) e
- * caminhada livre quando a rolagem para no desembarque (px/s; o Pardo vai até o totem).
+ * Cutscene de chegada da Fase 5 (rolagem parada): o carro (= o Pardo no teto) acelera a ARRIVE_ACCEL até
+ * UBER.arriveSpeed, freia a ARRIVE_BRAKE até parar no alvo, buzina, espera ARRIVE_PARK s e o Pardo desce do
+ * teto num pulinho (impulso ARRIVE_HOP_VY) até o chão do totem. ARRIVE_WIN_FALLBACK: se o toque no totem não
+ * disparar a vitória depois do pouso, game.ts chama world.win() após esse tempo.
  */
-const RIDE_ACCEL = 600;
-const RIDE_FREE_WALK = 80;
+const ARRIVE_ACCEL = 120;
+const ARRIVE_BRAKE = 120;
+const ARRIVE_PARK = 0.45;
+const ARRIVE_HOP_VY = 180;
+export const ARRIVE_WIN_FALLBACK = 0.3;
+/** Etapas da cutscene de chegada (Fase 5); 'none' = jogo normal. */
+export type ArrivePhase = 'none' | 'drive' | 'park' | 'hop' | 'landed';
 /** tranco vertical ao levar dano em cima do carro (só se estiver no teto) */
 const RIDE_HURT_VY = 90;
 /** Início (px, borda esquerda) de cada rampa `J` da Fase 5. */
@@ -168,8 +175,17 @@ export class PardoPlayer implements Player {
   private strokeT = 99;
   /** próxima bolhinha do snorkel */
   private bubbleT = 1;
-  /** autoscroller: velocidade horizontal RELATIVA à rolagem (vx = rolagem + rideVx) */
-  private rideVx = 0;
+  /** Fase 5: etapa da cutscene de chegada (sem controle, invulnerável) */
+  private arrive: ArrivePhase = 'none';
+  private arriveT = 0;
+  private arriveV = 0;
+  /** centro do Pardo em que o carro estaciona */
+  private arriveX = 0;
+  /** centro do Pardo ao pousar ao lado do totem */
+  private dismountX = 0;
+  private dismountY = 0;
+  /** chão (y) depois de descer do teto do carro; null = teto do carro (rideFloorY) */
+  private dismountFloor: number | null = null;
 
   constructor(x: number, y: number) {
     this.respawn(x, y);
@@ -203,7 +219,10 @@ export class PardoPlayer implements Player {
     this.strokeCd = 0;
     this.strokeT = 99;
     this.bubbleT = 1;
-    this.rideVx = 0;
+    this.arrive = 'none';
+    this.arriveT = 0;
+    this.arriveV = 0;
+    this.dismountFloor = null;
   }
 
   /** Fase da sequência de vitória (lida pelo alien para esconder a mamadeira da mão). */
@@ -215,9 +234,44 @@ export class PardoPlayer implements Player {
     return this.x + this.w / 2;
   }
 
+  /** Fase 5: etapa da cutscene de chegada ('none' fora dela). */
+  get arrivePhase(): ArrivePhase {
+    return this.arrive;
+  }
+
+  /** Fase 5: segundos na etapa atual da cutscene de chegada. */
+  get arriveTime(): number {
+    return this.arriveT;
+  }
+
+  /** Fase 5: o carro estacionou e o Pardo desceu (game.ts para de reposicionar o carro sob ele). */
+  get carParked(): boolean {
+    return this.arrive === 'hop' || this.arrive === 'landed';
+  }
+
+  /**
+   * Fase 5 — inicia a cutscene de chegada (chamada por game.ts quando a rolagem para): o carro leva o Pardo
+   * até o centro `stopX`; ele então desce do teto e pousa com o centro em `dismountX` sobre o chão `footY`.
+   * Sem efeito se já estiver na cutscene, morto ou bebendo.
+   */
+  beginArrival(stopX: number, dismountX: number, footY: number): void {
+    if (this.arrive !== 'none' || this.dead || this.state === 'drink') return;
+    this.arrive = 'drive';
+    this.arriveT = 0;
+    this.arriveV = 0;
+    this.arriveX = Math.max(stopX, this.centerX);
+    this.dismountX = dismountX;
+    this.dismountY = footY;
+    this.punchT = 0;
+    this.hurtT = 0;
+    this.bufferT = 0;
+    this.jumping = false;
+    this.facing = 1;
+  }
+
   // ── API de Player ──────────────────────────────────────────────────────────
   hurt(world: World, sourceX: number, amount = 1): void {
-    if (this.dead || this.invuln > 0 || this.state === 'drink' || world.state.scene !== 'playing') return;
+    if (this.dead || this.invuln > 0 || this.state === 'drink' || this.arrive !== 'none' || world.state.scene !== 'playing') return;
     const st = world.state;
     st.hydration = Math.max(0, st.hydration - amount);
     if (world.level.autoscroll) st.rideHits++;
@@ -264,7 +318,7 @@ export class PardoPlayer implements Player {
 
   /** Morte imediata. waterY (opcional) = superfície da água → afunda com splash em vez do salto de morte. */
   kill(world: World, waterY?: number): void {
-    if (this.dead || this.state === 'drink') return;
+    if (this.dead || this.state === 'drink' || this.arrive !== 'none') return;
     this.dead = true;
     this.vx = 0;
     this.onGround = false;
@@ -385,7 +439,8 @@ export class PardoPlayer implements Player {
     }
 
     if (world.level.autoscroll) {
-      this.updateRide(dt, world, input);
+      if (this.arrive !== 'none') this.updateArrive(dt, world);
+      else this.updateRide(dt, world, input);
       return;
     }
 
@@ -473,15 +528,11 @@ export class PardoPlayer implements Player {
   }
 
   /**
-   * Autoscroller (Fase 5): o Pardo anda com o carro. vx = rolagem atual + rideVx (direcional ±UBER.steer,
-   * aceleração suave, também no ar); centro preso em camera.x + [screenMin, screenMax]; olha sempre para a frente.
-   * Pulo e soco idênticos às outras fases. Chão = teto do carro (rideFloorY), sem colisão com tiles.
+   * Autoscroller (Fase 5): SEM DIRECIONAL — o carro não se move na horizontal e o centro do Pardo fica
+   * EXATAMENTE em camera.x + UBER.screenNeutral em todo passo (vx = rolagem atual). Pulo e soco idênticos às
+   * outras fases, sempre para a frente. Chão = teto do carro (rideFloorY), sem colisão com tiles.
    */
   private updateRide(dt: number, world: World, input: Input): void {
-    const scroll = rideScroll(world);
-    // rolagem parada no desembarque: caminha livre até o totem
-    const free = scroll <= 0;
-    const dirIn = (input.down('right') ? 1 : 0) - (input.down('left') ? 1 : 0);
     this.facing = 1;
 
     // timers
@@ -503,16 +554,6 @@ export class PardoPlayer implements Player {
     }
     const lockedPunch = this.punchT > 0 && !punchRecovery;
 
-    // horizontal, relativo à rolagem
-    if (inHurt) {
-      this.rideVx = approach(this.rideVx, 0, RIDE_ACCEL * dt);
-    } else if (this.punchT > 0) {
-      if (this.onGround) this.rideVx = approach(this.rideVx, 0, FEEL.groundFriction * 2 * dt); // trava no teto
-      // no ar mantém a inércia
-    } else {
-      this.rideVx = approach(this.rideVx, dirIn * (free ? RIDE_FREE_WALK : UBER.steer), RIDE_ACCEL * dt);
-    }
-
     // pulo (permitido também na recuperação do soco)
     if (!inHurt && !lockedPunch && this.bufferT > 0 && (this.onGround || this.coyoteT > 0)) {
       this.vy = -PHYS.jumpVel;
@@ -531,37 +572,99 @@ export class PardoPlayer implements Player {
     }
     if (this.vy >= 0) this.jumping = false;
 
-    // move e prende o centro na faixa da tela
-    this.vx = scroll + this.rideVx;
-    this.x += this.vx * dt;
-    const camX = world.camera.x;
-    const minC = camX + UBER.screenMin;
-    const maxC = camX + (free ? VIEW_W - 24 : UBER.screenMax);
-    if (this.centerX < minC) {
-      this.x = minC - this.w / 2;
-      if (this.rideVx < 0) this.rideVx = 0;
-    } else if (this.centerX > maxC) {
-      this.x = maxC - this.w / 2;
-      if (this.rideVx > 0) this.rideVx = 0;
-    }
-    this.vx = scroll + this.rideVx;
+    // centro preso na posição neutra da tela (a câmera já avançou neste passo)
+    this.vx = rideScroll(world);
+    this.x = world.camera.x + UBER.screenNeutral - this.w / 2;
 
     this.rideVertical(dt, world);
 
-    // estado
+    // estado (vx relativo ao carro = 0: em pé no teto)
     if (this.state === 'hurt' && !inHurt && this.hurtT === 0) this.setState(this.onGround ? 'idle' : 'fall');
-    if (this.state === 'punch' && this.punchT === 0) this.setState(this.locomotionState(this.vx - this.rideVx));
+    if (this.state === 'punch' && this.punchT === 0) this.setState(this.locomotionState(this.vx));
     if (this.state !== 'hurt' && this.state !== 'punch') {
-      const next = this.locomotionState(this.vx - this.rideVx);
+      const next = this.locomotionState(this.vx);
       if (next !== this.state) this.setState(next);
     }
+  }
+
+  /**
+   * Cutscene de chegada (Fase 5, câmera parada): sem controle e invulnerável. 'drive': o carro (que se
+   * centraliza sob o Pardo) acelera até UBER.arriveSpeed e freia até o centro arriveX (se o Pardo estava no ar,
+   * termina de cair no teto); 'park': buzina e pausa curta; 'hop': pulinho do teto até (dismountX, dismountY);
+   * 'landed': em pé ao lado do totem — o toque no `uber_goal` dispara world.win() (ou game.ts, após
+   * ARRIVE_WIN_FALLBACK s), e a sequência de beber 'mineral' assume.
+   */
+  private updateArrive(dt: number, world: World): void {
+    this.arriveT += dt;
+    this.facing = 1;
+    this.punchT = 0;
+    this.hurtT = 0;
+    switch (this.arrive) {
+      case 'drive': {
+        const rest = this.arriveX - this.centerX;
+        this.arriveV = Math.max(
+          0,
+          Math.min(UBER.arriveSpeed, this.arriveV + ARRIVE_ACCEL * dt, Math.sqrt(2 * ARRIVE_BRAKE * Math.max(0, rest))),
+        );
+        this.x += this.arriveV * dt;
+        if (this.centerX >= this.arriveX - 0.5) {
+          this.x = this.arriveX - this.w / 2;
+          this.arriveV = 0;
+        }
+        this.vx = this.arriveV;
+        this.rideVertical(dt, world);
+        if (this.arriveV === 0 && this.onGround) {
+          this.arrive = 'park';
+          this.arriveT = 0;
+          world.audio.play('horn');
+        }
+        break;
+      }
+      case 'park':
+        this.vx = 0;
+        this.rideVertical(dt, world);
+        if (this.arriveT >= ARRIVE_PARK && this.onGround) {
+          // pulinho até o chão do totem: tempo de voo do teto (y0) até dismountY com impulso ARRIVE_HOP_VY
+          const drop = this.dismountY - (this.y + this.h);
+          const g = PHYS.gravity;
+          const t = (ARRIVE_HOP_VY + Math.sqrt(ARRIVE_HOP_VY * ARRIVE_HOP_VY + 2 * g * Math.max(0, drop))) / g;
+          this.dismountFloor = this.dismountY;
+          this.vx = (this.dismountX - this.centerX) / t;
+          this.vy = -ARRIVE_HOP_VY;
+          this.onGround = false;
+          this.arrive = 'hop';
+          this.arriveT = 0;
+          world.audio.play('jump');
+          world.fx('dust', this.centerX, this.y + this.h - 2, -1);
+        }
+        break;
+      case 'hop':
+        this.x += this.vx * dt;
+        this.rideVertical(dt, world);
+        if (this.onGround) {
+          this.x = this.dismountX - this.w / 2;
+          this.vx = 0;
+          this.arrive = 'landed';
+          this.arriveT = 0;
+        }
+        break;
+      case 'landed':
+        this.vx = 0;
+        this.rideVertical(dt, world);
+        break;
+      case 'none':
+        break;
+    }
+    const next = this.onGround ? 'idle' : this.vy < 0 ? 'jump' : 'fall';
+    if (next !== this.state) this.setState(next);
   }
 
   /** Vertical no autoscroller: grudado no teto do carro (rampas incluídas) ou em queda até pousar nele. */
   private rideVertical(dt: number, world: World): void {
     const wasGround = this.onGround;
     const fallSpeed = this.vy;
-    const floor = rideFloorY(this.centerX);
+    // depois de descer do teto (chegada), o chão é o do totem
+    const floor = this.dismountFloor ?? rideFloorY(this.centerX);
     this.standingOn = null;
     if (this.onGround) {
       // sem quicar na descida da rampa
@@ -803,8 +906,7 @@ export class PardoPlayer implements Player {
       }
     }
     if (ride) {
-      // autoscroller: continua no teto do carro (sem colisão com tiles)
-      this.rideVx = 0;
+      // autoscroller: no teto do carro ou, depois da chegada, no chão do totem (sem colisão com tiles)
       this.x += this.vx * dt;
       this.rideVertical(dt, world);
     } else {
@@ -869,7 +971,7 @@ export class PardoPlayer implements Player {
         break;
       case 'run': {
         name = 'pardo_run';
-        const runVx = Math.abs(world.level.autoscroll ? this.rideVx : this.vx);
+        const runVx = Math.abs(this.vx);
         frame = Math.floor(this.animT * (6 + runVx / 16));
         break;
       }

@@ -21,7 +21,7 @@ import { createBebedouro, createMaiaGoal } from './objects6';
 import { LEVEL5_ROWS } from './level5';
 import { createCaixa, createUberEnemy } from './enemies5';
 import {
-  createBarreira, createIsopor, createObstaculo, createRampa, createTruckBau, createTutorialSign, createUberCar, createUberGoal,
+  createIsopor, createObstaculo, createRampa, createSaco, createTruckBau, createTutorialSign, createUberCar, createUberGoal,
 } from './objects5';
 import { UBER } from './uberRules';
 
@@ -110,6 +110,8 @@ export function buildLevel(def: LevelDef): Level {
         if (def.dropBlockChars.includes(ch)) waterBlocks.add(y * cols + x);
       } else if (ch in def.decor) decor.push({ ch, col: x, row: y });
       else if (ch !== '.') markers.push({ ch, col: x, row: y });
+      // Autoscroller (Fase 5): marcador/decoração na ÚLTIMA linha (mureta) fica sobre chão, não sobre buraco
+      if (def.autoscroll && y === rows - 1 && t === undefined && ch !== '.') original[y * cols + x] = Tile.Ground;
     }
   }
   grid.set(original);
@@ -506,7 +508,7 @@ export function createLevel5(): Level {
         case 'F': return createObstaculo('faixa', left);
         case 'G': return createObstaculo('placa', left);
         case 'i': return createObstaculo('luminaria', left);
-        case 'B': return createBarreira(left);
+        case 'B': return createSaco(left);
         case 'W': return createIsopor(left);
         case 'y': return createUberEnemy('motoboy', cx);
         case 'Y': return createUberEnemy('motoboy_fast', cx);

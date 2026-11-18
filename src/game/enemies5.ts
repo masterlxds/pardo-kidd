@@ -1,21 +1,26 @@
 import type { Entity, World } from '../core/types';
 import { VIEW_W } from '../core/constants';
+import { LEVEL5_RAMP_COLS } from './level5';
 import {
   UBER,
   UBER_DRONE,
   UBER_ENEMIES,
   UBER_PICHADOR,
   uberDronePos,
+  uberEnemyBottom,
+  uberEnemyHopping,
   uberEnemyX,
+  uberRampOffset,
   type UberDronePhase,
   type UberLinearKind,
 } from './uberRules';
 
 /**
  * Inimigos da Fase 5 — Marginal de São Paulo (dono: agente ENEMY).
- * Todos morrem com 1 soco e têm posição em função PURA de `world.camera.x` (src/game/uberRules.ts):
+ * Todos morrem com 1 soco e têm posição (x e y) em função PURA de `world.camera.x` (src/game/uberRules.ts):
  * nenhum guarda estado que mude a trajetória. O único estado é vivo/arremessado e timers cosméticos
- * (som de entrada, bip do drone, giro do arremesso). Design: level-5-refs/gdd_bestiario_fase5.md §1 e §3.
+ * (som de entrada, bip do drone, poeira da decolagem, giro do arremesso). Motoboys e patinetes rodam no
+ * ASFALTO e saltam ao chegar perto (uberEnemyBottom); só cruzam o x do carro já no ar. Design: level-5-refs/gdd_bestiario_fase5.md §1 e §3.
  *
  * game.ts já toca 'hit' e `fx('impact')` quando `onPunch` retorna true; aqui só entram os pontos
  * e os efeitos próprios (caixa: 'crate' + 'debris').
@@ -101,14 +106,44 @@ function placeX(e: Entity, cx: number, world: World): void {
 const onScreen = (e: Entity, world: World): boolean =>
   e.x < world.camera.x + VIEW_W && e.x + e.w > world.camera.x;
 
-// ── Trajetória reta: motoboy, motoboy rápido, patinete ───────────────────────────────
+// ── Trajetória reta no asfalto + salto: motoboy, motoboy rápido, patinete ─────────────
+/** Início das rampas em px de mundo (mesma conta de objects5.ts), para saber onde o carro está desenhado. */
+const RAMP_STARTS_PX: readonly number[] = LEVEL5_RAMP_COLS.map((c) => c * UBER.tile);
+/** Carro da Uber: 64×24, centrado sob o Pardo, teto em UBER.roofY − uberRampOffset (ver objects5.ts). */
+const CAR_W = 64;
+const CAR_H = 24;
+
+/**
+ * Recorta do desenho a faixa ocupada pelo carro: um veículo que ainda roda no asfalto ao lado do carro
+ * (decolagem do patinete, pouso atrás do carro) fica "atrás" dele em vez de atravessá-lo.
+ */
+function clipOutCar(ctx: CanvasRenderingContext2D, world: World): void {
+  const cx = world.player.x + world.player.w / 2;
+  const carL = Math.round(cx - CAR_W / 2);
+  const carT = Math.round(UBER.roofY - uberRampOffset(cx, RAMP_STARTS_PX));
+  const camX = world.camera.x;
+  const camY = world.camera.y;
+  const x0 = camX - 64;
+  const x1 = camX + VIEW_W + 64;
+  const y0 = camY - 64;
+  const y1 = camY + 260;
+  ctx.beginPath();
+  ctx.rect(x0, y0, carL - x0, y1 - y0); // à esquerda do carro
+  ctx.rect(carL + CAR_W, y0, x1 - (carL + CAR_W), y1 - y0); // à direita do carro
+  ctx.rect(carL, y0, CAR_W, carT - y0); // acima do carro
+  ctx.rect(carL, carT + CAR_H, CAR_W, y1 - (carT + CAR_H)); // abaixo do carro
+  ctx.clip();
+}
+
 function createLinear(kind: 'motoboy' | 'motoboy_fast' | 'patinete', encontroX: number): Entity {
   const spec = UBER_ENEMIES[kind];
-  const sprite = kind;
+  const jumpSprite = kind === 'motoboy' ? 'motoboy_jump' : kind === 'motoboy_fast' ? 'motoboy_fast_jump' : 'patinete_jump';
   const flip = spec.v > 0; // vem de frente → espelhado; patinete anda no mesmo sentido → sem flip
   const animDt = kind === 'motoboy_fast' ? 0.07 : 0.1;
   let thrown: Thrown | null = null;
   let revved = kind === 'patinete'; // patinete não ronca
+  /** no ar neste passo (função pura da câmera); null antes do 1º update (não solta poeira ao nascer no ar) */
+  let hopping: boolean | null = null;
 
   const e: Entity = {
     kind,
@@ -124,8 +159,16 @@ function createLinear(kind: 'motoboy' | 'motoboy_fast' | 'patinete', encontroX: 
         stepThrown(e, thrown, dt, world);
         return;
       }
-      placeX(e, uberEnemyX(encontroX, spec.v, world.camera.x), world);
-      e.y = spec.bottom - spec.h;
+      const camX = world.camera.x;
+      placeX(e, uberEnemyX(encontroX, spec.v, camX), world);
+      e.y = uberEnemyBottom(kind, encontroX, camX) - spec.h;
+      const nowHop = uberEnemyHopping(kind, encontroX, camX);
+      if (hopping === false && nowHop && onScreen(e, world)) {
+        // decolagem: poeira na roda de trás (a roda de trás fica do lado oposto ao sentido de marcha)
+        const back: Dir = flip ? 1 : -1;
+        world.fx('dust', e.x + e.w / 2 + back * (e.w / 2 - 2), spec.bottom - 2, back);
+      }
+      hopping = nowHop;
       if (!revved && onScreen(e, world)) {
         revved = true;
         world.audio.play('rev');
@@ -133,8 +176,18 @@ function createLinear(kind: 'motoboy' | 'motoboy_fast' | 'patinete', encontroX: 
     },
     draw(ctx, world) {
       const frame = Math.floor(world.time / animDt) % 2;
-      if (thrown) drawSpinning(e, world, ctx, sprite, frame, flip, thrown.rot);
-      else drawAligned(e, world, ctx, sprite, frame, flip);
+      if (thrown) {
+        drawSpinning(e, world, ctx, hopping ? jumpSprite : kind, hopping ? 0 : frame, flip, thrown.rot);
+        return;
+      }
+      if (hopping) {
+        drawAligned(e, world, ctx, jumpSprite, 0, flip);
+        return;
+      }
+      ctx.save();
+      clipOutCar(ctx, world);
+      drawAligned(e, world, ctx, kind, frame, flip);
+      ctx.restore();
     },
     onPunch(world, _dir: Dir) {
       if (thrown) return false;

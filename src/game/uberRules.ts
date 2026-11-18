@@ -10,12 +10,10 @@
 export const UBER = {
   /** velocidade da rolagem da câmera (px/s) = 7,5 colunas/s */
   speed: 120,
-  /** acelerar/frear com o direcional, relativo à rolagem (px/s) */
-  steer: 40,
-  /** faixa do CENTRO do Pardo na tela (px de tela) */
-  screenMin: 48,
-  screenMax: 176,
+  /** x de TELA do centro do Pardo, fixo: nesta fase não há direcional (só pulo e soco) */
   screenNeutral: 72,
+  /** y de mundo do asfalto onde rodam os veículos (as rodas afundam 8 px no tile da pista, como o carro) */
+  groundY: 168,
   /** y de mundo do teto do carro (chão do Pardo) fora das rampas */
   roofY: 144,
   /** câmera Y travada (mapa de 12 linhas = 192 px; tela = 180) */
@@ -32,8 +30,10 @@ export const UBER = {
   /** o caminhão-baú fica preso neste x de tela (canto esq.) por truckBars compassos */
   truckScreenX: 232,
   truckBars: 8,
-  /** a rolagem desacelera linearmente até parar ao longo dos últimos stopBars compassos */
-  stopBars: 2,
+  /** a rolagem desacelera até parar ao longo dos últimos stopBars compassos (depois do último salto de rampa) */
+  stopBars: 1.5,
+  /** cutscene de chegada: com a câmera parada, o carro avança sozinho até o totem a esta velocidade máx. (px/s) */
+  arriveSpeed: 90,
   /** estrelas da corrida: maxStars − gotas perdidas (mín. 1); bônus = starBonus × estrelas */
   maxStars: 5,
   starBonus: 500,
@@ -70,20 +70,24 @@ export const UBER_OBSTACLES = {
 } as const satisfies Record<string, UberZone>;
 export type UberObstacleKind = keyof typeof UBER_OBSTACLES;
 
-/** B — barreira da CET: fere ao toque, quebra com 1 soco. W — isopor: não fere, soco = +1 gota. */
-export const UBER_BARREIRA: UberZone = { dx: 1, y: 128, w: 14, h: 16 };
+/** B — saco de entulho pendurado num guincho de obra: fere ao toque, estoura com 1 soco. W — isopor: não fere, soco = +1 gota. */
+export const UBER_SACO: UberZone = { dx: 1, y: 128, w: 14, h: 16 };
 export const UBER_ISOPOR: UberZone = { dx: 1, y: 124, w: 14, h: 20 };
 
 /**
- * Inimigos de trajetória reta: hitbox w×h com a BASE em `bottom`, centrada no x calculado por
- * `uberEnemyX(encontroX, v, cameraX)`. v > 0 vem de frente; v < 0 anda no sentido do Uber, mais devagar.
+ * Inimigos de trajetória reta: hitbox w×h centrada no x de `uberEnemyX(encontroX, v, cameraX)`.
+ * v > 0 vem de frente; v < 0 anda no sentido do Uber, mais devagar.
+ * `bottom` = base da hitbox em repouso. Motoboys e patinetes RODAM NO ASFALTO (bottom = UBER.groundY) e
+ * SALTAM ao chegar perto: a base sobe `hopLift·(1 − (t/hopT)²)` px enquanto |t| < hopT, onde t = segundos
+ * até o encontro (`uberTimeTo`). O ápice do salto é exatamente o encontro, na altura do peito do Pardo.
+ * Caixas voam em linha reta (hopLift = 0).
  */
 export const UBER_ENEMIES = {
-  motoboy: { w: 22, h: 18, bottom: 144, v: 60, points: 300 },
-  motoboy_fast: { w: 22, h: 18, bottom: 144, v: 100, points: 400 },
-  patinete: { w: 14, h: 20, bottom: 144, v: -40, points: 200 },
-  caixa_baixa: { w: 10, h: 10, bottom: 141, v: 100, points: 50 },
-  caixa_alta: { w: 10, h: 10, bottom: 93, v: 100, points: 50 },
+  motoboy: { w: 22, h: 18, bottom: 168, v: 60, points: 300, hopLift: 26, hopT: 0.4 },
+  motoboy_fast: { w: 22, h: 18, bottom: 168, v: 100, points: 400, hopLift: 26, hopT: 0.35 },
+  patinete: { w: 14, h: 20, bottom: 168, v: -40, points: 200, hopLift: 26, hopT: 0.6 },
+  caixa_baixa: { w: 10, h: 10, bottom: 141, v: 100, points: 50, hopLift: 0, hopT: 0 },
+  caixa_alta: { w: 10, h: 10, bottom: 93, v: 100, points: 50, hopLift: 0, hopT: 0 },
 } as const;
 export type UberLinearKind = keyof typeof UBER_ENEMIES;
 
@@ -108,6 +112,22 @@ export const UBER_PICHADOR = {
 /** x de mundo (centro) de um inimigo de trajetória reta, função pura da câmera. */
 export function uberEnemyX(encontroX: number, v: number, cameraX: number): number {
   return encontroX + (v / UBER.speed) * (encontroX - (cameraX + UBER.screenNeutral));
+}
+
+/** y de mundo da BASE da hitbox de um inimigo de trajetória reta (inclui o salto), função pura da câmera. */
+export function uberEnemyBottom(kind: UberLinearKind, encontroX: number, cameraX: number): number {
+  const E = UBER_ENEMIES[kind];
+  if (E.hopLift <= 0) return E.bottom;
+  const u = (encontroX - (cameraX + UBER.screenNeutral)) / UBER.speed / E.hopT;
+  return u > -1 && u < 1 ? E.bottom - E.hopLift * (1 - u * u) : E.bottom;
+}
+
+/** true enquanto o inimigo está no ar (para trocar de sprite/soltar poeira na decolagem e no pouso). */
+export function uberEnemyHopping(kind: UberLinearKind, encontroX: number, cameraX: number): boolean {
+  const E = UBER_ENEMIES[kind];
+  if (E.hopLift <= 0) return false;
+  const u = (encontroX - (cameraX + UBER.screenNeutral)) / UBER.speed / E.hopT;
+  return u > -1 && u < 1;
 }
 
 /** Segundos que faltam para o encontro na posição neutra (negativo = já passou). */

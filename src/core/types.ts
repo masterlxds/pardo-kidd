@@ -156,8 +156,12 @@ export interface AudioApi {
   /** Chamar no primeiro gesto do usuário (cria/resume o AudioContext). Idempotente. */
   unlock(): void;
   play(name: SfxName): void;
-  /** Música da faixa em loop (padrão 'sertao'). Idempotente para a mesma faixa; trocar de faixa reinicia. */
-  startMusic(track?: MusicTrack): void;
+  /**
+   * Música da faixa em loop (padrão 'sertao'). Sem `atSeconds`: idempotente para a mesma faixa; trocar de
+   * faixa reinicia do começo. Com `atSeconds`: (re)começa SEMPRE nessa posição da faixa, em segundos
+   * (módulo a duração do laço) — usado pela Fase 5 para manter a música em fase com os compassos do mapa.
+   */
+  startMusic(track?: MusicTrack, atSeconds?: number): void;
   stopMusic(): void;
   setMuted(muted: boolean): void;
   readonly muted: boolean;

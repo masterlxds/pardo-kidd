@@ -462,12 +462,18 @@ export const SPRITE_SPEC = {
   uber_goal: [32, 40, 2],
 
   // ── Bestiário (art/enemies5.ts) — todos morrem com 1 soco; autorados olhando para a DIREITA (convenção); o jogo espelha os que vêm de frente
-  /** motoboy sempre empinando, moto vermelha com baú térmico, farol aceso (2 frames) */
+  /** motoboy rodando no asfalto, moto vermelha com baú térmico, farol aceso (2 frames de roda) */
   motoboy: [28, 22, 2],
   /** motoboy rápido: jaqueta amarela, farol alto piscando, rastro de vento (2 frames) */
   motoboy_fast: [28, 22, 2],
+  /** motoboy no salto: moto empinada no ar, roda dianteira no alto */
+  motoboy_jump: [28, 22, 1],
+  /** motoboy rápido no salto */
+  motoboy_fast_jump: [28, 22, 1],
   /** Faria Limer de colete puffer no patinete verde-neon, olhando o celular (2 frames) */
   patinete: [20, 24, 2],
+  /** Faria Limer puxando o guidão num salto com o patinete */
+  patinete_jump: [20, 24, 1],
   /** drone quadricóptero amarelo/preto pairando (2 frames de hélices) */
   drone: [20, 16, 2],
   /** drone inclinado 30° com o visor piscando (aviso e rasante) */
@@ -490,8 +496,8 @@ export const SPRITE_SPEC = {
   portico_post: [16, 96, 1],
   /** luminária de túnel: calha de LUZ BRANCA pulsando (2 frames) */
   obst_luminaria: [16, 16, 2],
-  /** barreira laranja da CET com faixas brancas: 0 inteira, 1 rachando (frame do golpe) */
-  barreira_cet: [16, 16, 2],
+  /** saco de entulho LARANJA de obra pendurado num gancho com corrente (corrente nos 8 px do topo, saco nos 16 de baixo): 0 inteiro, 1 estourando */
+  saco_entulho: [16, 24, 2],
   /** isopor "ÁGUA 2 REAL" num suporte: 0 fechado, 1 aberto/vazio */
   isopor_agua: [16, 24, 2],
   /** rampa de obra (cunha zebrada apoiada no fim da pista) */
