@@ -186,8 +186,13 @@ export function drawTitle(ctx: CanvasRenderingContext2D, world: World): void {
   drawText(ctx, 'SETAS ESCOLHEM   ENTER OU TOQUE INICIA', 160, 169, { color: P.B, align: 'center' });
 
   // atalho de teste (discreto, canto inferior esquerdo)
-  const faseParam = new URLSearchParams(location.search).get('fase');
-  if (faseParam === '2' || faseParam === '3' || faseParam === '4' || faseParam === '5') {
+  const params = typeof location !== 'undefined' ? new URLSearchParams(location.search) : null;
+  const faseParam = params?.get('fase');
+  const isBonusTest = faseParam?.toLowerCase() === 'bonus' || params?.get('bonus') === '1';
+  if (isBonusTest) {
+    drawText(ctx, 'MODO TESTE:', 5, 149, { color: P.G });
+    drawText(ctx, 'FASE BÔNUS', 5, 157, { color: P.G });
+  } else if (faseParam === '2' || faseParam === '3' || faseParam === '4' || faseParam === '5') {
     drawText(ctx, 'MODO TESTE:', 5, 149, { color: P.G });
     drawText(ctx, `FASE ${faseParam}`, 5, 157, { color: P.G });
   }
@@ -323,13 +328,17 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
   const sp = idx === 4;
   const tall = sea || sp;
   const last = idx >= 4;
+  const unlockBonus = sea && st.ribbonsTotal > 0 && st.ribbons >= st.ribbonsTotal;
   veil(ctx, Math.min(0.55, t * 1.5), sp ? '14,18,28' : rio ? '36,18,12' : sea ? '4,18,40' : '26,20,35');
   const ease = Math.min(1, t / 0.5);
   const slide = Math.round((1 - ease * (2 - ease)) * -170);
   ctx.save();
   ctx.translate(0, slide);
-  // Fase 3: painel mais alto para caber a Jandira (48x56 em 2x)
-  const px = 28, py = tall ? 5 : 12, pw = 264, ph = tall ? 170 : 156;
+  // Fase 3: painel mais alto para caber a Jandira (48x56 em 2x); com 3/3 fitinhas abre espaço para 2 linhas no rodapé
+  const px = 28;
+  const py = unlockBonus ? 2 : tall ? 5 : 12;
+  const pw = 264;
+  const ph = unlockBonus ? 176 : tall ? 170 : 156;
   const bg = sp ? '#d3d8de' : rio ? '#fff3c4' : sea ? '#bfe9f5' : phase2 ? '#d4efb8' : P.W;
   const grid = sp ? 'rgba(60,70,90,0.22)' : rio ? 'rgba(181,83,42,0.25)' : sea ? 'rgba(36,65,143,0.25)' : phase2 ? 'rgba(47,107,30,0.3)' : 'rgba(159,224,255,0.75)';
   const edge = sp ? P.K : rio ? P.t : sea ? P.B : phase2 ? P.d : P.B;
@@ -345,12 +354,14 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
   ctx.lineWidth = 2;
   ctx.strokeRect(px + 1, py + 1, pw - 2, ph - 2);
 
-  if (sp) drawText(ctx, 'FASE 5', 160, py + 8, { scale: 2, color: P.K, align: 'center', shadow: P.y });
-  else if (rio) drawText(ctx, 'FASE 4', 160, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
-  else if (sea) drawText(ctx, `FASE ${idx + 1}`, 160, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
-  else if (phase2) drawText(ctx, 'FASE 2', 160, py + 8, { scale: 2, color: P.d, align: 'center', shadow: P.j });
-  else drawText(ctx, 'FASE 1', 160, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
-  drawText(ctx, 'CONCLUÍDA!', 160, py + 27, { scale: 3, color: P.r, align: 'center', shadow: P.R });
+  const titleY = unlockBonus ? py + 4 : py + 8;
+  const subTitleY = unlockBonus ? py + 24 : py + 27;
+  if (sp) drawText(ctx, 'FASE 5', 160, titleY, { scale: 2, color: P.K, align: 'center', shadow: P.y });
+  else if (rio) drawText(ctx, 'FASE 4', 160, titleY, { scale: 2, color: P.B, align: 'center', shadow: P.c });
+  else if (sea) drawText(ctx, `FASE ${idx + 1}`, 160, titleY, { scale: 2, color: P.B, align: 'center', shadow: P.c });
+  else if (phase2) drawText(ctx, 'FASE 2', 160, titleY, { scale: 2, color: P.d, align: 'center', shadow: P.j });
+  else drawText(ctx, 'FASE 1', 160, titleY, { scale: 2, color: P.B, align: 'center', shadow: P.c });
+  drawText(ctx, 'CONCLUÍDA!', 160, subTitleY, { scale: 3, color: P.r, align: 'center', shadow: P.R });
 
   if (sp) {
     // Maia (34x36, 2x = 68x72) na coluna esquerda; Pardo e xícara ao lado; frase abaixo, em largura total
@@ -363,8 +374,8 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
     spr(ctx, world, 'amaro_cheer', Math.floor(t * 2) % 2, px + 66, py + 44, 2, true);
   } else if (sea) {
     // coluna esquerda: Jandira (2x) e o Pardo lambendo o cajado; contadores e frase na coluna direita
-    spr(ctx, world, 'jandira_laugh', Math.floor(t * 3) % 2, px + 2, py + 44, 2, true);
-    spr(ctx, world, 'pardo_lick', Math.floor(t * 3) % 2, px + 96, py + 92, 2);
+    spr(ctx, world, 'jandira_laugh', Math.floor(t * 3) % 2, px + 2, py + (unlockBonus ? 41 : 44), 2, true);
+    spr(ctx, world, 'pardo_lick', Math.floor(t * 3) % 2, px + 96, py + (unlockBonus ? 89 : 92), 2);
   } else if (phase2) {
     spr(ctx, world, 'pardo_drink_bottle', Math.floor(t * 3) % 2, px + 6, py + 50, 2);
     spr(ctx, world, 'bottle', Math.floor(t * 4) % 2, px + 72, py + 62, 2);
@@ -381,7 +392,7 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
     drawText(ctx, label, lx, y, { color: ink });
     drawText(ctx, value, rx, y, { color: col, align: 'right', shadow: P.W });
   };
-  const y0 = tall ? py + 54 : py + 56;
+  const y0 = unlockBonus ? py + 52 : tall ? py + 54 : py + 56;
   const dy = tall ? 11 : 12;
   row('PONTOS', pad6(cnt(st.score)), y0, P.k);
   row('MOEDAS', `×${String(cnt(st.coins)).padStart(2, '0')}`, y0 + dy, P.Y);
@@ -395,8 +406,9 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
     drawText(ctx, 'PARDO SE HIDRATOU', 160, py + 104, { color: P.B, align: 'center' });
     drawText(ctx, 'COM A ÁGUA DO AMARO', 160, py + 114, { color: P.B, align: 'center' });
   } else if (sea) {
-    drawText(ctx, 'PARDO LAMBEU O', px + 202, py + 106, { color: P.B, align: 'center' });
-    drawText(ctx, 'CAJADO JAILNESCO', px + 202, py + 116, { color: P.B, align: 'center' });
+    const seaTextY = unlockBonus ? py + 104 : py + 106;
+    drawText(ctx, 'PARDO LAMBEU O', px + 202, seaTextY, { color: P.B, align: 'center' });
+    drawText(ctx, 'CAJADO JAILNESCO', px + 202, seaTextY + 10, { color: P.B, align: 'center' });
   } else if (phase2) {
     drawText(ctx, 'PARDO SE HIDRATOU', 160, py + 104, { color: P.d, align: 'center' });
     drawText(ctx, 'MAMANDO O ÍNDIO', 160, py + 114, { color: P.d, align: 'center' });
@@ -405,8 +417,213 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
     drawText(ctx, 'NA CAPELA DO HORIZONTE.', 160, py + 114, { color: P.N, align: 'center' });
   }
   if (t > 2 && blink(t)) {
-    const msg = last ? 'ENTER OU TOQUE PARA JOGAR NOVAMENTE' : `ENTER OU TOQUE PARA A FASE ${idx + 2}`;
-    drawText(ctx, msg, 160, py + (tall ? 159 : 138), { color: P.r, align: 'center', shadow: tall ? P.W : undefined });
+    if (unlockBonus) {
+      drawText(ctx, '3/3 FITINHAS! ENTER OU TOQUE', 160, py + 154, { color: P.r, align: 'center', shadow: P.W });
+      drawText(ctx, 'PARA A FASE BÔNUS', 160, py + 164, { color: P.r, align: 'center', shadow: P.W });
+    } else {
+      const msg = last ? 'ENTER OU TOQUE PARA JOGAR NOVAMENTE' : `ENTER OU TOQUE PARA A FASE ${idx + 2}`;
+      drawText(ctx, msg, 160, py + (tall ? 159 : 138), { color: P.r, align: 'center', shadow: tall ? P.W : undefined });
+    }
   }
   ctx.restore();
 }
+
+/** Filete decorativo de 4px nas cores das Fitinhas do Bonfim (turquesa, ouro, coral, azul). */
+function drawBonfimRibbon(ctx: CanvasRenderingContext2D, x: number, y: number, w: number): void {
+  const stripes = [P['8'], P.y, P['!'], P.b];
+  for (let i = 0; i < stripes.length; i++) {
+    ctx.fillStyle = stripes[i];
+    ctx.fillRect(x, y + i, w, 1);
+  }
+}
+
+/** Cartão de abertura da Fase Bônus ("FASE BÔNUS · TUBO DO BONFIM", ~2.2s). */
+export function drawBonusIntro(ctx: CanvasRenderingContext2D, world: World): void {
+  const st = world.state;
+  const t = st.sceneTime;
+
+  const ease = Math.min(1, t / 0.4);
+  const eased = 1 - (1 - ease) * (1 - ease) * (1 - ease);
+  const slide = Math.round((1 - eased) * -60);
+  veil(ctx, 0.72 * Math.min(1, t / 0.3), '6,18,44');
+
+  ctx.save();
+  ctx.translate(0, slide);
+
+  const px = 24, py = 18, pw = 272, ph = 144;
+  ctx.fillStyle = P.k;
+  ctx.fillRect(px - 1, py - 1, pw + 2, ph + 2);
+  ctx.fillStyle = '#bfe9f5';
+  ctx.fillRect(px, py, pw, ph);
+  ctx.fillStyle = 'rgba(36,65,143,0.22)';
+  for (let x = px + 8; x < px + pw; x += 8) ctx.fillRect(x, py, 1, ph);
+  for (let y = py + 8; y < py + ph; y += 8) ctx.fillRect(px, y, pw, 1);
+  ctx.strokeStyle = P.B;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px + 1, py + 1, pw - 2, ph - 2);
+  ctx.strokeStyle = P['8'];
+  ctx.lineWidth = 1;
+  ctx.strokeRect(px + 3.5, py + 3.5, pw - 7, ph - 7);
+
+  const cx = 160;
+  drawText(ctx, 'FASE BÔNUS', cx, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
+  drawText(ctx, 'TUBO DO BONFIM', cx, py + 25, { scale: 3, color: P.r, align: 'center', shadow: P.B });
+  drawText(ctx, 'COLETE MOEDAS E DESVIE DAS BOMBAS!', cx, py + 52, { color: P.B, align: 'center' });
+
+  const target = st.bonus.target > 0 ? st.bonus.target : 20;
+  const metaTxt = `META 1: ${target} MOEDAS`;
+  const mw = textWidth(metaTxt) + 12;
+  ctx.fillStyle = P.D;
+  ctx.fillRect(Math.round(cx - mw / 2), py + 60, mw, 10);
+  drawText(ctx, metaTxt, cx, py + 61, { color: P.y, align: 'center', shadow: P.k });
+
+  drawBonfimRibbon(ctx, px + 16, py + 73, pw - 32);
+
+  // sombras no chão do cartão + sprites 2x (Pardo, Caramelo-Tails e moedas girando)
+  ctx.fillStyle = 'rgba(22,38,79,0.22)';
+  ctx.fillRect(120, py + 130, 32, 3);
+  ctx.fillRect(172, py + 130, 28, 3);
+
+  const bobL = Math.round(Math.sin(t * 6) * 2);
+  const bobR = Math.round(Math.cos(t * 6) * 2);
+  spr(ctx, world, 'bonus_coin', Math.floor(t * 8) % 4, 78, py + 96 + bobL, 2);
+  spr(ctx, world, 'pardo_bonus_run', Math.floor(t * 10) % 4, 116, py + 84, 2);
+  spr(ctx, world, 'buddy_bonus_run', Math.floor(t * 10 + 1) % 4, 168, py + 88, 2);
+  spr(ctx, world, 'bonus_coin', Math.floor(t * 8 + 2) % 4, 218, py + 96 + bobR, 2);
+
+  ctx.restore();
+}
+
+/** HUD enxuta (14px de altura) exclusiva da corrida no Tubo do Bonfim. */
+export function drawBonusHud(ctx: CanvasRenderingContext2D, world: World): void {
+  const st = world.state;
+  ctx.fillStyle = 'rgba(10,24,52,0.78)';
+  ctx.fillRect(0, 0, VIEW_W, 13);
+  ctx.fillStyle = P['8'];
+  ctx.fillRect(0, 13, VIEW_W, 1);
+
+  const o = { shadow: P.k };
+
+  // Esquerda: moeda do bônus animada + contador atual/meta
+  spr(ctx, world, 'bonus_coin', Math.floor(world.time * 8) % 4, 4, 1);
+  const bonusTxt = `${String(st.bonus.coins).padStart(2, '0')}/${String(st.bonus.target).padStart(2, '0')}`;
+  const metGoal = st.bonus.coins >= st.bonus.target;
+  drawText(ctx, bonusTxt, 19, 3, { ...o, color: metGoal ? P.j : P.y });
+
+  // Centro: indicador do trecho (1..3)
+  drawText(ctx, `TRECHO ${st.bonus.stage}/3`, 152, 3, { ...o, color: P.c, align: 'center' });
+
+  // Direita: vidas + moedas da campanha + pontuação total
+  const scoreTxt = pad6(st.score);
+  const scoreRight = VIEW_W - 4;
+  drawText(ctx, scoreTxt, scoreRight, 3, { ...o, color: P.w, align: 'right' });
+
+  const coinTxt = `×${String(st.coins).padStart(2, '0')}`;
+  const coinTextX = scoreRight - textWidth(scoreTxt) - 7 - textWidth(coinTxt);
+  spr(ctx, world, 'icon_coin', 0, coinTextX - 10, 3);
+  drawText(ctx, coinTxt, coinTextX, 3, { ...o, color: P.a });
+
+  const lifeTxt = `×${st.lives}`;
+  const lifeTextX = coinTextX - 10 - 7 - textWidth(lifeTxt);
+  spr(ctx, world, 'icon_life', 0, lifeTextX - 10, 3);
+  drawText(ctx, lifeTxt, lifeTextX, 3, { ...o, color: P.w });
+}
+
+/** Painel de resultado da Fase Bônus (vitória com Amuleto do Bonfim ou fim parcial em checkpoint). */
+export function drawBonusEnd(ctx: CanvasRenderingContext2D, world: World): void {
+  const st = world.state;
+  const t = st.sceneTime;
+  const cleared = st.bonus.cleared;
+
+  veil(ctx, Math.min(0.72, t * 1.8), '6,18,44');
+  const ease = Math.min(1, t / 0.45);
+  const eased = 1 - (1 - ease) * (1 - ease) * (1 - ease);
+  const slide = Math.round((1 - eased) * -170);
+
+  ctx.save();
+  ctx.translate(0, slide);
+
+  const px = 16, py = 8, pw = 288, ph = 164;
+  ctx.fillStyle = P.k;
+  ctx.fillRect(px - 1, py - 1, pw + 2, ph + 2);
+  ctx.fillStyle = '#bfe9f5';
+  ctx.fillRect(px, py, pw, ph);
+  ctx.fillStyle = 'rgba(36,65,143,0.22)';
+  for (let x = px + 8; x < px + pw; x += 8) ctx.fillRect(x, py, 1, ph);
+  for (let y = py + 8; y < py + ph; y += 8) ctx.fillRect(px, y, pw, 1);
+  ctx.strokeStyle = cleared ? P.y : P.B;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px + 1, py + 1, pw - 2, ph - 2);
+  ctx.strokeStyle = P['8'];
+  ctx.lineWidth = 1;
+  ctx.strokeRect(px + 3.5, py + 3.5, pw - 7, ph - 7);
+
+  const lx = 140, rx = 294;
+  const row = (label: string, value: string, y: number, col: string): void => {
+    drawText(ctx, label, lx, y, { color: P.B });
+    drawText(ctx, value, rx, y, { color: col, align: 'right', shadow: P.w });
+  };
+
+  if (cleared) {
+    // Faixa superior azul-marinho para contraste máximo do título dourado/turquesa
+    ctx.fillStyle = P.D;
+    ctx.fillRect(px + 5, py + 5, pw - 10, 42);
+    drawText(ctx, 'ESPECIAL CONCLUÍDO!', 160, py + 9, { scale: 2, color: P.y, align: 'center', shadow: P.k });
+    drawText(ctx, 'AMULETO DO BONFIM!', 160, py + 28, { scale: 2, color: P['8'], align: 'center', shadow: P.k });
+    drawBonfimRibbon(ctx, px + 5, py + 48, pw - 10);
+
+    // Ilustração esquerda: Esmeralda do Bonfim brilhando + Pardo e Caramelo-Tails pulando
+    const emBob = Math.round(Math.sin(t * 5));
+    ctx.fillStyle = 'rgba(255,243,160,0.45)';
+    ctx.fillRect(61, py + 58 + emBob, 36, 22);
+    ctx.fillRect(67, py + 52 + emBob, 24, 34);
+    spr(ctx, world, 'bonus_emerald', Math.floor(t * 5) % 2, 63, py + 53 + emBob, 2);
+    spr(ctx, world, 'sparkle', Math.floor(t * 6) % 2, 51, py + 56);
+    spr(ctx, world, 'sparkle', Math.floor(t * 6 + 1) % 2, 99, py + 72);
+
+    const pJump = Math.abs(Math.round(Math.sin(t * 7) * 3));
+    const bJump = Math.abs(Math.round(Math.cos(t * 7) * 3));
+    ctx.fillStyle = 'rgba(22,38,79,0.2)';
+    ctx.fillRect(38, py + 137, 32, 3);
+    ctx.fillRect(88, py + 137, 28, 3);
+    spr(ctx, world, 'pardo_bonus_jump', Math.floor(t * 6) % 2, 34, py + 91 - pJump, 2);
+    spr(ctx, world, 'buddy_bonus_jump', Math.floor(t * 8) % 2, 84, py + 95 - bJump, 2);
+
+    row('MOEDAS NO TUBO', `×${String(st.bonus.coins).padStart(2, '0')}`, py + 64, P.Y);
+    row('BÔNUS ESMERALDA', '+5000', py + 81, P['9']);
+    row('RECOMPENSA', '+1 VIDA (1UP)', py + 98, P.E);
+    ctx.fillStyle = P['8'];
+    ctx.fillRect(lx, py + 112, rx - lx, 1);
+    row('PONTOS TOTAIS', pad6(st.score), py + 118, P.k);
+  } else {
+    drawText(ctx, 'FIM DA FASE BÔNUS', 160, py + 9, { scale: 2, color: P.B, align: 'center', shadow: P.c });
+    drawText(ctx, 'MOEDAS E PONTOS MANTIDOS!', 160, py + 31, { color: P['9'], align: 'center' });
+    drawBonfimRibbon(ctx, px + 12, py + 44, pw - 24);
+
+    // Ilustração esquerda: moeda girando + Pardo e Caramelo-Tails correndo
+    const coinBob = Math.round(Math.sin(t * 5));
+    spr(ctx, world, 'bonus_coin', Math.floor(t * 8) % 4, 67, py + 55 + coinBob, 2);
+    ctx.fillStyle = 'rgba(22,38,79,0.2)';
+    ctx.fillRect(38, py + 135, 32, 3);
+    ctx.fillRect(88, py + 135, 28, 3);
+    spr(ctx, world, 'pardo_bonus_run', Math.floor(t * 8) % 4, 34, py + 88, 2);
+    spr(ctx, world, 'buddy_bonus_run', Math.floor(t * 8 + 1) % 4, 84, py + 92, 2);
+
+    const clearedStages = Math.max(0, st.bonus.stage - 1);
+    row('TRECHOS VENCIDOS', `${clearedStages}/3`, py + 62, P['9']);
+    row('MOEDAS NO TUBO', `×${String(st.bonus.coins).padStart(2, '0')}`, py + 79, P.Y);
+    row('MOEDAS TOTAIS', `×${String(st.coins).padStart(2, '0')}`, py + 96, P.Y);
+    ctx.fillStyle = P['8'];
+    ctx.fillRect(lx, py + 110, rx - lx, 1);
+    row('PONTOS TOTAIS', pad6(st.score), py + 116, P.k);
+  }
+
+  ctx.fillStyle = 'rgba(36,65,143,0.35)';
+  ctx.fillRect(px + 16, py + 143, pw - 32, 1);
+  if (t > 0.8 && blink(t)) {
+    drawText(ctx, 'ENTER OU TOQUE PARA A FASE 4', 160, py + 148, { color: P.r, align: 'center', shadow: P.w });
+  }
+
+  ctx.restore();
+}
+

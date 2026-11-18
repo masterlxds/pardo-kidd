@@ -37,7 +37,33 @@ export type TileId = (typeof Tile)[keyof typeof Tile];
 export interface Camera { x: number; y: number }
 
 /** 'intro' = cartão "FASE N · NOME" (~2.2s) antes de cada fase; o mundo já está montado por trás. */
-export type Scene = 'title' | 'intro' | 'playing' | 'paused' | 'dying' | 'gameover' | 'winning' | 'win';
+export type Scene =
+  | 'title'
+  | 'intro'
+  | 'playing'
+  | 'paused'
+  | 'dying'
+  | 'gameover'
+  | 'winning'
+  | 'win'
+  | 'bonus_intro'
+  | 'bonus'
+  | 'bonus_end';
+
+export interface BonusState {
+  /** true quando o fluxo atual veio da campanha/atalho para a Fase Bônus */
+  active: boolean;
+  /** moedas coletadas dentro da Fase Bônus */
+  coins: number;
+  /** meta atual de moedas do trecho (20 → 45 → 70) */
+  target: number;
+  /** trecho atual (1..3) */
+  stage: 1 | 2 | 3;
+  /** true se concluiu todos os 3 trechos e ganhou a Esmeralda do Bonfim */
+  cleared: boolean;
+  /** motivo do término parcial ou completo */
+  endedByCheckpoint: boolean;
+}
 
 export interface GameState {
   scene: Scene;
@@ -71,6 +97,8 @@ export interface GameState {
   dialogue: Dialogue | null;
   /** dificuldade escolhida no título: 'normal' = START_LIVES vidas; 'amaro' (fácil) = EASY_LIVES vidas */
   difficulty: Difficulty;
+  /** estado da Fase Bônus ("Tubo do Bonfim") */
+  bonus: BonusState;
 }
 
 export type Difficulty = 'normal' | 'amaro';
@@ -87,7 +115,7 @@ export interface Dialogue {
 
 /** Tema visual/sonoro de uma fase. */
 export type LevelTheme = 'sertao' | 'amazonia' | 'bahia' | 'rio' | 'sampa';
-export type MusicTrack = LevelTheme;
+export type MusicTrack = LevelTheme | 'bonus';
 
 export type SfxName =
   | 'jump' | 'punch' | 'hit' | 'break' | 'coin' | 'water' | 'hurt' | 'die'
@@ -114,7 +142,10 @@ export type SfxName =
   /** caixa de papelão do carregador quebrando */ | 'crate'
   /** gole de café (final da Fase 5) */ | 'sip'
   /** bip de alerta da empilhadeira antes da arrancada */ | 'beep'
-  /** arremesso do pacote (arremessador) */ | 'throw';
+  /** arremesso do pacote (arremessador) */ | 'throw'
+  // Fase Bônus — Tubo do Bonfim
+  /** explosão da mina/bomba no meio-tubo */ | 'bomb'
+  /** captura do Amuleto / Esmeralda do Bonfim */ | 'emerald';
 
 export interface AudioApi {
   /** Chamar no primeiro gesto do usuário (cria/resume o AudioContext). Idempotente. */

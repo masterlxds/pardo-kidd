@@ -18,13 +18,18 @@ declare global {
   }
 }
 
-/** `?fase=N` (1-based) → índice inicial da fase (atalho de teste). */
-function startLevelFromUrl(): number {
+/** `?fase=N` (1-based) ou `?fase=bonus` / `?bonus=1` → modo inicial do jogo (atalho de teste). */
+function startModeFromUrl(): { startLevel: number; startBonus: boolean } {
   try {
-    const n = Number.parseInt(new URLSearchParams(window.location.search).get('fase') ?? '', 10);
-    return Number.isFinite(n) && n >= 1 ? n - 1 : 0;
+    const params = new URLSearchParams(window.location.search);
+    const rawFase = (params.get('fase') ?? '').trim().toLowerCase();
+    const rawBonus = (params.get('bonus') ?? '').trim();
+    const startBonus = rawFase === 'bonus' || rawBonus === '1';
+    const n = Number.parseInt(rawFase, 10);
+    const startLevel = Number.isFinite(n) && n >= 1 ? n - 1 : 0;
+    return { startLevel, startBonus };
   } catch {
-    return 0;
+    return { startLevel: 0, startBonus: false };
   }
 }
 
@@ -39,7 +44,8 @@ function boot(): void {
 
   const input = createInput(canvas);
   try {
-    const game = createGame(ctx, input, { startLevel: startLevelFromUrl() });
+    const { startLevel, startBonus } = startModeFromUrl();
+    const game = createGame(ctx, input, { startLevel, startBonus });
     window.__pk = { world: game.world, state: game.state, input };
     const loop = createLoop({
       update: (dt) => game.update(dt),

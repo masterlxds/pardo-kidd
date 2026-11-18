@@ -679,6 +679,58 @@ const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
     noise(g, g.sfx, t, 0.18, 0.3, 'bandpass', 500, 2600, 1.2);
     osc(g, g.sfx, 'sine', 320, t, 0.12, 0.08, 760);
   },
+  // mina do meio-tubo: explosão seca 8-bit/16-bit (~0.28s) com varredura de ruído e punch grave
+  bomb: (g, t) => {
+    noise(g, g.sfx, t, 0.045, 0.32, 'highpass', 3200, 1100);
+    noise(g, g.sfx, t, 0.28, 0.44, 'lowpass', 1800, 140, 1.1);
+    noise(g, g.sfx, t + 0.012, 0.25, 0.28, 'bandpass', 1650, 150, 1.3);
+    osc(g, g.sfx, 'triangle', 165, t, 0.24, 0.48, 42);
+    osc(g, g.sfx, 'square', 165, t, 0.19, 0.16, 42);
+  },
+  // esmeralda do Bonfim: fanfarra cintilante em arpejo C5-E5-G5-B5-C6-E6-G6 (~0.78s)
+  emerald: (g, t) => {
+    const notes = [72, 76, 79, 83, 84, 88, 91];
+    const step = 0.065;
+    notes.forEach((midi, i) => {
+      const last = i === notes.length - 1;
+      const at = t + i * step;
+      const dur = last ? 0.39 : 0.095;
+      const f = midiToHz(midi);
+
+      const o = g.ctx.createOscillator();
+      o.setPeriodicWave(g.pulse);
+      o.frequency.setValueAtTime(f, at);
+      if (last) {
+        const lfo = g.ctx.createOscillator();
+        lfo.frequency.value = 7.5;
+        const dp = g.ctx.createGain();
+        dp.gain.value = f * 0.01;
+        lfo.connect(dp);
+        dp.connect(o.frequency);
+        lfo.start(at);
+        lfo.stop(at + dur + 0.02);
+      }
+      const amp = g.ctx.createGain();
+      envelope(amp, at, last ? 0.2 : 0.16, dur);
+      o.connect(amp);
+      amp.connect(g.sfx);
+      o.start(at);
+      o.stop(at + dur + 0.02);
+
+      // harmonia em triângulo uma oitava abaixo + brilho agudo de gema mágica 16-bit
+      osc(g, g.sfx, 'triangle', f / 2, at, last ? 0.38 : 0.085, 0.18);
+      osc(g, g.sfx, 'sine', f * 2, at, last ? 0.34 : 0.075, 0.07);
+    });
+
+    // acorde luminoso sustentado + cintilar cristalino final (~0.39s..0.78s)
+    const chordAt = t + (notes.length - 1) * step;
+    for (const m of [72, 76, 83, 84]) {
+      osc(g, g.sfx, 'triangle', midiToHz(m), chordAt, 0.39, 0.1);
+    }
+    [96, 100, 103].forEach((m, i) => {
+      osc(g, g.sfx, 'sine', midiToHz(m), chordAt + 0.05 + i * 0.07, 0.12, 0.06);
+    });
+  },
 };
 
 /* ----------------------------------------------------------------------------
@@ -1461,6 +1513,229 @@ function scheduleSampa(g: Graph, step: number, t0: number): void {
   if (note) sampaLead(g, note[0], t, note[1], isPartB);
 }
 
+/* ----------------------------------------------------------------------------
+ * Faixa "Axé Synthwave do Tubo" — Dó# menor / Mi maior (C# D# E F# G# A B),
+ * 136 BPM, 16 compassos (256 semicolcheias).
+ * Clima arcade eufórico de Special Stage (Mega Drive) fundido ao suingue elétrico baiano:
+ * Parte A (cc. 1–8): C#m A B E | F#m C#m A G#7 — corrida eufórica com síncope de axé.
+ * Parte B (cc. 9–16): A B C#m E | F#m A B G#7 — clímax em trio elétrico pelo túnel estrelado.
+ * Driving bass FM-like oitavado, arpejador cristalino em semicolcheias, lead em pulso 25%
+ * e percussão arcade-Bahia (bumbo nos 4 tempos, caixa nos 2 e 4, chimbal, agogô e timbal).
+ * ------------------------------------------------------------------------- */
+
+const BONUS_BPM = 136;
+const BONUS_STEP = 60 / BONUS_BPM / 4;
+const BONUS_BARS = 16;
+const BONUS_LOOP_STEPS = STEPS_PER_BAR * BONUS_BARS;
+
+type BonusQuality = 'm' | 'M' | '7';
+
+/** C#m A B E | F#m C#m A G#7 || A B C#m E | F#m A B G#7 */
+const BONUS_CHORDS: readonly (readonly [root: number, q: BonusQuality])[] = [
+  [37, 'm'], [45, 'M'], [47, 'M'], [40, 'M'],
+  [42, 'm'], [37, 'm'], [45, 'M'], [44, '7'],
+  [45, 'M'], [47, 'M'], [37, 'm'], [40, 'M'],
+  [42, 'm'], [45, 'M'], [47, 'M'], [44, '7'],
+];
+
+const BONUS_MELODY_BARS: readonly (readonly Note[])[] = [
+  // Parte A (cc. 1–8) — fraseado dançante e heroico pelo túnel
+  [[73, 3], [76, 3], [80, 2], [78, 2], [76, 2], [75, 2], [73, 2]],
+  [[76, 3], [81, 3], [80, 2], [76, 4], [0, 2], [76, 1], [78, 1]],
+  [[80, 2], [78, 2], [75, 2], [78, 2], [83, 3], [80, 3], [78, 2]],
+  [[80, 4], [76, 2], [80, 2], [83, 4], [0, 2], [80, 2]],
+  [[81, 3], [78, 3], [76, 2], [78, 2], [81, 2], [85, 2], [81, 2]],
+  [[80, 3], [76, 3], [73, 2], [76, 4], [0, 2], [76, 2]],
+  [[78, 2], [80, 2], [81, 3], [80, 1], [78, 2], [76, 2], [81, 4]],
+  [[80, 3], [78, 1], [75, 2], [80, 2], [84, 4], [0, 2], [80, 1], [83, 1]],
+  // Parte B (cc. 9–16) — clímax agudo de Special Stage + Trio Elétrico
+  [[85, 3], [85, 3], [83, 2], [81, 2], [80, 2], [81, 4]],
+  [[83, 3], [83, 3], [80, 2], [78, 2], [80, 2], [83, 2], [87, 2]],
+  [[85, 3], [88, 3], [85, 2], [83, 2], [80, 2], [76, 4]],
+  [[78, 2], [80, 2], [83, 4], [80, 2], [76, 2], [0, 2], [80, 2]],
+  [[81, 3], [85, 3], [81, 2], [78, 2], [81, 2], [85, 4]],
+  [[85, 2], [83, 2], [81, 2], [85, 2], [88, 4], [85, 2], [81, 2]],
+  [[83, 3], [87, 3], [83, 2], [80, 2], [78, 2], [80, 2], [83, 2]],
+  [[84, 4], [80, 2], [75, 2], [80, 4], [0, 2], [75, 1], [76, 1]],
+];
+
+/** Driving bassline em oitavas e quintas sincopadas: [semicolcheia, intervalo, duração]. */
+const BONUS_BASS_A: readonly (readonly [number, number, number])[] = [
+  [0, 0, 2], [2, 12, 1], [3, 0, 1],
+  [4, 0, 2], [6, 12, 2],
+  [8, 0, 2], [10, 12, 1], [11, 7, 1],
+  [12, 0, 2], [14, 12, 1], [15, 7, 1],
+];
+const BONUS_BASS_B: readonly (readonly [number, number, number])[] = [
+  [0, 0, 1], [1, 0, 1], [2, 12, 1], [3, 12, 1],
+  [4, 0, 2], [6, 12, 1], [7, 7, 1],
+  [8, 0, 1], [9, 0, 1], [10, 12, 1], [11, 12, 1],
+  [12, 0, 2], [14, 7, 1], [15, 12, 1],
+];
+
+/** Ciclo de 8 notas do arpejador por qualidade harmônica. */
+const BONUS_ARP_PATTERNS: Record<BonusQuality, readonly number[]> = {
+  m: [0, 3, 7, 12, 15, 12, 7, 3],
+  M: [0, 4, 7, 12, 16, 12, 7, 4],
+  '7': [0, 4, 7, 10, 16, 10, 7, 4],
+};
+
+/** Clave sincopada de agogô elétrico baiano: [semicolcheia, agudo?]. */
+const BONUS_AGOGO: readonly (readonly [number, boolean])[] = [
+  [0, true], [3, false], [6, true], [10, false], [11, true], [14, false],
+];
+
+const BONUS_MELODY: (Note | undefined)[] = new Array<Note | undefined>(BONUS_LOOP_STEPS).fill(undefined);
+{
+  let pos = 0;
+  for (const bar of BONUS_MELODY_BARS) {
+    for (const [midi, steps] of bar) {
+      if (midi > 0) BONUS_MELODY[pos] = [midi, steps];
+      pos += steps;
+    }
+  }
+}
+
+/** Baixo FM-like estilo Mega Drive: sub em triângulo + dente-de-serra com filtro percussivo. */
+function bonusBass(g: Graph, midi: number, t: number, steps: number): void {
+  const f = midiToHz(midi);
+  const dur = steps * BONUS_STEP * 0.88;
+  osc(g, g.music, 'triangle', f, t, dur, 0.42);
+
+  const o = g.ctx.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(f, t);
+  const lp = g.ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 2.2;
+  lp.frequency.setValueAtTime(1500, t);
+  lp.frequency.exponentialRampToValueAtTime(260, t + dur);
+  const amp = g.ctx.createGain();
+  envelope(amp, t, 0.2, dur);
+  o.connect(lp);
+  lp.connect(amp);
+  amp.connect(g.music);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+}
+
+/** Arpejador chiptune cristalino em semicolcheias para sensação de velocidade no tubo. */
+function bonusArp(g: Graph, midi: number, t: number, peak: number): void {
+  osc(g, g.music, 'square', midiToHz(midi), t, BONUS_STEP * 0.72, peak);
+}
+
+function bonusKick(g: Graph, t: number, level: number): void {
+  osc(g, g.music, 'sine', 148, t, 0.16, 0.56 * level, 42);
+  osc(g, g.music, 'triangle', 260, t, 0.035, 0.18 * level, 70);
+}
+
+function bonusSnare(g: Graph, t: number, level: number): void {
+  osc(g, g.music, 'triangle', 230, t, 0.08, 0.22 * level, 115);
+  noise(g, g.music, t, 0.12, 0.25 * level, 'bandpass', 2100, 950, 0.9);
+  noise(g, g.music, t, 0.045, 0.13 * level, 'highpass', 4200);
+}
+
+function bonusHat(g: Graph, t: number, open: boolean, peak: number): void {
+  noise(g, g.music, t, open ? 0.065 : 0.024, peak, 'highpass', open ? 7200 : 8100);
+}
+
+/** Agogô afinado em Mi/Si (E6 / B5) para harmonizar com Dó# menor / Mi maior. */
+function bonusAgogo(g: Graph, t: number, high: boolean, level: number): void {
+  const f = high ? 1318.51 : 987.77;
+  osc(g, g.music, 'square', f, t, 0.07, 0.055 * level);
+  osc(g, g.music, 'sine', f * 2.76, t, 0.045, 0.028 * level);
+}
+
+/** Timbal baiano agudo de trio elétrico: tapa metálico-couro com pitch bend curto. */
+function timbal(g: Graph, t: number, high: boolean, level: number): void {
+  const f0 = high ? 415 : 311;
+  const f1 = high ? 255 : 190;
+  osc(g, g.music, 'triangle', f0, t, 0.075, 0.17 * level, f1);
+  noise(g, g.music, t, 0.035, 0.11 * level, 'bandpass', 2900, 1600, 2.0);
+}
+
+/** Lead melódico em pulso 25% com vibrato nas sustentadas, oitava grave na Parte B e eco sutil. */
+function bonusLead(g: Graph, midi: number, t: number, steps: number, partB: boolean, peakScale = 1): void {
+  const dur = steps * BONUS_STEP;
+  const f = midiToHz(midi);
+  const o = g.ctx.createOscillator();
+  o.setPeriodicWave(g.pulse);
+  o.frequency.setValueAtTime(f, t);
+  if (steps >= 3) {
+    const lfo = g.ctx.createOscillator();
+    lfo.frequency.value = 6;
+    const d = g.ctx.createGain();
+    d.gain.value = f * 0.01;
+    lfo.connect(d);
+    d.connect(o.frequency);
+    lfo.start(t);
+    lfo.stop(t + dur + 0.02);
+  }
+  const amp = g.ctx.createGain();
+  const peak = (partB ? 0.26 : 0.23) * peakScale;
+  amp.gain.setValueAtTime(FLOOR, t);
+  amp.gain.exponentialRampToValueAtTime(peak, t + ATTACK);
+  amp.gain.exponentialRampToValueAtTime(peak * 0.58, t + dur * 0.72);
+  amp.gain.exponentialRampToValueAtTime(FLOOR, t + dur * 0.95);
+  o.connect(amp);
+  amp.connect(g.music);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+
+  if (partB && peakScale === 1) {
+    osc(g, g.music, 'triangle', f / 2, t, dur * 0.9, 0.11);
+  }
+}
+
+function scheduleBonus(g: Graph, step: number, t: number): void {
+  const bar = Math.floor(step / STEPS_PER_BAR);
+  const s = step % STEPS_PER_BAR;
+  const [root, q] = BONUS_CHORDS[bar % BONUS_CHORDS.length] ?? [37, 'm'];
+  const isPartB = bar >= 8;
+
+  // Driving bassline oitavado
+  for (const [bs, interval, len] of isPartB ? BONUS_BASS_B : BONUS_BASS_A) {
+    if (bs === s) bonusBass(g, root + interval, t, len);
+  }
+
+  // Arpejador chiptune em semicolcheias pelo túnel estrelado
+  const arpOffsets = BONUS_ARP_PATTERNS[q];
+  const arpInterval = arpOffsets[s % arpOffsets.length] ?? 0;
+  bonusArp(g, root + 24 + arpInterval, t, isPartB ? 0.058 : 0.048);
+
+  // Bumbo firme nos 4 tempos (0, 4, 8, 12) + puxada sincopada nas viradas
+  if (s === 0 || s === 4 || s === 8 || s === 12) bonusKick(g, t, 1);
+  else if (s === 14 && bar % 4 === 3) bonusKick(g, t, 0.65);
+
+  // Caixa estalada nos tempos 4 e 12 + rufada no fechamento das seções
+  if (s === 4 || s === 12) bonusSnare(g, t, 1);
+  else if ((bar === 7 || bar === 15) && (s === 14 || s === 15)) bonusSnare(g, t, 0.6);
+
+  // Chimbal em semicolcheias com contratempo aberto (2, 6, 10, 14)
+  if (s % 4 === 2) bonusHat(g, t, true, 0.08);
+  else if (s % 2 === 0) bonusHat(g, t, false, 0.044);
+  else bonusHat(g, t, false, 0.028);
+
+  // Célula afro-baiana: agogô sincopado + repiques e viradas de timbal
+  for (const [bs, high] of BONUS_AGOGO) {
+    if (bs === s) bonusAgogo(g, t, high, isPartB ? 1.0 : 0.85);
+  }
+  if (bar % 4 === 3 && s >= 12) {
+    timbal(g, t, s % 2 === 0, 0.95);
+  } else if (s === 3 || s === 6 || (s === 14 && bar % 2 === 1)) {
+    timbal(g, t, s !== 6, 0.78);
+  }
+
+  // Lead melódico com eco cintilante nas notas longas
+  const note = BONUS_MELODY[step];
+  if (note) {
+    bonusLead(g, note[0], t, note[1], isPartB);
+    if (note[1] >= 3) {
+      bonusLead(g, note[0], t + 3 * BONUS_STEP, 2, false, 0.24);
+    }
+  }
+}
+
 interface Track {
   readonly stepDur: number;
   readonly loopSteps: number;
@@ -1473,6 +1748,7 @@ const TRACKS: Record<MusicTrack, Track> = {
   bahia: { stepDur: BAH_STEP, loopSteps: BAH_LOOP_STEPS, scheduleStep: scheduleBahia },
   rio: { stepDur: RIO_STEP, loopSteps: RIO_LOOP_STEPS, scheduleStep: scheduleRio },
   sampa: { stepDur: SAMPA_STEP, loopSteps: SAMPA_LOOP_STEPS, scheduleStep: scheduleSampa },
+  bonus: { stepDur: BONUS_STEP, loopSteps: BONUS_LOOP_STEPS, scheduleStep: scheduleBonus },
 };
 
 function makeNoise(ctx: AudioContext): AudioBuffer {
