@@ -46,10 +46,15 @@ const LANE_COLORS: ReadonlyArray<readonly [string, string]> = [
 export const BONUS_CONSTANTS = {
   /** Ângulo máximo nas bordas do meio-tubo (rad). */
   THETA_MAX: 1.48,
-  /** Profundidade fixa do Pardo no primeiro plano. */
-  PLAYER_Z: 0.085,
-  /** Profundidade fixa do parceiro Caramelo-Tails logo adiante. */
-  BUDDY_Z: 0.145,
+  /** Profundidade fixa do Pardo, à frente do parceiro (mais fundo no tubo). */
+  PLAYER_Z: 0.145,
+  /** Profundidade fixa do parceiro Caramelo-Tails, seguindo o Pardo logo atrás (primeiro plano). */
+  BUDDY_Z: 0.085,
+  /** Profundidade de referência (primeiro plano) para a escala de sprites, sombras e altura de salto. */
+  REF_Z: 0.085,
+  /** Meia-janela de profundidade das colisões de moeda e de bomba. */
+  COIN_HIT_Z: 0.03,
+  BOMB_HIT_Z: 0.02,
   /** Atraso em frames (60 Hz) do histórico seguido pelo parceiro (~0.183s). */
   BUDDY_DELAY_STEPS: 11,
   /** Limites de profundidade renderizada do túnel (~22 anéis). */
@@ -325,7 +330,7 @@ function projectPoint(
   curveY: number,
 ): { x: number; y: number; r: number } {
   const baseR = radiusAt(z);
-  const hScale = (baseR / radiusAt(BONUS_CONSTANTS.PLAYER_Z)) * 1.45;
+  const hScale = (baseR / radiusAt(BONUS_CONSTANTS.REF_Z)) * 1.45;
   const r = Math.max(2, baseR - h * hScale);
   const cx = centerXAt(z, curveX);
   const cy = centerYAt(z, curveY);
@@ -724,15 +729,13 @@ export function createBonusStage(): BonusStage {
 
         if (it.kind === 'coin') {
           const hitPlayer =
-            z >= 0.055 &&
-            z <= 0.115 &&
+            Math.abs(z - BONUS_CONSTANTS.PLAYER_Z) <= BONUS_CONSTANTS.COIN_HIT_Z &&
             Math.abs(it.curTheta - theta) <= BONUS_CONSTANTS.COIN_HIT_THETA &&
             Math.abs(it.curH - h) <= BONUS_CONSTANTS.COIN_HIT_H;
 
           const hitBuddy =
             !hitPlayer &&
-            z >= 0.115 &&
-            z <= 0.175 &&
+            Math.abs(z - BONUS_CONSTANTS.BUDDY_Z) <= BONUS_CONSTANTS.COIN_HIT_Z &&
             Math.abs(it.curTheta - buddyTheta) <= BONUS_CONSTANTS.COIN_HIT_THETA &&
             Math.abs(it.curH - buddyH) <= BONUS_CONSTANTS.COIN_HIT_H;
 
@@ -750,8 +753,7 @@ export function createBonusStage(): BonusStage {
           // Parceiro encostando: apenas pisca por 0.5s sem perder moedas e sem detonar a mina
           if (
             buddyBlink <= 0 &&
-            z >= 0.125 &&
-            z <= 0.165 &&
+            Math.abs(z - BONUS_CONSTANTS.BUDDY_Z) <= BONUS_CONSTANTS.BOMB_HIT_Z &&
             Math.abs(it.curTheta - buddyTheta) <= BONUS_CONSTANTS.BOMB_HIT_THETA &&
             Math.abs(it.curH - buddyH) <= BONUS_CONSTANTS.BOMB_HIT_H
           ) {
@@ -761,8 +763,7 @@ export function createBonusStage(): BonusStage {
           // Pardo encostando: perde até 5 moedas do contador bônus
           if (
             invuln <= 0 &&
-            z >= 0.065 &&
-            z <= 0.105 &&
+            Math.abs(z - BONUS_CONSTANTS.PLAYER_Z) <= BONUS_CONSTANTS.BOMB_HIT_Z &&
             Math.abs(it.curTheta - theta) <= BONUS_CONSTANTS.BOMB_HIT_THETA &&
             Math.abs(it.curH - h) <= BONUS_CONSTANTS.BOMB_HIT_H
           ) {
@@ -796,7 +797,7 @@ export function createBonusStage(): BonusStage {
             it.curH += (h + 4 - it.curH) * pull;
           }
           const generous = passedFinalGate ? 0.65 : 0.28;
-          if (z <= 0.125 && Math.abs(it.curTheta - theta) <= generous) {
+          if (z <= BONUS_CONSTANTS.PLAYER_Z + 0.04 && Math.abs(it.curTheta - theta) <= generous) {
             it.taken = true;
             world.state.bonus.cleared = true;
             world.state.bonus.endedByCheckpoint = false;
@@ -1090,7 +1091,7 @@ export function createBonusStage(): BonusStage {
       const drawWallShadow = (th: number, z: number, heightAbove: number, baseHalfW: number, alphaMul = 1): void => {
         const wp = projectPoint(th, z, 0, curveX, curveY);
         const shrink = Math.max(0.45, 1 - heightAbove * 0.016);
-        const persp = clamp(Math.pow(radiusAt(z) / radiusAt(BONUS_CONSTANTS.PLAYER_Z), 0.82), 0.2, 1.3);
+        const persp = clamp(Math.pow(radiusAt(z) / radiusAt(BONUS_CONSTANTS.REF_Z), 0.82), 0.2, 1.3);
         const rx = Math.max(1.5, baseHalfW * persp * shrink);
         const ry = Math.max(1, rx * 0.38);
         ctx.save();
@@ -1135,7 +1136,7 @@ export function createBonusStage(): BonusStage {
           const it = entry.item;
           const z = entry.z;
           const alpha = z > 0.88 ? clamp((1 - z) / 0.12, 0, 1) : 1;
-          const sc = clamp(Math.pow(radiusAt(z) / radiusAt(BONUS_CONSTANTS.PLAYER_Z), 0.82), 0.22, 1.28);
+          const sc = clamp(Math.pow(radiusAt(z) / radiusAt(BONUS_CONSTANTS.REF_Z), 0.82), 0.22, 1.28);
 
           if (it.kind === 'coin') {
             const bob = Math.sin(animClock * 6 + it.s * 0.2) * 1.2;
@@ -1177,7 +1178,7 @@ export function createBonusStage(): BonusStage {
             const jumping = buddyH > 0.5;
             const sprite = jumping ? 'buddy_bonus_jump' : 'buddy_bonus_run';
             const frame = jumping ? Math.floor(animClock * 14) % 2 : Math.floor(runAnim * 13) % 4;
-            drawAtlasScaled(sprite, frame, 18, 22, pt.x, pt.y, -buddyTheta * 0.45, 0.82, 1);
+            drawAtlasScaled(sprite, frame, 18, 22, pt.x, pt.y, -buddyTheta * 0.45, 1.0, 1);
           }
         } else {
           drawWallShadow(theta, BONUS_CONSTANTS.PLAYER_Z, h, 8.5, 1);
@@ -1194,7 +1195,7 @@ export function createBonusStage(): BonusStage {
               sprite = 'pardo_bonus_jump';
               frame = Math.floor(animClock * 12) % 2;
             }
-            drawAtlasScaled(sprite, frame, 20, 24, pt.x, pt.y, -theta * 0.45, 1.0, 1);
+            drawAtlasScaled(sprite, frame, 20, 24, pt.x, pt.y, -theta * 0.45, 0.88, 1);
           }
         }
       }
