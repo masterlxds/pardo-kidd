@@ -1,6 +1,6 @@
 # PLAN-BONUS.md — Fase Bônus "Tubo do Bonfim" (Special Stage Pseudo-3D)
 
-Leia também: [`bonus-refs/gdd_fase_bonus_tubo.md`](bonus-refs/gdd_fase_bonus_tubo.md) (GDD, fonte da verdade de design), [`bonus-refs/plano_execucao_bonus.md`](bonus-refs/plano_execucao_bonus.md) (orquestração e interfaces), `PLAN.md`, `PLAN-FASE3.md` e `PLAN-FASE5.md` (arquitetura e regras que continuam valendo).
+Leia também: [`bonus-refs/gdd_fase_bonus_tubo.md`](bonus-refs/gdd_fase_bonus_tubo.md) (GDD, fonte da verdade de design), [`bonus-refs/plano_execucao_bonus.md`](bonus-refs/plano_execucao_bonus.md) (orquestração e interfaces), `PLAN.md`, `PLAN-FASE3.md` e `PLAN-FASE6.md` (arquitetura e regras que continuam valendo).
 
 **Status: plano e GDD aprovados para execução autônoma pela próxima sessão/orquestrador.**
 
@@ -9,7 +9,7 @@ Leia também: [`bonus-refs/gdd_fase_bonus_tubo.md`](bonus-refs/gdd_fase_bonus_tu
 1. **Etapa 0 (concluída):** GDD completo e plano de execução em `bonus-refs/` + este `PLAN-BONUS.md`.
 2. **Etapa 1 — ORQUESTRADOR escreve os contratos e stubs** (sozinho, antes de paralelizar) até `npm run typecheck` passar com stubs compiláveis.
 3. **Etapa 2 — 6 subagentes em paralelo**, cada um dono exclusivo dos seus arquivos (§5).
-4. **Etapa 3 — ORQUESTRADOR faz QA completo:** `npm run typecheck`, `node scripts/check-art.mjs` (+ inspeção visual do PNG), `node scripts/check-bonus.mjs`, `node scripts/check-level.mjs` … `check-level5.mjs`, `npm run build`, e verificação de ponta a ponta (`?fase=bonus` e transição Fase 3 com 3/3 fitinhas → Bônus → Fase 4).
+4. **Etapa 3 — ORQUESTRADOR faz QA completo:** `npm run typecheck`, `node scripts/check-art.mjs` (+ inspeção visual do PNG), `node scripts/check-bonus.mjs`, `node scripts/check-level.mjs` … `check-level6.mjs`, `npm run build`, e verificação de ponta a ponta (`?fase=bonus` e transição Fase 3 com 3/3 fitinhas → Bônus → Fase 4).
 
 ## 1. Contratos (Etapa 1 — ORQUESTRADOR)
 
@@ -83,7 +83,7 @@ Leia também: [`bonus-refs/gdd_fase_bonus_tubo.md`](bonus-refs/gdd_fase_bonus_tu
 - `npm run typecheck` e `npm run build` sem erros; `dist/` sem requisições externas.
 - `node scripts/check-art.mjs` → `"arte OK"`, sem ausentes nem baixa resolução.
 - `node scripts/check-bonus.mjs` → `"bonus OK"`.
-- `node scripts/check-level.mjs` até `check-level5.mjs` → todos OK (Fases 1–5 intactas).
+- `node scripts/check-level.mjs` até `check-level6.mjs` → todos OK (Fases 1–5 intactas).
 - Fluxos verificados:
   1. Fase 3 com `< 3` fitinhas → vai direto para a Fase 4.
   2. Fase 3 com `3/3` fitinhas → `bonus_intro` → `bonus` → `bonus_end` → Fase 4 (preservando moedas, vidas e pontos).

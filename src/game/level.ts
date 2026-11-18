@@ -15,12 +15,12 @@ import { createSeaEnemy } from './enemies3';
 import { createAirVent, createGoldfishSchool, createJandira, createRibbon, createStaffGoal } from './objects3';
 import { createRioEnemy } from './enemies4';
 import { createAmaroGoal, createClayFilter } from './objects4';
+import { LEVEL6_MOVERS, LEVEL6_ROWS } from './level6';
+import { createSampaEnemy } from './enemies6';
+import { createBebedouro, createMaiaGoal } from './objects6';
 import { LEVEL5_MOVERS, LEVEL5_ROWS } from './level5';
-import { createSampaEnemy } from './enemies5';
-import { createBebedouro, createMaiaGoal } from './objects5';
-import { LEVEL_UBER_MOVERS, LEVEL_UBER_ROWS } from './levelUber';
-import { createUberEnemy } from './enemiesUber';
-import { createCoolerUber, createUberCar, createUberGoal } from './objectsUber';
+import { createUberEnemy } from './enemies5';
+import { createCoolerUber, createUberCar, createUberGoal } from './objects5';
 
 type SpriteName = keyof typeof SPRITE_SPEC;
 
@@ -474,14 +474,14 @@ export function createLevel4(): Level {
 }
 
 // ── Fase 5 — Marginal de São Paulo (De Uber até o Galpão) ────────────────────
-export function createLevelUber(): Level {
+export function createLevel5(): Level {
   return buildLevel({
     index: 4,
     name: 'MARGINAL DE SÃO PAULO',
     theme: 'uber',
     autoscroll: true,
-    rows: LEVEL_UBER_ROWS,
-    movers: LEVEL_UBER_MOVERS,
+    rows: LEVEL5_ROWS,
+    movers: LEVEL5_MOVERS,
     tileChars: {
       '=': Tile.GroundTop, '#': Tile.Ground, 'R': Tile.Rock, '^': Tile.Spike,
       'B': Tile.Block, '?': Tile.BlockItem, 'W': Tile.BlockItem, '-': Tile.OneWay, '~': Tile.Water,
@@ -521,13 +521,13 @@ export function createLevelUber(): Level {
 }
 
 // ── Fase 6 — Transportadora de São Paulo (Hora do Café) ─────────────────────
-export function createLevel5(): Level {
+export function createLevel6(): Level {
   return buildLevel({
     index: 5,
     name: 'TRANSPORTADORA DE SÃO PAULO',
     theme: 'sampa',
-    rows: LEVEL5_ROWS,
-    movers: LEVEL5_MOVERS,
+    rows: LEVEL6_ROWS,
+    movers: LEVEL6_MOVERS,
     tileChars: {
       '=': Tile.GroundTop, '#': Tile.Ground, 'R': Tile.Rock, '^': Tile.Spike,
       'B': Tile.Block, '?': Tile.BlockItem, 'W': Tile.BlockItem, '-': Tile.OneWay,

@@ -34,8 +34,8 @@ import { createBackground } from '../gfx/background';
 import { createAmazonBackground } from '../gfx/background2';
 import { createBahiaBackground } from '../gfx/background3';
 import { createRioBackground } from '../gfx/background4';
-import { createSampaBackground } from '../gfx/background5';
-import { createUberBackground } from '../gfx/backgroundUber';
+import { createSampaBackground } from '../gfx/background6';
+import { createUberBackground } from '../gfx/background5';
 import { createAtlas } from '../gfx/atlas';
 import { createAudio } from '../audio/audio';
 import { drawText } from '../gfx/font';
@@ -59,7 +59,7 @@ const INTRO_SKIP_DELAY = 0.25;
 /** Distância (px) entre o centro do Pardo e o centro do alien ao receber a mamadeira. */
 const GOAL_STAND_OFF = 14;
 /**
- * Idem para o Maia (Fase 5): hitbox 22 (vs. 16 do Amaro) e sprite 34 com o braço da xícara indo até a borda.
+ * Idem para o Maia (Fase 6): hitbox 22 (vs. 16 do Amaro) e sprite 34 com o braço da xícara indo até a borda.
  * 17 mantém a mesma folga de 1px entre as hitboxes que o Amaro tem e deixa a mão do Maia sobre o Pardo.
  */
 const MAIA_STAND_OFF = 24;

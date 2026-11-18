@@ -88,8 +88,7 @@ node scripts/check-level.mjs        # valida o mapa da Fase 1
 node scripts/check-level2.mjs       # valida o mapa da Fase 2
 node scripts/check-level3.mjs       # valida o mapa da Fase 3 (dimensões, contagens, alcançabilidade a nado, fissuras)
 node scripts/check-level4.mjs       # valida o mapa da Fase 4 (dimensões, contagens, alcançabilidade)
-node scripts/check-level-uber.mjs   # valida o mapa da Fase 5 — Marginal de São Paulo (autoscroller no Uber)
-node scripts/check-level5.mjs       # valida o mapa da Transportadora (atalho legado)
+node scripts/check-level5.mjs       # valida o mapa da Fase 5 — Marginal de São Paulo (autoscroller no Uber)
 node scripts/check-level6.mjs       # valida o mapa da Fase 6 — Transportadora de São Paulo
 node scripts/check-bonus.mjs        # valida a Fase Bônus (3 trechos, metas 20/45/70, ondas de moedas/bombas e simulação)
 ```
@@ -104,7 +103,7 @@ O projeto usa o framework Vite com saída em `dist` (ver `vercel.json`).
 
 ## Estrutura
 
-Resumo; o detalhamento de módulos e donos está em `PLAN.md` (Fase 1), `PLAN-FASE2.md` (Fase 2), `PLAN-FASE3.md` (Fase 3), `PLAN-FASE4.md` (Fase 4), `PLAN-FASE-UBER.md` (Fase 5 — Uber & reordenação da Fase 6), `PLAN-FASE5.md` (Transportadora) e `PLAN-BONUS.md` (Fase Bônus).
+Resumo; o detalhamento de módulos e donos está em `PLAN.md` (Fase 1), `PLAN-FASE2.md` (Fase 2), `PLAN-FASE3.md` (Fase 3), `PLAN-FASE4.md` (Fase 4), `PLAN-FASE5.md` (Fase 5 — Uber & reordenação da Fase 6), `PLAN-FASE6.md` (Transportadora) e `PLAN-BONUS.md` (Fase Bônus).
 
 ```
 index.html          contrato de DOM (#stage, #game, #touch, #btn-*)
@@ -121,27 +120,27 @@ src/
     level2.ts       Fase 2 "Coração da Amazônia"
     level3.ts       Fase 3 "Bahia World" (subaquática)
     level4.ts       Fase 4 "Favela do Rio"
-    levelUber.ts    Fase 5 "Marginal de São Paulo" (autoscroller no Uber)
-    level5.ts       Fase 6 "Transportadora de São Paulo"
+    level5.ts       Fase 5 "Marginal de São Paulo" (autoscroller no Uber)
+    level6.ts       Fase 6 "Transportadora de São Paulo"
     bonus.ts        Fase Bônus "Tubo do Bonfim" (meio-tubo pseudo-3D)
     objects.ts      moedas, plataformas, cipó-d'água, alien, caneca
     objects3.ts     bolhas, fitinhas do Bonfim, Jandira e cajado (Fase 3)
     objects4.ts     filtro de barro e Amaro (Fase 4)
-    objectsUber.ts  carro preto da Uber, cooler 5 estrelas e desembarque (Fase 5)
-    objects5.ts     bebedouro, movers e Renan Maia (Fase 6)
+    objects5.ts     carro preto da Uber, cooler 5 estrelas e desembarque (Fase 5)
+    objects6.ts     bebedouro, movers e Renan Maia (Fase 6)
     enemies.ts      inimigos (Fases 1–2)
     enemies3.ts     inimigos marinhos (Fase 3)
     enemies4.ts     inimigos cariocas (Fase 4)
-    enemiesUber.ts  inimigos da Marginal: motoboy, drone, patinete e pichador (Fase 5)
-    enemies5.ts     inimigos da transportadora (Fase 6)
+    enemies5.ts     inimigos da Marginal: motoboy, drone, patinete e pichador (Fase 5)
+    enemies6.ts     inimigos da transportadora (Fase 6)
     hud.ts          HUD e telas
   gfx/              paleta, sprites em grade de caracteres, atlas, fontes
     background.ts     parallax do sertão (Fase 1)
     background2.ts    parallax da Amazônia (Fase 2)
     background3.ts    parallax subaquático da Bahia (Fase 3)
     background4.ts    parallax do Rio de Janeiro (Fase 4)
-    backgroundUber.ts parallax noturno da Marginal Tietê / Ponte Estaiada (Fase 5)
-    background5.ts    parallax da transportadora de São Paulo (Fase 6)
+    background5.ts  parallax noturno da Marginal Tietê / Ponte Estaiada (Fase 5)
+    background6.ts  parallax da transportadora de São Paulo (Fase 6)
     art/enemies2.ts   sprites dos inimigos da Fase 2 (onça, jacaré, cobra, tucano)
     art/amazon.ts     tiles e decoração da Amazônia (Fase 2)
     art/pardoSwim.ts  sprites de nado do Pardo (Fase 3)
@@ -153,12 +152,12 @@ src/
     art/enemies4.ts   sprites dos inimigos da Fase 4
     art/rio.ts        tiles, objetos e decoração do Rio (Fase 4)
     art/uber.ts       carro preto da Uber, desembarque 5★, tiles e objetos da Marginal (Fase 5)
-    art/enemiesUber.ts sprites dos inimigos da Fase 5 (motoboy, drone, patinete, pichador)
+    art/enemies5.ts   sprites dos inimigos da Fase 5 (motoboy, drone, patinete, pichador)
     art/maia.ts       sprites do Renan Maia, xícara de café e Pardo bebendo (Fase 6)
-    art/enemies5.ts   sprites dos inimigos da Fase 6
+    art/enemies6.ts   sprites dos inimigos da Fase 6
     art/sampa.ts      tiles, objetos e decoração da transportadora (Fase 6)
   audio/audio.ts    SFX e música chiptune via Web Audio
-scripts/            check-art.mjs, check-level.mjs, check-level2.mjs, check-level3.mjs, check-level4.mjs, check-level-uber.mjs, check-level5.mjs, check-level6.mjs, check-bonus.mjs
+scripts/            check-art.mjs, check-level.mjs, check-level2.mjs, check-level3.mjs, check-level4.mjs, check-level5.mjs, check-level6.mjs, check-bonus.mjs
 ```
 
 ## Sobre os recursos

@@ -7,7 +7,7 @@
 
 ## 1. Arquitetura de Orquestração ("Contratos Primeiro")
 
-Seguindo o padrão comprovado nas Fases 1 a 5 (`PLAN.md` a `PLAN-FASE5.md`), a implementação é executada de forma autônoma em **3 etapas**:
+Seguindo o padrão comprovado nas Fases 1 a 5 (`PLAN.md` a `PLAN-FASE6.md`), a implementação é executada de forma autônoma em **3 etapas**:
 
 ```mermaid
 flowchart LR
@@ -131,7 +131,7 @@ Após concluir todos os módulos da Etapa 2, o Orquestrador executa e verifica:
 1. `npm run typecheck` → **0 erros**.
 2. `node scripts/check-art.mjs art-preview-bonus.png pardo_bonus,buddy_bonus,bonus_` → **"arte OK"**, sem ausentes, seguido de inspeção visual da imagem gerada.
 3. `node scripts/check-bonus.mjs` → **100% aprovado** (metas atingíveis com folga ≥ 135%, sem bloqueios impossíveis, bot alcançando a Esmeralda).
-4. `node scripts/check-level.mjs && node scripts/check-level2.mjs && node scripts/check-level3.mjs && node scripts/check-level4.mjs && node scripts/check-level5.mjs` → **todas as 5 fases intactas**.
+4. `node scripts/check-level.mjs && node scripts/check-level2.mjs && node scripts/check-level3.mjs && node scripts/check-level4.mjs && node scripts/check-level6.mjs` → **todas as 5 fases intactas**.
 5. `npm run build` → **build limpo em `dist/`**.
 6. Teste funcional no navegador (ou simulação via script/headless se aplicável) cobrindo:
    * `?fase=bonus`: título → `bonus_intro` → `bonus` (teclado + touch) → pausa (`P`/`Esc`) → `bonus_end` → `FASE 4`.

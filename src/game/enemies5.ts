@@ -1,36 +1,30 @@
 import type { Entity, Rect, World } from '../core/types';
+import { Tile } from '../core/types';
 import { TILE } from '../core/constants';
-import { moveBody } from '../core/physics';
-import { createPopCoin } from './objects';
+import { type Collision, moveBody } from '../core/physics';
 
-/** Inimigos da Fase 5 — Transportadora de São Paulo (level-5-refs/gdd_bestiario_e_maia.md §1). */
-export type SampaEnemyKind = 'rato' | 'carregador' | 'empilhadeira' | 'arremessador';
+/** Inimigos da Fase 5 — Marginal de São Paulo (todos morrem com 1 soco). */
+export type UberEnemyKind = 'motoboy' | 'drone' | 'patinete' | 'pichador';
 
 type Dir = 1 | -1;
 
 const GRAV = 900;
 const MAX_FALL = 360;
-const PKG_GRAV = 520;
+const LATA_GRAV = 480;
+/** Pista principal do Pardo no autoscroller (teto do Uber = base da linha 9 = 160 px). */
+const ROAD_Y = 10 * TILE;
 
 interface SpriteRef {
   name: string;
   frame: number;
   flip: boolean;
+  align?: 'bottom' | 'center';
 }
-
-/**
- * Resultado de soco:
- * - 'kill': derrota e arremessa para fora da tela
- * - 'stun': soco conecta sem pontuar nem arremessar (1º soco do carregador)
- * - 'bounce': soco rebatido (retorna false em onPunch)
- */
-type PunchOutcome = 'kill' | 'stun' | 'bounce';
 
 interface EnemyAi {
   update(e: Entity, dt: number, world: World): void;
   sprite(): SpriteRef;
-  onHit?(e: Entity, dir: Dir, world: World): PunchOutcome;
-  harmless?(): boolean;
+  onKill?(e: Entity, dir: Dir, world: World): void;
 }
 
 interface Thrown {
@@ -41,7 +35,7 @@ interface Thrown {
 
 const cx = (r: Rect): number => r.x + r.w / 2;
 
-/** Fase determinística [0..1) a partir da posição para dessincronizar ciclos. */
+/** Fase determinística [0..1) a partir da posição inicial para dessincronizar ciclos. */
 function phase01(x: number, y: number): number {
   const v = Math.sin(x * 0.0713 + y * 0.0539) * 43758.5453;
   return v - Math.floor(v);
@@ -64,12 +58,17 @@ function unstuckSpawnX(e: Entity, world: World): void {
   else if (solidR && !solidL) e.x = txR * TILE - e.w;
 }
 
-/** Há chão seguro (sólido ou one-way) à frente-abaixo e sem perigo (`isHazard`) à frente? */
+/**
+ * Há chão seguro à frente-abaixo (tile sólido, one-way ou faixa da pista em `y = 10 * TILE`
+ * quando há asfalto `Tile.GroundTop` na linha 11) e sem perigo (`isHazard`) à frente?
+ */
 function safeGroundAhead(e: Entity, dir: Dir, world: World): boolean {
   const ax = dir > 0 ? e.x + e.w + 1 : e.x - 1;
   const tx = Math.floor(ax / TILE);
   const tyBelow = Math.floor((e.y + e.h + 1) / TILE);
-  if (!world.level.isSolid(tx, tyBelow) && !world.level.isOneWay(tx, tyBelow)) return false;
+  const hasTileGround = world.level.isSolid(tx, tyBelow) || world.level.isOneWay(tx, tyBelow);
+  const hasUberLaneGround = tyBelow === 10 && world.level.tileAt(tx, 11) === Tile.GroundTop;
+  if (!hasTileGround && !hasUberLaneGround) return false;
   if (world.level.isHazard(tx, tyBelow)) return false;
   const r0 = Math.floor(e.y / TILE);
   const r1 = Math.floor((e.y + e.h - 0.001) / TILE);
@@ -79,25 +78,44 @@ function safeGroundAhead(e: Entity, dir: Dir, world: World): boolean {
   return true;
 }
 
-function fall(e: Entity, dt: number, world: World) {
+/**
+ * Aplica gravidade + `moveBody` e apoia inimigos terrestres na pista principal (`y = 10 * TILE = 160`)
+ * sempre que a coluna atual tiver asfalto (`Tile.GroundTop`) na linha 11.
+ */
+function stepGroundEnemy(e: Entity, dt: number, world: World): Collision {
   e.vy = Math.min(e.vy + GRAV * dt, MAX_FALL);
-  return moveBody(e, world.level, dt);
+  const c = moveBody(e, world.level, dt);
+  const foot = e.y + e.h;
+  const tx = Math.floor(cx(e) / TILE);
+  if (
+    e.vy >= 0 &&
+    foot >= ROAD_Y &&
+    foot <= ROAD_Y + 8 &&
+    world.level.tileAt(tx, 11) === Tile.GroundTop
+  ) {
+    e.y = ROAD_Y - e.h;
+    e.vy = 0;
+    c.bottom = true;
+  }
+  return c;
 }
 
 function guardDead(e: Entity, world: World): void {
   if (e.y > world.level.heightPx + 60) e.dead = true;
 }
 
-/** Monta a entidade de um inimigo da Sampa com arremesso ao morrer, colisão e renderização. */
-function buildSampaEnemy(
-  kind: SampaEnemyKind,
+/**
+ * Monta a entidade de um inimigo da Marginal de São Paulo.
+ * REGRA DE OURO: todos os inimigos desta fase morrem com apenas 1 golpe (1 soco)!
+ */
+function buildUberEnemy(
+  kind: UberEnemyKind,
   x: number,
   y: number,
   w: number,
   h: number,
   points: number,
   makeAi: (e: Entity) => EnemyAi,
-  deathSfx: 'hit' | 'squeak' = 'hit',
 ): Entity {
   let thrown: Thrown | null = null;
   let ai!: EnemyAi;
@@ -126,7 +144,7 @@ function buildSampaEnemy(
       const s = ai.sprite();
       const size = world.sprites.size(s.name);
       const sx = e.x + e.w / 2 - size.w / 2;
-      const sy = e.y + e.h - size.h;
+      const sy = s.align === 'center' ? e.y + e.h / 2 - size.h / 2 : e.y + e.h - size.h;
       if (thrown) {
         ctx.save();
         ctx.translate(Math.round(e.x + e.w / 2), Math.round(e.y + e.h / 2));
@@ -139,20 +157,16 @@ function buildSampaEnemy(
     },
     onPunch(world, dir) {
       if (thrown) return false;
-      if (ai.onHit) {
-        const res = ai.onHit(e, dir, world);
-        if (res === 'bounce') return false;
-        if (res === 'stun') return true;
-      }
+      ai.onKill?.(e, dir, world);
       thrown = { rot: 0, spin: dir * 12, dir };
       e.vx = dir * 150;
       e.vy = -210;
-      world.audio.play(deathSfx);
+      world.audio.play('hit');
       world.addScore(points, cx(e), e.y);
       return true;
     },
     onTouchPlayer(world) {
-      if (thrown || world.player.dead || ai.harmless?.()) return;
+      if (thrown || world.player.dead) return;
       world.player.hurt(world, cx(e), 1);
     },
   };
@@ -161,133 +175,14 @@ function buildSampaEnemy(
   return e;
 }
 
-const RATO_LEASH = 7 * TILE;
-
-// ── 1. Rato de Galpão: corre a 55 px/s, vira em bordas e paredes ─────────────────────
-function ratoAi(e: Entity): EnemyAi {
-  let dir: Dir = phase01(e.x, e.y) < 0.5 ? -1 : 1;
-  let t = 0;
-  let spawned = false;
-  // território: o rato não se afasta mais que RATO_LEASH da toca (não invade a copa nem os checkpoints)
-  const homeX = e.x;
-  return {
-    update(_e, dt, world) {
-      if (!spawned) {
-        spawned = true;
-        unstuckSpawnX(e, world);
-      }
-      t += dt;
-      if (e.x - homeX > RATO_LEASH) dir = -1;
-      else if (homeX - e.x > RATO_LEASH) dir = 1;
-      e.vx = dir * 55;
-      const c = fall(e, dt, world);
-      if (c.left || c.right) dir = c.left ? 1 : -1;
-      else if (c.bottom && !safeGroundAhead(e, dir, world)) dir = (dir * -1) as Dir;
-      guardDead(e, world);
-    },
-    sprite() {
-      return { name: 'rato', frame: Math.floor(t / 0.09) % 2, flip: dir < 0 };
-    },
-  };
-}
-
-// ── 2. Carregador de Caixa: 2 socos (caixa quebra → bravo) ───────────────────────────
-function carregadorAi(e: Entity, homeX: number): EnemyAi {
-  type State = 'walk' | 'surprise' | 'angry';
-  const RANGE = 4 * TILE;
-  const WALK = 32;
-  const RUN = 70;
-  const SURPRISE = 0.6;
-
-  let state: State = 'walk';
-  let dir: Dir = phase01(homeX, e.y) < 0.5 ? -1 : 1;
-  let timer = 0;
-  let t = 0;
-  let spawned = false;
-
-  const atLimit = (d: Dir): boolean => (d > 0 ? cx(e) >= homeX + RANGE : cx(e) <= homeX - RANGE);
-
-  return {
-    update(_e, dt, world) {
-      if (!spawned) {
-        spawned = true;
-        unstuckSpawnX(e, world);
-      }
-      t += dt;
-
-      if (state === 'walk') {
-        e.vx = dir * WALK;
-        const c = fall(e, dt, world);
-        if (c.left || c.right) dir = c.left ? 1 : -1;
-        else if (c.bottom && !safeGroundAhead(e, dir, world)) dir = (dir * -1) as Dir;
-        else if (atLimit(dir)) dir = (dir * -1) as Dir;
-      } else if (state === 'surprise') {
-        // knockback curto que decai rapidamente, sem cair de bordas
-        e.vx *= Math.max(0, 1 - 10 * dt);
-        if (Math.abs(e.vx) > 1) {
-          const sd: Dir = e.vx > 0 ? 1 : -1;
-          if (!safeGroundAhead(e, sd, world)) e.vx = 0;
-        } else {
-          e.vx = 0;
-        }
-        fall(e, dt, world);
-        timer -= dt;
-        if (timer <= 0) {
-          state = 'angry';
-          e.vx = 0;
-        }
-      } else {
-        const p = world.player;
-        if (!p.dead) {
-          const dx = cx(p) - cx(e);
-          if (Math.abs(dx) > 4) dir = dx > 0 ? 1 : -1;
-        }
-        // não sai do trecho, não cai de bordas e não atravessa paredes: fica parado no limite
-        const blocked = atLimit(dir) || !safeGroundAhead(e, dir, world);
-        e.vx = blocked ? 0 : dir * RUN;
-        const c = fall(e, dt, world);
-        if (c.left || c.right) e.vx = 0;
-      }
-
-      guardDead(e, world);
-    },
-    sprite() {
-      if (state === 'walk') return { name: 'carregador', frame: Math.floor(t / 0.22) % 2, flip: dir < 0 };
-      if (state === 'surprise') return { name: 'carregador_bravo', frame: 0, flip: dir < 0 };
-      const moving = Math.abs(e.vx) > 1;
-      return { name: 'carregador_bravo', frame: moving ? Math.floor(t / 0.1) % 2 : 0, flip: dir < 0 };
-    },
-    onHit(_e, punchDir, world) {
-      if (state !== 'walk') return 'kill';
-      // caixa quebra: troca hitbox 14×24 → 12×20 mantendo pés e centro
-      const feet = e.y + e.h;
-      const mid = cx(e);
-      e.w = 12;
-      e.h = 20;
-      e.x = mid - e.w / 2;
-      e.y = feet - e.h;
-
-      state = 'surprise';
-      timer = SURPRISE;
-      dir = (punchDir * -1) as Dir; // vira para quem bateu
-      e.vx = safeGroundAhead(e, punchDir, world) ? punchDir * 60 : 0;
-      e.vy = -30;
-      world.audio.play('crate');
-      world.fx('debris', mid, e.y + 4);
-      world.spawn(createPopCoin(mid - 4, e.y - 6));
-      return 'stun';
-    },
-    harmless: () => state === 'surprise',
-  };
-}
-
-// ── 3. Empilhadeira: indestrutível, patrulha + arrancada telegrafada ─────────────────
-function empilhadeiraAi(e: Entity): EnemyAi {
-  type State = 'patrol' | 'tele' | 'dash' | 'rest';
-  const SIGHT = 6 * TILE;
+// ── 1. Motoboy do Grau (`'motoboy'`): patrulha 36 px/s + grau (`rev`) + arrancada 95 px/s ──
+function motoboyAi(e: Entity): EnemyAi {
+  type State = 'patrol' | 'wheelie_warn' | 'dash' | 'rest';
+  const SIGHT = 8 * TILE; // 128 px
   let state: State = 'patrol';
-  let dir: Dir = phase01(e.x, e.y) < 0.5 ? -1 : 1;
+  let dir: Dir = -1;
   let timer = 0;
+  let dashCd = 0;
   let t = 0;
   let spawned = false;
 
@@ -298,98 +193,277 @@ function empilhadeiraAi(e: Entity): EnemyAi {
         unstuckSpawnX(e, world);
       }
       t += dt;
+      if (dashCd > 0) dashCd = Math.max(0, dashCd - dt);
+
       const p = world.player;
       const active = !p.dead && world.state.scene === 'playing';
 
       if (state === 'patrol') {
-        e.vx = dir * 28;
-        const c = fall(e, dt, world);
+        e.vx = dir * 36;
+        const c = stepGroundEnemy(e, dt, world);
         if (c.left || c.right) dir = c.left ? 1 : -1;
         else if (c.bottom && !safeGroundAhead(e, dir, world)) dir = (dir * -1) as Dir;
 
         const dx = cx(p) - cx(e);
         const dy = p.y + p.h - (e.y + e.h);
-        if (c.bottom && active && dx * dir > 0 && Math.abs(dx) <= SIGHT && Math.abs(dy) <= 16) {
-          state = 'tele';
-          timer = 0.4;
-          e.vx = 0;
-          world.audio.play('beep');
+        if (
+          c.bottom &&
+          active &&
+          dashCd <= 0 &&
+          Math.abs(dx) <= SIGHT &&
+          Math.abs(dy) <= 24
+        ) {
+          if (Math.abs(dx) > 1) dir = dx >= 0 ? 1 : -1;
+          if (safeGroundAhead(e, dir, world)) {
+            state = 'wheelie_warn';
+            timer = 0.32;
+            e.vx = 0;
+            world.audio.play('rev');
+            world.fx('dust', cx(e) - dir * 10, e.y + e.h, (dir * -1) as Dir);
+          }
         }
-      } else if (state === 'tele') {
+      } else if (state === 'wheelie_warn') {
         e.vx = 0;
-        fall(e, dt, world);
+        stepGroundEnemy(e, dt, world);
         timer -= dt;
         if (timer <= 0) {
           state = 'dash';
-          timer = 0.6;
-          world.fx('dust', cx(e) - dir * 14, e.y + e.h, (dir * -1) as Dir);
+          timer = 0.85;
+          world.fx('dust', cx(e) - dir * 10, e.y + e.h, (dir * -1) as Dir);
         }
       } else if (state === 'dash') {
         if (!safeGroundAhead(e, dir, world)) {
           e.vx = 0;
           state = 'rest';
-          timer = 0.8;
-          fall(e, dt, world);
+          timer = 0.5;
+          stepGroundEnemy(e, dt, world);
         } else {
-          e.vx = dir * 150;
-          const c = fall(e, dt, world);
+          e.vx = dir * 95;
+          const c = stepGroundEnemy(e, dt, world);
           timer -= dt;
-          if (c.left || c.right) {
+          if (c.left || c.right || (c.bottom && !safeGroundAhead(e, dir, world)) || timer <= 0) {
             e.vx = 0;
             state = 'rest';
-            timer = 0.8;
-          } else if (c.bottom && !safeGroundAhead(e, dir, world)) {
-            e.vx = 0;
-            state = 'rest';
-            timer = 0.8;
-          } else if (timer <= 0) {
-            e.vx = 0;
-            state = 'rest';
-            timer = 0.8;
+            timer = 0.5;
           }
         }
       } else {
         e.vx = 0;
-        fall(e, dt, world);
+        stepGroundEnemy(e, dt, world);
         timer -= dt;
         if (timer <= 0) {
+          if (!safeGroundAhead(e, dir, world)) dir = (dir * -1) as Dir;
           state = 'patrol';
-          dir = (dir * -1) as Dir; // vira após descansar para não repetir contra parede/borda
+          dashCd = 0.45;
         }
       }
 
       guardDead(e, world);
     },
     sprite() {
-      if (state === 'tele' || state === 'dash') return { name: 'empilhadeira_dash', frame: 0, flip: dir < 0 };
-      const frame = state === 'patrol' ? Math.floor(t / 0.18) % 2 : 0;
-      return { name: 'empilhadeira', frame, flip: dir < 0 };
-    },
-    onHit(_e, punchDir, world) {
-      world.audio.play('hit');
-      world.fx('impact', cx(e) - punchDir * (e.w / 2), e.y + e.h / 2, punchDir);
-      return 'bounce';
+      if (state === 'wheelie_warn' || state === 'dash') {
+        return { name: 'motoboy_wheelie', frame: 0, flip: dir < 0 };
+      }
+      const frame = state === 'patrol' ? Math.floor(t / 0.12) % 2 : 0;
+      return { name: 'motoboy', frame, flip: dir < 0 };
     },
   };
 }
 
-// ── Projétil do Arremessador (`pacote`): arco, socável (+10 pts) ─────────────────────
-function createPacote(spawnX: number, spawnY: number, dir: Dir): Entity {
+// ── 2. Drone de Delivery (`'drone'`): senoide aérea + rasante diagonal ────────────────
+function droneAi(e: Entity): EnemyAi {
+  type State = 'patrol' | 'warn' | 'dive' | 'recover';
+  const PATROL_RANGE = 2.5 * TILE; // 40 px
+  const DIVE_TRIGGER = 6.5 * TILE; // 104 px
+  const homeX = e.x;
+  const homeY = e.y;
+  const phase = phase01(homeX, homeY) * Math.PI * 2;
+
+  let state: State = 'patrol';
+  let dir: Dir = -1;
+  let face: Dir = -1;
+  let timer = 0;
+  let cd = 0;
+  let t = 0;
+
+  const blockedAt = (world: World, nx: number, ny: number): boolean => {
+    const tx0 = Math.floor(nx / TILE);
+    const tx1 = Math.floor((nx + e.w - 0.001) / TILE);
+    const ty0 = Math.floor(ny / TILE);
+    const ty1 = Math.floor((ny + e.h - 0.001) / TILE);
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        if (world.level.isSolid(tx, ty)) return true;
+      }
+    }
+    return false;
+  };
+
+  return {
+    update(_e, dt, world) {
+      t += dt;
+      if (cd > 0) cd = Math.max(0, cd - dt);
+
+      const p = world.player;
+      const active = !p.dead && world.state.scene === 'playing';
+      const dx = cx(p) - cx(e);
+
+      if (state === 'patrol') {
+        e.vx = dir * 28;
+        const nx = e.x + e.vx * dt;
+        const ny = homeY + Math.sin(t * 4.5 + phase) * 5;
+        if (
+          (dir > 0 && nx >= homeX + PATROL_RANGE) ||
+          (dir < 0 && nx <= homeX - PATROL_RANGE) ||
+          blockedAt(world, nx, e.y)
+        ) {
+          dir = (dir * -1) as Dir;
+        } else {
+          e.x = nx;
+        }
+        if (!blockedAt(world, e.x, ny)) e.y = ny;
+        face = dir;
+
+        if (active && cd <= 0 && Math.abs(dx) <= DIVE_TRIGGER) {
+          state = 'warn';
+          timer = 0.35;
+          e.vx = 0;
+          e.vy = 0;
+          face = dx >= 0 ? 1 : -1;
+        }
+      } else if (state === 'warn') {
+        e.vx = 0;
+        e.vy = 0;
+        if (active && Math.abs(dx) > 1) face = dx >= 0 ? 1 : -1;
+        timer -= dt;
+        if (timer <= 0) {
+          state = 'dive';
+          timer = 0.6;
+          e.vx = face * 80;
+          e.vy = 70;
+        }
+      } else if (state === 'dive') {
+        timer -= dt;
+        const nx = e.x + e.vx * dt;
+        const maxDiveY = ROAD_Y - e.h - 2;
+        const ny = Math.min(maxDiveY, e.y + e.vy * dt);
+        if (!blockedAt(world, nx, e.y) && Math.abs(nx - homeX) <= 5 * TILE) {
+          e.x = nx;
+        }
+        if (!blockedAt(world, e.x, ny)) {
+          e.y = ny;
+        }
+        if (timer <= 0 || e.y >= maxDiveY) {
+          state = 'recover';
+          cd = 1.4;
+        }
+      } else {
+        // 'recover': sobe suavemente de volta até homeY
+        const dyHome = homeY - e.y;
+        const stepY = Math.sign(dyHome) * Math.min(Math.abs(dyHome), 65 * dt);
+        if (!blockedAt(world, e.x, e.y + stepY)) e.y += stepY;
+
+        const dxHome = homeX - e.x;
+        if (Math.abs(dxHome) > PATROL_RANGE) {
+          const stepX = Math.sign(dxHome) * Math.min(Math.abs(dxHome), 45 * dt);
+          if (!blockedAt(world, e.x + stepX, e.y)) e.x += stepX;
+        }
+
+        if (Math.abs(homeY - e.y) <= 1.5) {
+          e.y = homeY;
+          state = 'patrol';
+        }
+      }
+    },
+    sprite() {
+      if (state === 'warn' || state === 'dive') {
+        return { name: 'drone_dive', frame: 0, flip: face < 0, align: 'center' };
+      }
+      return { name: 'drone', frame: Math.floor(t / 0.08) % 2, flip: face < 0, align: 'center' };
+    },
+    onKill(_e, _dir, world) {
+      world.fx('debris', cx(e), e.y + e.h / 2);
+    },
+  };
+}
+
+// ── 3. Faria Limer de Patinete (`'patinete'`): desliza a 45 px/s + bunny-hop ──────────
+function patineteAi(e: Entity): EnemyAi {
+  const JUMP_TRIGGER = 5 * TILE; // 80 px
+  let dir: Dir = -1;
+  let onGround = false;
+  let jumpCd = 0.25;
+  let t = 0;
+  let spawned = false;
+
+  return {
+    update(_e, dt, world) {
+      if (!spawned) {
+        spawned = true;
+        unstuckSpawnX(e, world);
+      }
+      t += dt;
+      if (jumpCd > 0) jumpCd = Math.max(0, jumpCd - dt);
+
+      const p = world.player;
+      const active = !p.dead && world.state.scene === 'playing';
+
+      e.vx = dir * 45;
+      if (!onGround && !safeGroundAhead(e, dir, world)) {
+        // Evita se jogar em abismos durante o bunny-hop
+        e.vx = 0;
+      }
+
+      const c = stepGroundEnemy(e, dt, world);
+      onGround = c.bottom;
+
+      if (c.left || c.right) {
+        dir = c.left ? 1 : -1;
+      } else if (onGround && !safeGroundAhead(e, dir, world)) {
+        dir = (dir * -1) as Dir;
+      }
+
+      const dx = cx(p) - cx(e);
+      const dy = p.y + p.h - (e.y + e.h);
+      if (onGround && active && jumpCd <= 0 && Math.abs(dx) <= JUMP_TRIGGER && Math.abs(dy) <= 36) {
+        if (Math.abs(dx) > 2) {
+          const wantDir: Dir = dx >= 0 ? 1 : -1;
+          if (safeGroundAhead(e, wantDir, world)) dir = wantDir;
+        }
+        e.vy = -215;
+        onGround = false;
+        jumpCd = 1.3;
+        world.audio.play('boing');
+      }
+
+      guardDead(e, world);
+    },
+    sprite() {
+      if (!onGround) {
+        return { name: 'patinete_jump', frame: 0, flip: dir < 0 };
+      }
+      return { name: 'patinete', frame: Math.floor(t / 0.14) % 2, flip: dir < 0 };
+    },
+  };
+}
+
+// ── Projétil do Pichador (`lata`): voa em arco, 1 de dano, morre com 1 soco (+10 pts) ─
+function createLata(spawnX: number, spawnY: number, dir: Dir): Entity {
   let t = 0;
   const d: Entity = {
-    kind: 'pacote',
+    kind: 'lata',
     dead: false,
     x: spawnX - 4,
     y: spawnY - 4,
     w: 8,
     h: 8,
-    vx: 90 * dir,
-    vy: -200,
+    vx: 95 * dir,
+    vy: -170,
     update(dt, world) {
       t += dt;
-      d.vy = Math.min(d.vy + PKG_GRAV * dt, MAX_FALL);
+      d.vy = Math.min(d.vy + LATA_GRAV * dt, MAX_FALL);
       const c = moveBody(d, world.level, dt);
-      if (c.bottom || c.top || c.left || c.right) {
+      if (c.bottom || c.top || c.left || c.right || d.y > ROAD_Y + 8) {
         world.fx('debris', d.x + d.w / 2, d.y + d.h / 2);
         d.dead = true;
       } else if (d.y > world.level.heightPx + 60 || d.x < -24 || d.x > world.level.widthPx + 24) {
@@ -397,7 +471,7 @@ function createPacote(spawnX: number, spawnY: number, dir: Dir): Entity {
       }
     },
     draw(ctx, world) {
-      world.sprites.draw(ctx, 'pacote', Math.floor(t / 0.1) % 2, d.x, d.y);
+      world.sprites.draw(ctx, 'lata', Math.floor(t / 0.1) % 2, d.x, d.y);
     },
     onPunch(world) {
       if (d.dead) return false;
@@ -416,16 +490,16 @@ function createPacote(spawnX: number, spawnY: number, dir: Dir): Entity {
   return d;
 }
 
-// ── 4. Arremessador de Encomendas: parado, espera 1,6 s → aviso 0,45 s → pacote ──────
-function arremessadorAi(e: Entity, homeX: number): EnemyAi {
+// ── 4. Pichador do Viaduto (`'pichador'`): espera 1,4 s → aviso 0,4 s → lança `lata` ─
+function pichadorAi(e: Entity, homeX: number): EnemyAi {
   type State = 'wait' | 'warn' | 'release';
-  const RANGE = 8 * TILE;
-  const WAIT = 1.6;
-  const WARN = 0.45;
+  const RANGE = 8.5 * TILE; // 136 px
+  const WAIT = 1.4;
+  const WARN = 0.4;
   const RELEASE = 0.25;
 
   let state: State = 'wait';
-  let timer = 0.4 + phase01(homeX, e.y) * 1.0;
+  let timer = 0.35 + phase01(homeX, e.y) * 0.9;
   let face: Dir = -1;
   let t = 0;
   let spawned = false;
@@ -442,9 +516,11 @@ function arremessadorAi(e: Entity, homeX: number): EnemyAi {
       const dx = cx(p) - cx(e);
 
       e.vx = 0;
-      fall(e, dt, world);
+      stepGroundEnemy(e, dt, world);
 
-      if (state !== 'release' && !p.dead && Math.abs(dx) > 1) face = dx >= 0 ? 1 : -1;
+      if (state !== 'release' && !p.dead && Math.abs(dx) > 1) {
+        face = dx >= 0 ? 1 : -1;
+      }
 
       if (state === 'wait') {
         if (active && Math.abs(dx) <= RANGE) {
@@ -454,8 +530,7 @@ function arremessadorAi(e: Entity, homeX: number): EnemyAi {
             timer = WARN;
           }
         } else {
-          // fora de alcance: o ciclo espera pronto, sem passar de WAIT
-          timer = Math.min(Math.max(timer, 0.35), WAIT);
+          timer = Math.min(Math.max(timer, 0.3), WAIT);
         }
       } else if (state === 'warn') {
         timer -= dt;
@@ -463,7 +538,7 @@ function arremessadorAi(e: Entity, homeX: number): EnemyAi {
           state = 'release';
           timer = RELEASE;
           world.audio.play('throw');
-          world.spawn(createPacote(cx(e) + face * 6, e.y + 4, face));
+          world.spawn(createLata(cx(e) + face * 6, e.y + 4, face));
         }
       } else {
         timer -= dt;
@@ -476,23 +551,23 @@ function arremessadorAi(e: Entity, homeX: number): EnemyAi {
       guardDead(e, world);
     },
     sprite() {
-      if (state === 'warn') return { name: 'arremessador_throw', frame: 0, flip: face < 0 };
-      if (state === 'release') return { name: 'arremessador_throw', frame: 1, flip: face < 0 };
-      return { name: 'arremessador', frame: Math.floor(t / 0.3) % 2, flip: face < 0 };
+      if (state === 'warn') return { name: 'pichador_throw', frame: 0, flip: face < 0 };
+      if (state === 'release') return { name: 'pichador_throw', frame: 1, flip: face < 0 };
+      return { name: 'pichador', frame: Math.floor(t / 0.28) % 2, flip: face < 0 };
     },
   };
 }
 
 /** (centerX, footY) = centro horizontal e base dos pés. CONTRATO: assinatura e `kind` não mudam. */
-export function createSampaEnemy(kind: SampaEnemyKind, centerX: number, footY: number): Entity {
+export function createUberEnemy(kind: UberEnemyKind, centerX: number, footY: number): Entity {
   switch (kind) {
-    case 'rato':
-      return buildSampaEnemy(kind, centerX - 6, footY - 8, 12, 8, 100, ratoAi, 'squeak');
-    case 'carregador':
-      return buildSampaEnemy(kind, centerX - 7, footY - 24, 14, 24, 500, (e) => carregadorAi(e, centerX));
-    case 'empilhadeira':
-      return buildSampaEnemy(kind, centerX - 14, footY - 24, 28, 24, 0, empilhadeiraAi);
-    case 'arremessador':
-      return buildSampaEnemy(kind, centerX - 6, footY - 20, 12, 20, 400, (e) => arremessadorAi(e, centerX));
+    case 'motoboy':
+      return buildUberEnemy(kind, centerX - 11, footY - 18, 22, 18, 300, motoboyAi);
+    case 'drone':
+      return buildUberEnemy(kind, centerX - 8, footY - 12, 16, 12, 250, droneAi);
+    case 'patinete':
+      return buildUberEnemy(kind, centerX - 7, footY - 20, 14, 20, 200, patineteAi);
+    case 'pichador':
+      return buildUberEnemy(kind, centerX - 6, footY - 20, 12, 20, 350, (e) => pichadorAi(e, centerX));
   }
 }

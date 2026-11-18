@@ -222,9 +222,9 @@ export type EnemyKind = 'calango' | 'carcara' | 'palma' | 'tatu'
   | 'agua_viva' | 'peixe_agulha' | 'baiacu' | 'dentao' | 'siri' | 'tartaruga' | 'moreia'
   // Fase 4 — Favela do Rio (src/game/enemies4.ts)
   | 'caramelo' | 'pombo' | 'gato' | 'capivara' | 'traficante'
-  // Fase 5 — Marginal de São Paulo / Autoscroller no Uber (src/game/enemiesUber.ts)
+  // Fase 5 — Marginal de São Paulo / Autoscroller no Uber (src/game/enemies5.ts)
   | 'motoboy' | 'drone' | 'patinete' | 'pichador'
-  // Fase 6 — Transportadora de São Paulo (src/game/enemies5.ts)
+  // Fase 6 — Transportadora de São Paulo (src/game/enemies6.ts)
   | 'rato' | 'carregador' | 'empilhadeira' | 'arremessador';
 
 export interface Level {

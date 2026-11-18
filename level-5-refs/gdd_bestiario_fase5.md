@@ -1,6 +1,6 @@
 # Bestiário, Carro da Uber e Desembarque — *Fase 5: Marginal de São Paulo*
 
-> **Referência de Entidades e Sprites (`src/game/enemiesUber.ts`, `src/game/objectsUber.ts`, `src/gfx/art/enemiesUber.ts`, `src/gfx/art/uber.ts`)**  
+> **Referência de Entidades e Sprites (`src/game/enemies5.ts`, `src/game/objects5.ts`, `src/gfx/art/enemies5.ts`, `src/gfx/art/uber.ts`)**  
 > Regra de ouro do autoscroller: **TODOS os inimigos do bestiário desta fase morrem com apenas 1 golpe (1 soco)**!
 
 ---
@@ -15,7 +15,7 @@
   * **Detalhes animados (frame 0 vs. frame 1)**:
     * Rodas com aros prateados (`q`, `Q`, `g`) girando em alta velocidade;
     * Leve vibração esportiva do escapamento/para-choque e brilho dos faróis dianteiros (`y`, `a`, `w`) à direita e lanternas traseiras (`r`, `R`) à esquerda.
-* **Mecânica (`createUberCar` em `src/game/objectsUber.ts`)**:
+* **Mecânica (`createUberCar` em `src/game/objects5.ts`)**:
   * Entidade com `kind: 'uber_car'`, `w: 64, h: 24`, `platform: true`, `dx: 0, dy: 0`.
   * Segue suavemente o `player.centerX` dentro dos limites da câmera, com o teto em `y = 10 * TILE` (`160 px`) sempre que há asfalto (`Tile.GroundTop`) na linha 11 sob o Pardo.
   * Nos vãos do viaduto (colunas sem piso sólido na linha 11), desativa `platform = false` e mergulha visualmente `20 px` pela rampa inferior até o asfalto retornar.
@@ -25,7 +25,7 @@
 
 ## 2. Bestiário da Marginal (Todos com 1 HP / 1 Soco!)
 
-Todos os inimigos são criados via `createUberEnemy(kind, centerX, footY)` em `src/game/enemiesUber.ts`. Causam `1` de dano de hidratação ao contato (`onTouchPlayer`) e **morrem imediatamente no 1º soco (`onPunch`)**, sendo arremessados girando para fora da tela com som e pontuação.
+Todos os inimigos são criados via `createUberEnemy(kind, centerX, footY)` em `src/game/enemies5.ts`. Causam `1` de dano de hidratação ao contato (`onTouchPlayer`) e **morrem imediatamente no 1º soco (`onPunch`)**, sendo arremessados girando para fora da tela com som e pontuação.
 
 | Kind | Marcador | Nome | Sprite(s) (`spec.ts`) | Hitbox | Pontos | Golpes p/ Morrer |
 |---|---|---|---|---|---|---|
@@ -72,7 +72,7 @@ Todos os inimigos são criados via `createUberEnemy(kind, centerX, footY)` em `s
 
 ---
 
-## 3. Objetos Interativos e Objetivo (`src/game/objectsUber.ts`)
+## 3. Objetos Interativos e Objetivo (`src/game/objects5.ts`)
 
 1. **`createCoolerUber(x, y)` (marcador `V`, sprite `cooler_uber [16, 32, 2]`)**:
    * Cooler térmico azul/preto com adesivo `"5★ ÁGUA"` sobre cavalete na pista/passarela.

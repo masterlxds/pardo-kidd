@@ -88,7 +88,7 @@ const SPR_H = 24;
 type DrinkPhase = 'walk' | 'sip' | 'done';
 /**
  * O que o Pardo bebe na vitória: caneca (Fase 1), mamadeira do alien (Fase 2), Cajado Jailnesco (Fase 3, lambida),
- * água mineral do Amaro (Fase 4) ou café do Renan Maia (Fase 5).
+ * água mineral do Amaro (Fase 4) ou café do Renan Maia (Fase 6).
  */
 export type DrinkItem = 'mug' | 'bottle' | 'staff' | 'mineral' | 'coffee';
 

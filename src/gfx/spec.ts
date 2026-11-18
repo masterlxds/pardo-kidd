@@ -350,7 +350,7 @@ export const SPRITE_SPEC = {
   mop_bucket: [16, 16, 1],
   /** placa azul de rua do Rio com seta */
   rsign: [16, 16, 1],
-  // ══════════ FASE 5 — TRANSPORTADORA DE SÃO PAULO ══════════ (PLAN-FASE5.md)
+  // ══════════ FASE 6 — TRANSPORTADORA DE SÃO PAULO ══════════ (PLAN-FASE6.md)
   // ── Renan Maia + final (art/maia.ts) — autorados olhando para a DIREITA, pés na última linha
   /** Maia em pé: joia com uma mão, xícara fumegante na outra (2 frames: respiração/fumaça) */
   maia_idle: [34, 36, 2],
@@ -365,7 +365,7 @@ export const SPRITE_SPEC = {
   /** Pardo de máscara abaixada bebendo da xícara (2 frames) */
   pardo_drink_coffee: [20, 24, 2],
 
-  // ── Inimigos da Fase 5 (art/enemies5.ts) — olhando para a DIREITA, base na última linha
+  // ── Inimigos da Fase 6 (art/enemies6.ts) — olhando para a DIREITA, base na última linha
   /** rato de galpão correndo: cinza-escuro, rabo rosado, olho vermelho (2 frames) */
   rato: [16, 10, 2],
   /** carregador andando com a pilha de caixas na frente do rosto (2 frames) */
@@ -452,7 +452,7 @@ export const SPRITE_SPEC = {
   /** baliza luminosa de checkpoint com fitinha do Bonfim (2 quadros) */
   bonus_gate: [16, 16, 2],
 
-  // ══════════ FASE 5 — MARGINAL DE SÃO PAULO (AUTOSCROLLER NO UBER) ══════════ (PLAN-FASE-UBER.md)
+  // ══════════ FASE 5 — MARGINAL DE SÃO PAULO (AUTOSCROLLER NO UBER) ══════════ (PLAN-FASE5.md)
   // ── Carro Preto da Uber & Objetivo (art/uber.ts) — olham para a DIREITA, base na última linha
   /**
    * Carro sedã PRETO executivo escrito "UBER" em branco na lateral das portas, com o motorista visível
@@ -462,7 +462,7 @@ export const SPRITE_SPEC = {
   /** Totem/recepção luminosa "UBER 5★" com água de cortesia no desembarque da Transportadora (2 frames) */
   uber_goal: [32, 40, 2],
 
-  // ── Bestiário da Marginal (art/enemiesUber.ts) — todos morrem com 1 golpe; olham para a DIREITA
+  // ── Bestiário da Marginal (art/enemies5.ts) — todos morrem com 1 golpe; olham para a DIREITA
   /** motoboy em moto vermelha/preta com baú de entrega (2 frames) */
   motoboy: [28, 22, 2],
   /** motoboy empinando a moto ("dando grau") na arrancada */

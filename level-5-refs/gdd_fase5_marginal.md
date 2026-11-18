@@ -2,7 +2,7 @@
 
 > **Documento Oficial de Design — Fase 5 (Autoscroller no Carro Preto da Uber)**  
 > Referência de lore, mecânica de autoscroller em alta velocidade sobre o teto do carro preto da Uber, física no referencial do veículo, bestiário de 1 golpe, estrutura em 4 atos, arte, parallax e trilha sonora estilo *Mega Man*.  
-> Execução multiagente: [`../PLAN-FASE-UBER.md`](../PLAN-FASE-UBER.md) e [`gdd_bestiario_uber.md`](gdd_bestiario_uber.md).
+> Execução multiagente: [`../PLAN-FASE5.md`](../PLAN-FASE5.md) e [`gdd_bestiario_fase5.md`](gdd_bestiario_fase5.md).
 
 ---
 
@@ -57,7 +57,7 @@ O trânsito da **Marginal Tietê, Minhocão e Viadutos de São Paulo**, porém, 
 
 ---
 
-## 3. Legenda do Mapa ASCII (`src/game/levelUber.ts`, `240×14`)
+## 3. Legenda do Mapa ASCII (`src/game/level5.ts`, `240×14`)
 
 * **Dimensões**: `240 colunas × 14 linhas` (`TILE = 16`, `3840 × 224 px`).
 * **Tiles**:
@@ -75,7 +75,7 @@ O trânsito da **Marginal Tietê, Minhocão e Viadutos de São Paulo**, porém, 
   * `P` : spawn inicial do Pardo (no teto do Uber, linha 9) + instancia o `uber_car`
   * `K` : checkpoint (placa luminosa da Marginal; ao morrer e renascer num checkpoint, a câmera e o Uber reposicionam-se junto ao checkpoint!)
   * `c` : moeda
-  * `m` / `M` : drone-plataforma móvel horizontal / vertical (`LEVEL_UBER_MOVERS`)
+  * `m` / `M` : drone-plataforma móvel horizontal / vertical (`LEVEL5_MOVERS`)
   * `d` : viga enferrujada bamba (`platform_beam`, cede após pisar)
   * `V` : cooler térmico 5 estrelas (`cooler_uber`, solta até 3 gotas ao ser socado)
   * `y` : **Motoboy do Grau** (`motoboy`, 1 soco, 300 pts)
