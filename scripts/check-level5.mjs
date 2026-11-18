@@ -1,527 +1,768 @@
-// Valida o mapa da Fase 5 — Marginal de São Paulo (Autoscroller no Uber).
-// Uso: node scripts/check-level5.mjs [--print] [--verbose]
-//
-// Checagens estáticas (legenda, dimensões 240x14, contagens mínimas, linha 10 livre de sólidos,
-// vãos sobre o Rio Tietê '~' / cavaletes '^', convenção dos ônibus 'R' com 'w' e 'b', apoio de
-// marcadores considerando o teto do Uber em y=160 onde a linha 11 é '=', movers, vigas bambas,
-// distâncias e regras de cada inimigo, ritmo de checkpoints e coolers, e zona pacífica de desembarque)
-// + SIMULAÇÃO física do Pardo (com o teto do Uber na linha 10 como superfície one-way em toda coluna
-// onde a linha 11 tem asfalto '=') em duas passadas:
-//   1) envelope REDUZIDO (pulo 95%, corrida 90%): objetivo A, todos os checkpoints K e coolers V
-//      alcançáveis, paredes de barreiras B quebráveis e zero becos sem saída;
-//   2) envelope REAL: todas as moedas 'c' coletáveis, todas as caixas '?/W' socáveis e todos os
-//      pichadores 'z' alcançáveis.
-const { LEVEL5_ROWS: rows, LEVEL5_LEGEND: legend, LEVEL5_MOVERS: movers } =
-  await import(process.env.LEVEL5_FILE ?? '../src/game/level5.ts');
+#!/usr/bin/env node
+/**
+ * Validador da FASE 5 — "Marginal de São Paulo" (autoscroller no Uber, versão 2).
+ * Especificação: level-5-refs/level_design_fase5.md §4 (R1–R10), §5 e §7.
+ *
+ *   node scripts/check-level5.mjs            valida e termina com `level5 OK` (exit ≠ 0 em erro)
+ *   node scripts/check-level5.mjs --print    + partitura (tempo, resposta, janelas) e a execução sem dano
+ *   LEVEL5_FILE=<caminho> node scripts/...   valida uma cópia do mapa
+ *
+ * Importa `level5.ts` e `uberRules.ts` DIRETO (ambos sem imports; o Node faz type stripping), então
+ * nenhum número da fase é duplicado aqui. Só o Pardo é portado à mão (PHYS/FEEL/punchBox, abaixo).
+ *
+ * MODELO DO BOT (60 Hz, Pardo na posição neutra, sem direcional):
+ *  - quadro f: centro do Pardo em x = 72 + 2f, câmera em x = 2f; chão = UBER.roofY − uberRampOffset;
+ *  - pulo: vy = −jumpVel no quadro do aperto, corte ×jumpCut ao soltar subindo, gravidade e maxFall de PHYS;
+ *    não decola nos 9 primeiros quadros do soco (preparo + ativo), decola na recuperação cancelando o soco;
+ *    coyote e buffer de pulo NÃO são usados (o bot é mais conservador que o jogo);
+ *  - soco: 14 quadros no total, caixa ativa nos quadros 3..8 depois do aperto (20×12 em x+w−2, y+4);
+ *  - por quadro, como em game.ts: primeiro os socos (alvo acertado some; pichador socado leva o spray junto),
+ *    depois os toques (zona de obstáculo, inimigo, barreira ou spray = dano);
+ *  - a busca é uma DP sobre (quadro, quadros no ar, quadro em que soltou o pulo, relógio do soco, alvos
+ *    próximos já socados), para a frente (alcançável sem dano) e para trás (ainda fecha a fase sem dano),
+ *    em janelas de 96 quadros.
+ * Não simulado: a frenagem dos 3 últimos compassos (por isso moedas ali só na linha 8) e o direcional.
+ */
+import { pathToFileURL } from 'node:url';
+import { resolve } from 'node:path';
+import * as RULES from '../src/game/uberRules.ts';
 
-const VERBOSE = process.argv.includes('--verbose');
-const errors = [], warns = [], notes = [];
+const {
+  UBER, UBER_BANDS, UBER_OBSTACLES, UBER_BARREIRA, UBER_ISOPOR, UBER_ENEMIES, UBER_DRONE, UBER_PICHADOR,
+  uberEnemyX, uberDronePos, uberRampOffset,
+} = RULES;
+
+const levelUrl = process.env.LEVEL5_FILE
+  ? pathToFileURL(resolve(process.cwd(), process.env.LEVEL5_FILE)).href
+  : new URL('../src/game/level5.ts', import.meta.url).href;
+const LVL = await import(levelUrl);
+const { LEVEL5_ROWS: ROWS, LEVEL5_BARS: BARS, LEVEL5_LEGEND: LEGEND, LEVEL5_BAR_COLS, LEVEL5_BAR_COUNT, LEVEL5_RAMP_COLS } = LVL;
+
+const PRINT = process.argv.includes('--print');
+
+// ── Porta do Pardo (src/core/constants.ts PHYS, src/game/player.ts FEEL e punchBox) ─────────────────────────
+const PHYS = { gravity: 900, maxFall: 360, jumpVel: 300 };
+const FEEL = { jumpCut: 0.55, punchTime: 0.22, punchWindup: 0.04, punchActive: 0.1 };
+const PLAYER_W = 10;
+const PLAYER_H = 20;
+const PUNCH = { w: 20, h: 12, dx: PLAYER_W - 2, dy: 4 }; // relativo ao canto sup. esq. da hitbox
+const COIN = { d: 4, s: 8 }; // createCoin(left + 4, top + 4), 8×8
+const HZ = 60;
+const DT = 1 / HZ;
+/** quadros (depois do aperto) em que a caixa do soco existe, e duração total — derivados de FEEL */
+const P_FIRST = Math.ceil(FEEL.punchWindup * HZ - 1e-9); // 3
+const P_LAST = Math.ceil((FEEL.punchWindup + FEEL.punchActive) * HZ - 1e-9) - 1; // 8
+const P_TOTAL = Math.ceil(FEEL.punchTime * HZ - 1e-9); // 14
+
+const T = UBER.tile;
+const COLS = UBER.cols;
+const NROWS = UBER.rows;
+const BAR = UBER.barCols;
+const BEAT = UBER.beatCols;
+const PX_F = UBER.speed / HZ; // px por quadro
+const HALF = PLAYER_W / 2;
+
+// ── Tabelas de design (level_design_fase5.md) ───────────────────────────────────────────────────────────────
+const ACTS = [
+  { n: 1, from: 5, to: 20 },
+  { n: 2, from: 23, to: 38 },
+  { n: 3, from: 41, to: 56 },
+  { n: 4, from: 59, to: 70 },
+];
+const EXPECTED = { L: 19, F: 3, G: 6, i: 14, B: 8, W: 4, K: 3, y: 20, Y: 4, p: 15, u: 5, z: 6, x: 8, X: 2, J: 3 };
+const COUNT_TOL = 2;
+const COINS_MIN = 90;
+const COINS_MAX = 110;
+const JUMP_OBST = 'LF';
+const HIGH_OBST = 'Gi';
+const TARGETS = 'BWyYpuzxX';
+const THREATS = 'LFGiByYpuzxX'; // tudo o que fere (W não fere)
+const ALIGNED = THREATS + 'WT';
+const ROW_ALLOWED = {
+  5: '.cGizX', 6: '.c', 7: '.c', 8: '.cLFBWyYpux', 9: '.PTA', 10: '.=J', 11: '#~K1234srln',
+};
+const RESPOSTA = {
+  L: 'PULE', F: 'PULE (mais cedo)', G: 'NÃO PULE', i: 'NÃO PULE', B: 'SOQUE (ou pule)', W: 'SOQUE (+1 gota, opcional)',
+  y: 'SOQUE (ou pule)', Y: 'SOQUE (ou pule)', p: 'SOQUE no tempo', u: 'SOQUE no rasante (ou pule)',
+  z: 'PULE + SOQUE', x: 'SOQUE (ou pule)', X: 'NÃO PULE (ou soco no ar)',
+};
+/** R10: pisos em quadros [soco, decolagem] */
+const R10 = { base: [9, 6], ato1: [12, 9] };
+
+const errors = [];
+const warnings = [];
 const err = (m) => errors.push(m);
-const H = rows.length, W = rows[0].length;
-const at = (x, y) => (rows[y]?.[x]) ?? '.';
-const count = {};
-rows.forEach((r, y) => {
-  if (r.length !== W) err(`linha ${y}: largura ${r.length} != ${W}`);
-  [...r].forEach((c, x) => {
-    if (!(c in legend)) err(`caractere '${c}' fora da legenda em ${x},${y}`);
-    (count[c] ??= []).push([x, y]);
+const warn = (m) => warnings.push(m);
+
+const barOf = (col) => Math.floor(col / BAR) + 1;
+const beatOf = (col) => Math.floor((col % BAR) / BEAT) + 1;
+const actOf = (bar) => ACTS.find((a) => bar >= a.from && bar <= a.to)?.n ?? 0;
+const pos = (col) => `c.${String(barOf(col)).padStart(2, '0')} t${beatOf(col)}`;
+const frameBar = (f) => barOf(Math.min(COLS - 1, Math.floor((UBER.screenNeutral + PX_F * f) / T)));
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// 1. CHECAGENS ESTÁTICAS
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+function staticChecks() {
+  // dimensões e montagem por compassos
+  if (LEVEL5_BAR_COLS !== BAR) err(`LEVEL5_BAR_COLS = ${LEVEL5_BAR_COLS}, esperado ${BAR}`);
+  if (BARS.length !== LEVEL5_BAR_COUNT || BARS.length * BAR !== COLS) err(`LEVEL5_BARS tem ${BARS.length} compassos, esperado ${COLS / BAR}`);
+  BARS.forEach((b, i) => {
+    if (b.length !== NROWS) err(`c.${i + 1}: ${b.length} linhas, esperado ${NROWS}`);
+    b.forEach((r, y) => { if (r.length !== BAR) err(`c.${i + 1} linha ${y}: ${r.length} colunas, esperado ${BAR}`); });
   });
-});
-const all = (c) => count[c] ?? [];
-const n = (c) => all(c).length;
-const min = (c, k, label) => { if (n(c) < k) err(`${label}: ${n(c)} < ${k}`); };
+  if (ROWS.length !== NROWS) err(`LEVEL5_ROWS tem ${ROWS.length} linhas, esperado ${NROWS}`);
+  ROWS.forEach((r, y) => {
+    if (r.length !== COLS) err(`linha ${y}: ${r.length} colunas, esperado ${COLS}`);
+    if (r !== BARS.map((b) => b[y]).join('')) err(`linha ${y}: LEVEL5_ROWS não é a concatenação dos compassos`);
+  });
+  if (errors.length) return null;
 
-// Limites dos 4 Atos (0..59, 60..124, 125..207, 208..239)
-const ACT2 = 60, ACT3 = 125, ACT4 = 208;
-const actOf = (x) => (x < ACT2 ? 1 : x < ACT3 ? 2 : x < ACT4 ? 3 : 4);
-
-// ── 1. Formato e contagens mínimas ───────────────────────────────────────────
-if (H !== 14) err(`altura ${H} != 14`);
-if (W !== 240) err(`largura ${W} != 240`);
-if (n('P') !== 1) err(`spawn P: ${n('P')} != 1`);
-if (n('A') !== 1) err(`objetivo A: ${n('A')} != 1`);
-min('K', 5, 'checkpoints K');
-min('c', 70, 'moedas c');
-min('V', 4, 'coolers V');
-min('y', 6, 'motoboys y');
-min('u', 6, 'drones u');
-min('p', 6, 'patinetes p');
-min('z', 4, 'pichadores z');
-if (n('m') + n('M') < 3) err(`movers (m+M): ${n('m') + n('M')} < 3`);
-min('d', 3, 'vigas bambas d');
-min('B', 12, 'barreiras B');
-min('?', 4, 'caixas ?');
-min('W', 3, 'caixas W');
-for (const c of 'bwsrln') min(c, 1, `decoração '${c}'`);
-
-for (const [x, y] of [...all('m'), ...all('M')]) {
-  const mv = movers[`${x},${y}`];
-  if (!mv || !(mv.range > 0) || !(mv.speed > 0)) err(`mover ${x},${y} sem parâmetros válidos`);
-}
-for (const k of Object.keys(movers)) {
-  const [x, y] = k.split(',').map(Number);
-  if (!'mM'.includes(at(x, y))) err(`mover ${k} sem marcador m/M`);
-}
-
-const solid = (c) => '=#RB?W'.includes(c);
-const uberRoof = (x) => x >= 0 && x < W && at(x, 11) === '=';
-const surface = (x, y) => solid(at(x, y)) || at(x, y) === '-' || (y === 10 && uberRoof(x));
-
-// Linha 10 é a faixa do carro da Uber: nunca deve conter tiles sólidos, one-way ou perigos
-for (let x = 0; x < W; x++) {
-  const c10 = at(x, 10);
-  if (solid(c10) || c10 === '-' || c10 === '^' || c10 === '~') {
-    err(`linha 10 na coluna ${x} tem tile '${c10}' no caminho do Uber`);
-  }
-}
-
-// Linha 11..13: ou asfalto sobre viaduto ('=##'), ou vão sobre o Rio Tietê ('.~~'), ou vão com cavaletes ('..^')
-for (let x = 0; x < W; x++) {
-  const col = [11, 12, 13].map((y) => at(x, y)).join('');
-  if (col !== '=##' && col !== '.~~' && col !== '..^') {
-    err(`fundação/vão malformado na coluna ${x} (linhas 11..13 = '${col}', esperado '=##', '.~~' ou '..^')`);
-  }
-}
-for (let x = 0; x < W; x++) for (let y = 0; y < 11; y++) {
-  if (at(x, y) === '=' || at(x, y) === '#' || at(x, y) === '~' || at(x, y) === '^') {
-    err(`tile '${at(x, y)}' fora das linhas 11..13 em ${x},${y}`);
-  }
-}
-
-// ── 2. Ônibus/furgões ('R' nas linhas 7..9 com 'w' e 'b' na linha 10) e parede final ──
-for (let y = 0; y <= 9; y++) if (at(W - 1, y) !== 'R') err(`parede final: coluna ${W - 1} linha ${y} não é 'R'`);
-const seenR = new Set(), buses = [];
-for (const [x0, y0] of all('R')) {
-  if (x0 === W - 1 || seenR.has(`${x0},${y0}`)) continue;
-  const comp = [], st = [[x0, y0]]; seenR.add(`${x0},${y0}`);
-  while (st.length) {
-    const [x, y] = st.pop(); comp.push([x, y]);
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const k = `${x + dx},${y + dy}`;
-      if (at(x + dx, y + dy) === 'R' && x + dx !== W - 1 && !seenR.has(k)) { seenR.add(k); st.push([x + dx, y + dy]); }
+  // legenda, linha de cada marcador, nenhum sólido acima da linha 10
+  const all = [];
+  for (let y = 0; y < NROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const ch = ROWS[y][x];
+      if (!(ch in LEGEND)) { err(`${pos(x)} linha ${y}: caractere '${ch}' fora da legenda`); continue; }
+      if ((ch === '=' || ch === '#') && y < 10) err(`${pos(x)} linha ${y}: tile sólido '${ch}' acima da linha 10`);
+      const allowed = ROW_ALLOWED[y] ?? '.';
+      if (!allowed.includes(ch)) err(`${pos(x)} linha ${y}: '${ch}' (${LEGEND[ch]}) não pode ficar nesta linha`);
+      if (ch !== '.' && ch !== '=' && ch !== '#' && ch !== '~') all.push({ ch, col: x, row: y, bar: barOf(x), beat: beatOf(x) });
     }
   }
-  const xs = comp.map(([x]) => x), ys = comp.map(([, y]) => y);
-  const l = Math.min(...xs), r = Math.max(...xs), t = Math.min(...ys), b = Math.max(...ys), w = r - l + 1;
-  if (t !== 7 || b !== 9 || comp.length !== w * 3) { err(`ônibus em ${l},${t}: não é retângulo nas linhas 7..9`); continue; }
-  if (w < 5 || w > 7) err(`ônibus em ${l}: largura ${w} fora de 5..7`);
-  for (let x = l; x <= r; x++) {
-    const want = (x - l) % 3 === 0 ? 'w' : '.';
-    if (at(x, 10) !== want) err(`ônibus em ${l}: linha 10 na coluna ${x} = '${at(x, 10)}', esperado '${want}'`);
-  }
-  if (at(r + 1, 10) !== 'b') err(`ônibus em ${l}: sem frente 'b' em ${r + 1},10`);
-  for (let x = l; x <= r + 3; x++) if (at(x, 11) !== '=') err(`ônibus em ${l}: sem asfalto '=' na linha 11 na coluna ${x}`);
-  for (let x = r + 1; x <= r + 3; x++) if (solid(at(x, 9)) || solid(at(x, 8))) err(`ônibus em ${l}: bloco sólido sobre a frente 'b' na coluna ${x}`);
-  buses.push(l);
-}
-for (const [x, y] of all('b')) if (y !== 10 || !buses.some((l) => at(x - 1, 9) === 'R' && x - 1 >= l)) err(`frente de ônibus 'b' em ${x},${y} fora de um ônibus`);
-for (const [x, y] of all('w')) if (y !== 10 || at(x, 9) !== 'R') err(`rodas 'w' em ${x},${y} fora de um ônibus`);
-if (buses.length < 4) err(`ônibus/furgões: ${buses.length} < 4`);
+  all.sort((a, b) => a.col - b.col || a.row - b.row);
+  const of = (set) => all.filter((m) => set.includes(m.ch));
+  const count = (ch) => all.filter((m) => m.ch === ch).length;
+  const barHas = (bar, set) => all.some((m) => m.bar === bar && set.includes(m.ch));
+  const at = (col, row) => ROWS[row][col];
 
-// ── 3. Apoio e espaço dos marcadores ─────────────────────────────────────────
-for (const c of 'PKcyupzVAbwsrlnd') for (const [x, y] of all(c)) if (solid(at(x, y))) err(`'${c}' em ${x},${y} dentro de tile sólido`);
-for (const c of 'PKypzVA') for (const [x, y] of all(c)) if (!surface(x, y + 1)) err(`'${c}' em ${x},${y} sem apoio abaixo (tile ou teto do Uber)`);
-for (const c of 'PKVA') for (const [x, y] of all(c)) if (y !== 9 || !uberRoof(x)) err(`'${c}' em ${x},${y} deve ficar na linha 9 sobre asfalto '='`);
-for (const c of 'VPKAyupz') for (const [x, y] of all(c)) if (solid(at(x, y - 1))) err(`'${c}' em ${x},${y} sem 2 tiles livres de altura`);
-if (all('A')[0] && solid(at(all('A')[0][0], all('A')[0][1] - 2))) err('objetivo A sem 3 tiles livres de altura');
-
-// Decorações de pista na linha 10 sobre asfalto '='
-for (const c of 'bwsrln') for (const [x, y] of all(c)) {
-  if (y !== 10) err(`decoração '${c}' em ${x},${y} fora da linha 10`);
-  if (at(x, 11) !== '=') err(`decoração '${c}' em ${x},${y} sem asfalto '=' na linha 11`);
-}
-const wideDecor = { b: 3, w: 3, s: 2 };
-for (const [c, w] of Object.entries(wideDecor)) for (const [x, y] of all(c)) for (let i = 0; i < w; i++) {
-  if (at(x + i, 11) !== '=') err(`decoração larga '${c}' em ${x},${y} sem asfalto '=' em ${x + i},11`);
-}
-
-// ── 4. Movers e vigas bambas ─────────────────────────────────────────────────
-const free = (c) => c === '.' || c === 'c';
-for (const [x, y] of all('m')) {
-  const mv = movers[`${x},${y}`]; if (!mv) continue;
-  for (let i = 0; i <= mv.range + 1; i++) {
-    if (i > 0 && !free(at(x + i, y))) err(`drone-plataforma H ${x},${y}: caminho bloqueado por '${at(x + i, y)}' em ${x + i}`);
-    if (solid(at(x + i, y + 1))) err(`drone-plataforma H ${x},${y}: sobre tile sólido em ${x + i}`);
-    if (solid(at(x + i, y - 1)) || solid(at(x + i, y - 2))) err(`drone-plataforma H ${x},${y}: teto baixo em ${x + i}`);
-  }
-}
-for (const [x, y] of all('M')) {
-  const mv = movers[`${x},${y}`]; if (!mv) continue;
-  for (let j = -2; j <= mv.range; j++) for (const dx of [0, 1]) {
-    if (!(j === 0 && dx === 0) && !free(at(x + dx, y + j))) err(`drone-plataforma V ${x},${y}: bloqueado em ${x + dx},${y + j}`);
-  }
-  if (y + mv.range > 9) err(`drone-plataforma V ${x},${y}: desce abaixo da linha 9`);
-}
-for (const [x, y] of [...all('m'), ...all('M')]) {
-  const mv = movers[`${x},${y}`]; if (!mv) continue;
-  const period = (2 * mv.range * 16) / mv.speed, peak = (Math.PI / 2) * mv.speed;
-  notes.push(`mover ${x},${y} (${at(x, y)}): percurso ${mv.range} tiles, período ${period.toFixed(1)}s, pico ${peak.toFixed(0)}px/s`);
-  if (period > 6.5) err(`mover ${x},${y}: período ${period.toFixed(1)}s > 6.5s`);
-  if (peak > 90) err(`mover ${x},${y}: pico de ${peak.toFixed(0)}px/s > 90`);
-}
-for (const [x, y] of all('d')) for (const dx of [0, 1]) {
-  if (dx && !free(at(x + dx, y))) err(`viga bamba ${x},${y}: célula ${x + dx} ocupada por '${at(x + dx, y)}'`);
-  if (solid(at(x + dx, y + 1))) err(`viga bamba ${x},${y}: sobre tile sólido em ${x + dx}`);
-  if (solid(at(x + dx, y - 1)) || solid(at(x + dx, y - 2))) err(`viga bamba ${x},${y}: teto baixo em ${x + dx}`);
-}
-
-// ── 5. Inimigos: distâncias, corredores e regras por tipo ────────────────────
-const P = all('P')[0], A = all('A')[0];
-if (P && (P[0] !== 5 || P[1] !== 9)) err(`spawn P em ${P}, esperado 5,9`);
-if (A && (A[0] !== 233 || A[1] !== 9)) err(`objetivo A em ${A}, esperado 233,9`);
-
-const safe = [...all('P'), ...all('K')];
-const enemies = [...all('y'), ...all('u'), ...all('p'), ...all('z')];
-for (const [x, y] of enemies) {
-  for (const [sx] of safe) if (Math.abs(x - sx) < 5) err(`inimigo '${at(x, y)}' em ${x},${y} a menos de 5 colunas de P/K (${sx})`);
-  if (x >= ACT4) err(`inimigo '${at(x, y)}' em ${x},${y} no Ato 4 (zona pacífica, col >= ${ACT4})`);
-}
-
-/** Corredor plano contínuo na linha y (apoio em y+1 via tile ou teto do Uber, 2 tiles livres de altura). */
-const corridor = (x, y) => {
-  const ok = (i) => surface(i, y + 1) && !solid(at(i, y)) && !solid(at(i, y - 1));
-  let a = x, b = x;
-  while (a > 0 && ok(a - 1)) a--;
-  while (b < W - 1 && ok(b + 1)) b++;
-  return [a, b];
-};
-for (const [x, y] of all('y')) {
-  if (actOf(x) === 1) err(`motoboy ${x},${y} no Ato 1 (deve estrear no Ato 2)`);
-  const [a, b] = corridor(x, y);
-  if (b - a + 1 < 9) err(`motoboy ${x},${y}: corredor plano ${a}..${b} (${b - a + 1}) < 9 colunas`);
-}
-for (const [x, y] of all('p')) {
-  const [a, b] = corridor(x, y);
-  if (b - a + 1 < 4) err(`patinete ${x},${y}: corredor curto ${a}..${b} (${b - a + 1}) < 4 colunas`);
-}
-for (const [x, y] of all('z')) {
-  if (actOf(x) === 1) err(`pichador ${x},${y} no Ato 1 (deve estrear no Ato 2)`);
-  if (y > 6) err(`pichador ${x},${y}: deve ficar no alto de ônibus/passarela (linha <= 6, superfície <= 7)`);
-}
-for (const [x, y] of all('u')) {
-  if (y > 8 || y < 3) err(`drone ${x},${y}: linha ${y} fora da faixa aérea 3..8`);
-  for (let dx = -2; dx <= 2; dx++) if (solid(at(x + dx, y))) err(`drone ${x},${y}: bloqueado por tile sólido em ${x + dx},${y}`);
-}
-
-// ── 6. Ritmo, estrutura dos 4 Atos e Desembarque ─────────────────────────────
-const stops = [P[0], ...all('K').map(([x]) => x).sort((a, b) => a - b), A ? A[0] : W - 1];
-for (let i = 1; i < stops.length; i++) {
-  const d = stops[i] - stops[i - 1];
-  if (d > 45) err(`trecho sem checkpoint de ${d} colunas (${stops[i - 1]}→${stops[i]}) > 45`);
-  if (d < 15) err(`checkpoints muito próximos (${stops[i - 1]}→${stops[i]})`);
-}
-const water = [...all('V'), ...all('W')].map(([x]) => x).sort((a, b) => a - b);
-{
-  let prev = P[0];
-  for (const x of [...water, A ? A[0] : W - 1]) {
-    if (x - prev > 45) err(`${x - prev} colunas sem fonte de hidratação (V/W) entre ${prev} e ${x}`);
-    prev = x;
-  }
-}
-if (!all('V').some(([x]) => actOf(x) === 1)) err('sem cooler V no Ato 1');
-if (!all('V').some(([x]) => actOf(x) === 2)) err('sem cooler V no Ato 2');
-if (!all('V').some(([x]) => actOf(x) === 3)) err('sem cooler V no Ato 3');
-if (!all('V').some(([x]) => actOf(x) === 4)) err('sem cooler V no Ato 4');
-if (!all('K').some(([x]) => actOf(x) === 1)) err('sem checkpoint K no Ato 1');
-if (all('K').filter(([x]) => actOf(x) === 2).length < 2) err('Ato 2 deve ter pelo menos 2 checkpoints (K2 e K3)');
-if (!all('K').some(([x]) => actOf(x) === 3)) err('sem checkpoint K no Ato 3');
-if (!all('K').some(([x]) => actOf(x) === 4)) err('sem checkpoint K no Ato 4');
-
-const shelfRows3 = new Set(all('-').filter(([x]) => actOf(x) === 3).map(([, y]) => y));
-if (shelfRows3.size < 3) err(`Ato 3: passarelas '-' em ${shelfRows3.size} nível(is) < 3`);
-const wallCols = [...new Set(all('B').map(([x]) => x))].filter((x) => {
-  let best = 0, h = 0;
-  for (let y = 0; y < H; y++) { if ('B?W'.includes(at(x, y))) best = Math.max(best, ++h); else h = 0; }
-  return best >= 2;
-});
-if (!wallCols.some((x) => actOf(x) === 3)) err('Ato 3 sem parede de barreiras B (2-3 de altura)');
-if (!all('^').some(([x]) => actOf(x) === 3)) err('Ato 3 sem cavaletes eletrificados ^');
-if (!all('~').some(([x]) => actOf(x) === 1)) err('Ato 1 sem vão sobre o Rio Tietê ~');
-if (!all('~').some(([x]) => actOf(x) === 2)) err('Ato 2 sem vão sobre o Rio Tietê ~');
-
-if (A) {
-  for (let i = 1; i <= 3; i++) if (at(A[0] - i, A[1]) !== '.') err(`sem 3 tiles livres à esquerda do objetivo A (${A[0] - i})`);
-  for (let x = ACT4; x < W; x++) if (at(x, 11) !== '=') err(`asfalto do Ato 4 interrompido na coluna ${x}`);
-  for (const c of 'srln') if (!all(c).some(([x]) => actOf(x) === 4)) err(`Ato 4 sem decoração '${c}'`);
-}
-
-// Trechos mortos e variedade de relevo antes do Ato 4
-const moverCols = new Set();
-for (const [x, y] of all('m')) for (let i = 0; i <= (movers[`${x},${y}`]?.range ?? 0) + 1; i++) moverCols.add(x + i);
-for (const [x] of all('M')) { moverCols.add(x); moverCols.add(x + 1); }
-for (const [x] of all('d')) { moverCols.add(x); moverCols.add(x + 1); }
-const interesting = (x) => {
-  if (moverCols.has(x)) return true;
-  if (x > 0 && at(x, 11) !== at(x - 1, 11)) return true;
-  for (let y = 0; y < H; y++) if ('cyupzVKBW?-APR'.includes(at(x, y))) return true;
-  return false;
-};
-{
-  let run = 0, start = 0;
-  for (let x = 0; x <= ACT4; x++) {
-    if (x < ACT4 && !interesting(x)) { if (!run) start = x; run++; }
-    else { if (run > 8) err(`trecho morto ${start}-${start + run - 1} (${run} colunas sem ação)`); run = 0; }
-  }
-}
-const standRows = (x) => {
-  const s = new Set();
-  for (let y = 1; y <= 10; y++) if (surface(x, y) && !solid(at(x, y - 1))) s.add(y);
-  return s;
-};
-for (let x0 = 0; x0 + 20 <= ACT4; x0++) {
-  const s = new Set(); let moving = false;
-  for (let x = x0; x < x0 + 20; x++) { for (const r of standRows(x)) s.add(r); if (moverCols.has(x)) moving = true; }
-  if (s.size + (moving ? 1 : 0) < 3) { err(`janela ${x0}-${x0 + 19} quase plana: só ${s.size} nível(is) pisável(is)`); x0 += 19; }
-}
-
-// ── 7. Simulação física do Pardo (com teto do Uber em y=160 onde linha 11 é '=') ──
-const T = 16, PW = 10, PH = 20, DT = 1 / 60, EPS = 0.001;
-const GRAV = 900, MAX_FALL = 360, JUMP_CUT = 0.55, AIR_ACCEL = 620, AIR_DRAG = 160;
-const approach = (v, t, d) => (v < t ? Math.min(v + d, t) : v > t ? Math.max(v - d, t) : v);
-
-const plats = [];
-for (const [x, y] of all('d')) plats.push({ x: x * T, y: y * T, w: 32, g: -1 });
-for (const [x, y] of all('m')) plats.push({ x: x * T, y: y * T, w: (movers[`${x},${y}`]?.range ?? 0) * T + 32, g: -1 });
-let group = 0;
-for (const [x, y] of all('M')) {
-  const R = movers[`${x},${y}`]?.range ?? 0;
-  for (let k = 0; k <= R * 2; k++) plats.push({ x: x * T, y: y * T + k * 8, w: 32, g: group });
-  group++;
-}
-
-function simulate(env, removed) {
-  const sol = new Uint8Array(W * H), one = new Uint8Array(W * H), haz = new Uint8Array(W * H), coin = new Int32Array(W * H).fill(-1);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const c = at(x, y), i = y * W + x;
-    if (solid(c) && !removed.has(i)) sol[i] = 1;
-    // O teto do carro da Uber em y = 10*16 = 160 funciona como superfície one-way sempre que a linha 11 tem '='
-    if (c === '-' || (y === 10 && uberRoof(x))) one[i] = 1;
-    if (c === '^' || c === '~') haz[i] = 1;
-    if (c === 'c') coin[i] = i;
-  }
-  const isSolid = (tx, ty) => (tx < 0 || tx >= W ? true : ty < 0 || ty >= H ? false : sol[ty * W + tx] === 1);
-  const isOne = (tx, ty) => tx >= 0 && tx < W && ty >= 0 && ty < H && one[ty * W + tx] === 1;
-  const isHaz = (tx, ty) => tx >= 0 && tx < W && ty >= 0 && ty < H && haz[ty * W + tx] === 1;
-  const bodyFree = (x, y) => {
-    for (let ty = Math.floor(y / T); ty <= Math.floor((y + PH - EPS) / T); ty++)
-      for (let tx = Math.floor(x / T); tx <= Math.floor((x + PW - EPS) / T); tx++) if (isSolid(tx, ty)) return false;
-    return true;
-  };
-  const hazard = (x, y) => {
-    for (let ty = Math.floor((y + 4) / T); ty <= Math.floor((y + PH - 0.01) / T); ty++)
-      for (let tx = Math.floor((x + 2) / T); tx <= Math.floor((x + PW - 2) / T); tx++) if (isHaz(tx, ty)) return true;
-    return false;
-  };
-  const platUnder = (x, feet) => plats.find((p) => p.y === feet && x + PW > p.x && x < p.x + p.w);
-  const supported = (x, y) => {
-    const feet = y + PH;
-    if (feet % T === 0) {
-      const ty = feet / T;
-      for (let tx = Math.floor(x / T); tx <= Math.floor((x + PW - EPS) / T); tx++) if (isSolid(tx, ty) || isOne(tx, ty)) return true;
+  // pista, vãos de rampa e mureta
+  const rampBars = new Set(of('J').map((m) => m.bar));
+  for (let b = 1; b <= COLS / BAR; b++) {
+    const r10 = BARS[b - 1][10];
+    const r11 = BARS[b - 1][11];
+    if (rampBars.has(b)) {
+      if (r10 !== 'J' + '.'.repeat(BAR - 1)) err(`c.${b}: compasso de rampa precisa de 'J' na 1ª coluna da linha 10 e pista vazia no vão`);
+      if (r11 !== '~'.repeat(BAR)) err(`c.${b}: compasso de rampa precisa de '~' nas 12 colunas da linha 11`);
+    } else {
+      if (r10 !== '='.repeat(BAR)) err(`c.${b}: a linha 10 precisa ser asfalto contínuo fora das rampas`);
+      if (r11.includes('~')) err(`c.${b}: '~' só nos vãos de rampa`);
     }
-    return !!platUnder(x, feet);
-  };
-  const touched = new Set();
-  const touchCoins = (x, y, into) => {
-    for (let ty = Math.floor(y / T); ty <= Math.floor((y + PH - EPS) / T); ty++)
-      for (let tx = Math.floor(x / T); tx <= Math.floor((x + PW - EPS) / T); tx++) {
-        if (tx < 0 || tx >= W || ty < 0 || ty >= H || coin[ty * W + tx] < 0) continue;
-        const cx = tx * T + 4, cy = ty * T + 4;
-        if (x < cx + 8 && x + PW > cx && y < cy + 8 && y + PH > cy) into.push(ty * W + tx);
+  }
+  const ramps = of('J').map((m) => m.col);
+  if (JSON.stringify(ramps) !== JSON.stringify([...LEVEL5_RAMP_COLS])) err(`LEVEL5_RAMP_COLS = [${LEVEL5_RAMP_COLS}] não bate com os 'J' do mapa [${ramps}]`);
+
+  // alinhamento ao tempo
+  for (const m of all) {
+    if (ALIGNED.includes(m.ch) && m.col % BEAT !== 0) err(`${pos(m.col)}: '${m.ch}' fora da 1ª coluna do tempo (coluna ${m.col % BAR} do compasso)`);
+    if ('KJ1234'.includes(m.ch) && m.col % BAR !== 0) err(`${pos(m.col)}: '${m.ch}' precisa ficar na 1ª coluna do compasso`);
+  }
+
+  // estrutura única
+  const one = (ch, n = 1) => { if (count(ch) !== n) err(`esperado ${n} '${ch}' (${LEGEND[ch]}), há ${count(ch)}`); };
+  one('P'); one('A'); one('T'); one('1'); one('2'); one('3'); one('4');
+  const P = of('P')[0];
+  const A = of('A')[0];
+  const TR = of('T')[0];
+  if (P && (P.bar !== 1 || P.col * T + T / 2 !== UBER.screenNeutral)) err(`'P' precisa ficar no c.1 com o centro em x = ${UBER.screenNeutral} (coluna ${(UBER.screenNeutral - T / 2) / T})`);
+  if (A && A.bar !== COLS / BAR) err(`'A' precisa ficar no último compasso`);
+
+  // contagens (§7)
+  for (const [ch, n] of Object.entries(EXPECTED)) {
+    const c = count(ch);
+    if (Math.abs(c - n) > COUNT_TOL) err(`contagem de '${ch}' (${LEGEND[ch]}): ${c}, esperado ${n} ±${COUNT_TOL}`);
+  }
+  for (const ch of 'KJ') if (count(ch) !== EXPECTED[ch]) err(`'${ch}': ${count(ch)}, esperado exatamente ${EXPECTED[ch]}`);
+  const coins = of('c');
+  if (coins.length < COINS_MIN || coins.length > COINS_MAX) err(`moedas: ${coins.length}, esperado de ${COINS_MIN} a ${COINS_MAX}`);
+
+  const jumps = of(JUMP_OBST);
+  const highs = of(HIGH_OBST);
+  const jumpEnd = (m) => m.col + (m.ch === 'F' ? 1 : 0);
+  const highEnd = (m) => m.col + (m.ch === 'G' ? 2 : 0);
+  const highBand = all.filter((m) => 'GiXz'.includes(m.ch));
+
+  // R1 — L/F longe de G/i/X
+  for (const j of jumps) {
+    for (const h of all.filter((m) => 'GiX'.includes(m.ch))) {
+      const gap = Math.max(h.col - jumpEnd(j), j.col - highEnd(h)) - 1; // colunas livres entre os dois
+      if (gap < 2) err(`R1 ${pos(j.col)}: '${j.ch}' a menos de 2 colunas de '${h.ch}' (${pos(h.col)})`);
+    }
+  }
+  // R2 — depois de um obstáculo de pular, faixa alta só 2 tempos depois
+  for (const j of jumps) {
+    for (const h of highBand) {
+      const d = h.col - j.col;
+      if (d > 0 && d < 2 * BEAT) err(`R2 ${pos(h.col)}: '${h.ch}' na faixa alta a menos de 2 tempos do '${j.ch}' de ${pos(j.col)}`);
+    }
+  }
+  // R3 — depois que G/i termina, obstáculo de pular só 1 tempo depois
+  for (const h of highs) {
+    for (const j of jumps) {
+      const d = j.col - highEnd(h);
+      if (d > 0 && d < BEAT) err(`R3 ${pos(j.col)}: '${j.ch}' a menos de 1 tempo do fim de '${h.ch}' (${pos(h.col)})`);
+    }
+  }
+  // R4 — dois obstáculos de pular seguidos
+  for (let k = 1; k < jumps.length; k++) {
+    const a = jumps[k - 1];
+    const b = jumps[k];
+    const min = (actOf(b.bar) >= 3 ? 2 : 3) * BEAT;
+    if (b.col - a.col < min) err(`R4 ${pos(b.col)}: '${b.ch}' a ${((b.col - a.col) / BEAT).toFixed(1)} tempos do '${a.ch}' anterior (mínimo ${min / BEAT})`);
+  }
+  // R5 — dois alvos de soco seguidos
+  const targets = of(TARGETS);
+  for (let k = 1; k < targets.length; k++) {
+    if (targets[k].col - targets[k - 1].col < BEAT) err(`R5 ${pos(targets[k].col)}: alvos de soco '${targets[k - 1].ch}' e '${targets[k].ch}' a menos de 1 tempo`);
+  }
+  // R6 — embaixo de G/i só B, y, Y, p, x e moedas (e moeda só na linha 8)
+  for (const h of highs) {
+    for (let x = h.col; x <= highEnd(h); x++) {
+      const low = at(x, 8);
+      if (!'.cByYpx'.includes(low)) err(`R6 ${pos(x)}: '${low}' embaixo de '${h.ch}'`);
+      for (const y of [6, 7]) if (at(x, y) === 'c') err(`R6 ${pos(x)}: moeda na linha ${y} embaixo de '${h.ch}' (só na linha 8)`);
+    }
+  }
+  // R7 — compassos sem ameaça
+  const total = COLS / BAR;
+  const calm = new Set([...of('K').map((m) => m.bar), ...rampBars, 1, 2, 4, total - 2, total - 1, total]);
+  for (const b of calm) if (barHas(b, THREATS)) err(`R7 c.${b}: compasso de fôlego (K, J, embarque ou desembarque) com ameaça`);
+  // Exceção documentada: a partitura põe o limitador-tutorial no c.3 (GDD §5: estreia na "Intro").
+  const c3 = all.filter((m) => m.bar === 3 && THREATS.includes(m.ch));
+  if (c3.length > 1 || (c3.length === 1 && c3[0].ch !== 'L')) err(`R7 c.3: o embarque só admite 1 limitador-tutorial`);
+  for (const b of [total - 2, total - 1, total]) {
+    if (all.some((m) => m.bar === b && m.ch === 'c' && m.row !== 8)) err(`c.${b}: moedas dos 3 últimos compassos só na linha 8 (a rolagem está freando)`);
+  }
+  // R8 — respiros: no máximo 4 compassos seguidos com ameaça; cada ato tem 1 respiro a cada 4 compassos, menos o último bloco (a rampa/checkpoint faz o papel)
+  let run = 0;
+  for (let b = 1; b <= total; b++) {
+    run = barHas(b, THREATS) ? run + 1 : 0;
+    if (run > 4) err(`R8 c.${b}: ${run} compassos seguidos com ameaça (máximo 4)`);
+  }
+  for (const a of ACTS) {
+    let rest = 0;
+    for (let b = a.from; b <= a.to; b++) if (!barHas(b, THREATS)) rest++;
+    const need = Math.floor((a.to - a.from + 1) / 4) - 1;
+    if (rest < need) err(`R8 Ato ${a.n}: ${rest} respiros, esperado ao menos ${need}`);
+    for (let b = a.from; b + 3 <= a.to - 4; b += 4) {
+      if (![0, 1, 2, 3].some((k) => !barHas(b + k, THREATS))) err(`R8 c.${b}–${b + 3}: frase de 4 compassos sem respiro`);
+    }
+  }
+  // R9 — decisões por compasso
+  const decisions = (b) => {
+    const ms = all.filter((m) => m.bar === b && THREATS.includes(m.ch));
+    let n = 0;
+    let loneLights = false;
+    let lastP = -99;
+    for (const m of ms) {
+      if (m.ch === 'p') { if (m.col - lastP !== BEAT) n++; lastP = m.col; continue; } // fila conta 1
+      if (m.ch === 'G' || m.ch === 'i') {
+        let under = false;
+        for (let x = m.col; x <= highEnd(m); x++) if ('ByYpx'.includes(at(x, 8))) under = true;
+        if (under) continue; // "soco obrigatório": quem conta é o alvo embaixo
+        if (m.ch === 'i') loneLights = true; else n++;
+        continue;
       }
+      n++;
+    }
+    return n + (loneLights ? 1 : 0); // série de luminárias conta 1, como a fila de patinetes
   };
-  const b = { x: 0, y: 0, vx: 0, vy: 0 };
-  function fly(x0, y0, vx0, vy0, dir, cutFrame) {
-    b.x = x0; b.y = y0; b.vx = vx0; b.vy = vy0;
-    let jumping = vy0 < 0;
-    const got = [];
-    for (let f = 0; f < 220; f++) {
-      b.vx = approach(b.vx, dir * env.run, (dir === 0 ? AIR_DRAG : AIR_ACCEL) * DT);
-      if (jumping && b.vy < 0 && f >= cutFrame) { b.vy *= JUMP_CUT; jumping = false; }
-      if (b.vy >= 0) jumping = false;
-      const prevBottom = b.y + PH;
-      b.vy = Math.min(b.vy + GRAV * DT, MAX_FALL);
-      const totalX = b.vx * DT, totalY = b.vy * DT;
-      const steps = Math.max(1, Math.ceil(Math.max(Math.abs(totalX), Math.abs(totalY)) / 4));
-      let sx = totalX / steps, sy = totalY / steps, ground = false;
-      for (let i = 0; i < steps; i++) {
-        if (sx !== 0) {
-          b.x += sx;
-          const tx = sx > 0 ? Math.floor((b.x + PW - EPS) / T) : Math.floor(b.x / T);
-          for (let ty = Math.floor(b.y / T); ty <= Math.floor((b.y + PH - EPS) / T); ty++) if (isSolid(tx, ty)) { b.x = sx > 0 ? tx * T - PW : (tx + 1) * T; b.vx = 0; sx = 0; break; }
+  for (const a of ACTS) {
+    for (let b = a.from; b <= a.to; b++) {
+      const max = a.n === 1 ? (b > a.to - 4 ? 2 : 1) : a.n === 2 ? 2 : 3;
+      const d = decisions(b);
+      if (d > max) err(`R9 c.${b}: ${d} decisões (máximo ${max} no Ato ${a.n})`);
+    }
+  }
+  for (let b = 1; b <= total; b++) if (!actOf(b) && b !== 3 && barHas(b, THREATS)) err(`c.${b}: ameaça fora dos atos`);
+
+  // caixas só com o caminhão-baú na tela
+  if (TR) for (const m of of('xX')) {
+    if (m.col < TR.col || m.col >= TR.col + UBER.truckBars * BAR) err(`${pos(m.col)}: caixa '${m.ch}' fora dos ${UBER.truckBars} compassos do caminhão-baú (entra em ${pos(TR.col)})`);
+  }
+  // tutoriais antes da estreia de cada verbo
+  const first = (set) => of(set)[0];
+  for (const [t, set] of [['1', 'LF'], ['2', 'ByYpux'], ['3', 'Gi'], ['4', 'z']]) {
+    const sign = first(t);
+    const f = first(set);
+    if (sign && f && (sign.col > f.col || f.bar - sign.bar > 1)) err(`placa de tutorial '${t}' (${pos(sign.col)}) precisa vir logo antes da estreia de '${f.ch}' (${pos(f.col)})`);
+  }
+  // estreias (GDD §5)
+  const debut = { L: 0, G: 1, B: 1, y: 1, u: 1, F: 2, p: 2, z: 2, i: 3, Y: 3, x: 4, X: 4 };
+  for (const [ch, act] of Object.entries(debut)) {
+    const f = first(ch);
+    if (!f) continue;
+    const a = f.bar <= 4 ? 0 : actOf(f.bar);
+    if (a !== act) err(`estreia de '${ch}' (${LEGEND[ch]}) em ${pos(f.col)}: esperada ${act === 0 ? 'no embarque' : `no Ato ${act}`}`);
+  }
+  const order = ['L', 'B', 'y', 'G', 'u', 'p', 'z', 'F', 'i', 'Y', 'x', 'X'].map((ch) => first(ch)?.col ?? -1);
+  for (let k = 1; k < order.length; k++) if (order[k] < order[k - 1]) err(`estreias fora da ordem da partitura (L, B, y, G, u, p, z, F, i, Y, x, X)`);
+  // pontos altos
+  const gb = of('G').some((g) => g.bar === 14 && at(g.col, 8) === 'B');
+  if (!gb) err(`ponto alto: o c.14 precisa do primeiro soco obrigatório (G com B embaixo)`);
+  const burst = of('i').filter((m) => m.bar === 53 && at(m.col, 8) === 'y');
+  if (burst.length !== 3 || burst[2].col - burst[0].col !== 2 * BEAT) err(`ponto alto: o c.53 precisa da rajada (i+y em três tempos seguidos)`);
+  const convoy = [59, 60, 61, 62, 63, 64, 65].filter((b) => barHas(b, 'xX')).length;
+  if (convoy < 6) err(`ponto alto: o comboio dos c.59–65 precisa de caixas em ao menos 6 compassos (há ${convoy})`);
+
+  return { all, coins, decisionsOf: decisions };
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// 2. ENTIDADES (posição pela fórmula da câmera de uberRules.ts)
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+const RAMPS_PX = [...LEVEL5_RAMP_COLS].map((c) => c * T);
+const centerAt = (f) => UBER.screenNeutral + PX_F * f;
+const cameraAt = (f) => PX_F * f;
+/** total de quadros: o Pardo atravessa o mapa inteiro em velocidade constante */
+const NFRAMES = Math.floor((COLS * T - UBER.screenNeutral) / PX_F);
+const CHUNK = BAR * T / PX_F; // 96 quadros = 1 compasso
+
+const OBST_KIND = { L: 'limitador', F: 'faixa', G: 'placa', i: 'luminaria' };
+const LINEAR_KIND = { y: 'motoboy', Y: 'motoboy_fast', p: 'patinete', x: 'caixa_baixa', X: 'caixa_alta' };
+
+/** Cria as entidades de simulação. `boxes(f)` devolve retângulos [x, y, w, h]; o 1º é o alvo do soco. */
+function buildEntities(all) {
+  const ents = [];
+  for (const m of all) {
+    const left = m.col * T;
+    const mid = left + T / 2;
+    const base = { ch: m.ch, col: m.col, row: m.row, bar: m.bar, beat: m.beat, harmful: true, punchable: false };
+    if (OBST_KIND[m.ch]) {
+      const z = UBER_OBSTACLES[OBST_KIND[m.ch]];
+      ents.push({ ...base, encX: left + z.dx + z.w / 2, boxes: () => [[left + z.dx, z.y, z.w, z.h]] });
+    } else if (m.ch === 'B' || m.ch === 'W') {
+      const z = m.ch === 'B' ? UBER_BARREIRA : UBER_ISOPOR;
+      ents.push({ ...base, harmful: m.ch === 'B', punchable: true, encX: left + z.dx + z.w / 2, boxes: () => [[left + z.dx, z.y, z.w, z.h]] });
+    } else if (LINEAR_KIND[m.ch]) {
+      const k = UBER_ENEMIES[LINEAR_KIND[m.ch]];
+      ents.push({ ...base, punchable: true, encX: mid, boxes: (f) => [[uberEnemyX(mid, k.v, cameraAt(f)) - k.w / 2, k.bottom - k.h, k.w, k.h]] });
+    } else if (m.ch === 'u') {
+      const D = UBER_DRONE;
+      ents.push({ ...base, punchable: true, encX: mid, boxes: (f) => { const p = uberDronePos(mid, cameraAt(f)); return [[p.cx - D.w / 2, p.cy - D.h / 2, D.w, D.h]]; } });
+    } else if (m.ch === 'z') {
+      const { body, spray } = UBER_PICHADOR;
+      ents.push({ ...base, punchable: true, encX: mid, boxes: () => [[mid - body.w / 2, body.y, body.w, body.h], [mid - spray.w / 2, spray.y, spray.w, spray.h]] });
+    }
+  }
+  ents.forEach((e, i) => { e.id = i; e.fEnc = (e.encX - UBER.screenNeutral) / PX_F; });
+  return ents;
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// 3. SIMULADOR (DP por quadro)
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// Chave do estado: k (quadros no ar; 0 = no teto) | h (quadro em que soltou o pulo; 0 = não soltou) |
+// p (relógio do soco: 0 parado, 1..14 = quadros desde o aperto + 1) | máscara dos alvos próximos já socados |
+// 1 bit "soco apertado no ar" (para medir a janela de soco só com apertos feitos em pé).
+const K_BITS = 7, H_BITS = 5, P_BITS = 4;
+const K_MAX = (1 << K_BITS) - 1, H_MAX = (1 << H_BITS) - 1;
+const SLOTS = 6;
+const MASK_SHIFT = K_BITS + H_BITS + P_BITS;
+const AIR_BIT = 1 << (MASK_SHIFT + SLOTS); // o soco em andamento foi apertado no ar
+const pack = (k, h, p, mask, air) => k | (h << K_BITS) | (p << (K_BITS + H_BITS)) | (mask << MASK_SHIFT) | (air ? AIR_BIT : 0);
+
+/**
+ * @param ents entidades de buildEntities
+ * @param opt { jumpScale, steer } — steer ≠ 0 desloca cada entidade por steer × (tempo até o encontro):
+ *        a aproximação passa a ser (120 + steer) px/s mantendo o encontro no mesmo instante.
+ */
+function makeSim(ents, coins, opt) {
+  const jumpVel = PHYS.jumpVel * (opt.jumpScale ?? 1);
+  const steer = opt.steer ?? 0;
+  const shift = (e, f) => (steer * (e.fEnc - f)) / HZ;
+  const boxesAt = (e, f) => {
+    const bs = e.boxes(f);
+    if (steer === 0) return bs;
+    const s = shift(e, f);
+    return bs.map((b) => [b[0] + s, b[1], b[2], b[3]]);
+  };
+
+  // faixa de quadros em que a entidade pode tocar o Pardo ou ser alcançada pelo soco
+  const act = Array.from({ length: NFRAMES + 2 }, () => []);
+  const punchOk = new Uint8Array(NFRAMES + 2); // máscara de slots de alvos que um aperto neste quadro ainda pode acertar
+  const expire = new Uint8Array(NFRAMES + 2);
+  let slotSeq = 0;
+  const slotBusyUntil = new Array(SLOTS).fill(-1);
+  for (const e of ents) {
+    let f0 = -1, f1 = -1;
+    const from = Math.max(0, Math.floor(e.fEnc) - 400), to = Math.min(NFRAMES, Math.ceil(e.fEnc) + 400);
+    for (let f = from; f <= to; f++) {
+      const cx = centerAt(f);
+      const hit = boxesAt(e, f).some((b) => b[0] < cx + HALF + PUNCH.w && b[0] + b[2] > cx - HALF - 2);
+      if (hit) { if (f0 < 0) f0 = f; f1 = f; }
+    }
+    e.f0 = f0; e.f1 = f1;
+    if (f0 < 0) continue;
+    for (let f = f0; f <= f1; f++) act[f].push(e);
+    if (e.punchable) {
+      const start = Math.max(0, f0 - P_LAST - 1);
+      let slot = -1;
+      for (let k = 0; k < SLOTS; k++) { const s = (slotSeq + k) % SLOTS; if (slotBusyUntil[s] < start) { slot = s; break; } }
+      if (slot < 0) throw new Error(`validador: mais de ${SLOTS} alvos de soco simultâneos perto de ${pos(e.col)}`);
+      slotSeq = slot + 1;
+      slotBusyUntil[slot] = f1 + 1;
+      e.bit = 1 << slot;
+      for (let f = start; f <= f1; f++) punchOk[f] |= e.bit;
+      expire[f1 + 1] |= e.bit;
+    } else e.bit = 0;
+  }
+  const coinsAt = Array.from({ length: NFRAMES + 2 }, () => []);
+  coins.forEach((c, i) => {
+    const x0 = c.col * T + COIN.d, y0 = c.row * T + COIN.d;
+    c.box = [x0, y0, COIN.s, COIN.s];
+    for (let f = 0; f <= NFRAMES; f++) { const cx = centerAt(f); if (cx + HALF > x0 && cx - HALF < x0 + COIN.s) coinsAt[f].push(i); }
+  });
+
+  const roofAt = (f) => UBER.roofY - uberRampOffset(centerAt(f), RAMPS_PX);
+  const newLayer = () => ({ keys: [], ys: [], vys: [], map: new Map(), succ: null });
+  const start = () => { const L = newLayer(); L.keys.push(0); L.ys.push(UBER.roofY - PLAYER_H); L.vys.push(0); L.map.set(0, 0); return L; };
+
+  /**
+   * Avança a camada `prev` (quadro f−1) para o quadro f.
+   * @param ignoreDamage true durante a invulnerabilidade (depois de um ponto sem solução)
+   * @param rec          true grava sucessores e acertos (para a passada para trás)
+   * @param culprits     Set que recebe as entidades que causaram dano neste quadro
+   */
+  function step(f, prev, ignoreDamage, rec, culprits) {
+    const next = newLayer();
+    if (rec) prev.succ = prev.keys.map(() => []);
+    const cx = centerAt(f);
+    const roof = roofAt(f);
+    const es = act[f];
+    const boxes = es.map((e) => boxesAt(e, f));
+    const exp = expire[f];
+    const ok = punchOk[f];
+    const px0 = cx - HALF, px1 = cx + HALF;
+    const hx0 = px0 + PUNCH.dx, hx1 = hx0 + PUNCH.w;
+    let hits = null;
+
+    const emit = (pi, k, h, p, mask, y, vy, press, air) => {
+      if (p === 0) air = 0;
+      // socos primeiro (game.ts), depois toques
+      hits = null;
+      if (p > P_FIRST && p <= P_LAST + 1) {
+        const hy0 = y + PUNCH.dy, hy1 = hy0 + PUNCH.h;
+        for (let i = 0; i < es.length; i++) {
+          const e = es[i];
+          if (!e.punchable || (mask & e.bit)) continue;
+          const b = boxes[i][0];
+          if (hx0 < b[0] + b[2] && hx1 > b[0] && hy0 < b[1] + b[3] && hy1 > b[1]) { mask |= e.bit; (hits ??= []).push(e.id); }
         }
-        if (sy !== 0) {
-          const pb = b.y + PH;
-          b.y += sy;
-          const c0 = Math.floor(b.x / T), c1 = Math.floor((b.x + PW - EPS) / T);
-          if (sy > 0) {
-            const ty = Math.floor((b.y + PH - EPS) / T), top = ty * T;
-            for (let tx = c0; tx <= c1; tx++) if (isSolid(tx, ty) || (pb <= top + 0.5 && isOne(tx, ty))) { b.y = top - PH; b.vy = 0; sy = 0; ground = true; break; }
-          } else {
-            const ty = Math.floor(b.y / T);
-            for (let tx = c0; tx <= c1; tx++) if (isSolid(tx, ty)) { b.y = (ty + 1) * T; b.vy = 0; sy = 0; break; }
+      }
+      let hurt = false;
+      for (let i = 0; i < es.length; i++) {
+        const e = es[i];
+        if (!e.harmful || (mask & e.bit)) continue;
+        for (const b of boxes[i]) {
+          if (px0 < b[0] + b[2] && px1 > b[0] && y < b[1] + b[3] && y + PLAYER_H > b[1]) { hurt = true; culprits?.add(e); break; }
+        }
+      }
+      if (hurt && !ignoreDamage) return;
+      if (k > K_MAX) throw new Error(`validador: pulo com mais de ${K_MAX} quadros no quadro ${f}`);
+      const key = pack(k, h, p, mask, air);
+      let ci = next.map.get(key);
+      if (ci === undefined) { ci = next.keys.length; next.map.set(key, ci); next.keys.push(key); next.ys.push(y); next.vys.push(vy); }
+      if (rec) prev.succ[pi].push({ c: ci, hits, press, air });
+    };
+
+    for (let pi = 0; pi < prev.keys.length; pi++) {
+      const key = prev.keys[pi];
+      const k = key & K_MAX;
+      const h = (key >> K_BITS) & H_MAX;
+      let p = (key >> (K_BITS + H_BITS)) & ((1 << P_BITS) - 1);
+      const mask = (key >> MASK_SHIFT) & ((1 << SLOTS) - 1) & ~exp;
+      const air0 = key & AIR_BIT ? 1 : 0;
+      if (p > 0) { p++; if (p > P_TOTAL) p = 0; }
+      const canPunch = p === 0 && (ok & ~mask) !== 0;
+      for (let punch = 0; punch <= (canPunch ? 1 : 0); punch++) {
+        const p2 = punch ? 1 : p;
+        const air = punch ? (k > 0 ? 1 : 0) : air0;
+        if (k === 0) {
+          // no teto: fica, ou decola (bloqueado no preparo e na fase ativa do soco)
+          emit(pi, 0, 0, p2, mask, roof - PLAYER_H, 0, punch ? 'P' : '', air);
+          if (!(p2 > 0 && p2 <= P_LAST + 1)) {
+            const vy = Math.min(-jumpVel + PHYS.gravity * DT, PHYS.maxFall);
+            const y = prev.ys[pi] + vy * DT;
+            if (y + PLAYER_H >= roof) emit(pi, 0, 0, 0, mask, roof - PLAYER_H, 0, 'J', 0);
+            else emit(pi, 1, 0, 0, mask, y, vy, 'J', 0);
+          }
+        } else {
+          const rising = h === 0 && prev.vys[pi] < 0;
+          for (let rel = 0; rel <= (rising ? 1 : 0); rel++) {
+            let vy = prev.vys[pi];
+            if (rel) vy *= FEEL.jumpCut;
+            vy = Math.min(vy + PHYS.gravity * DT, PHYS.maxFall);
+            const y = prev.ys[pi] + vy * DT;
+            const press = (punch ? 'P' : '') + (rel ? 'R' : '');
+            if (y + PLAYER_H >= roof) emit(pi, 0, 0, p2, mask, roof - PLAYER_H, 0, press, air);
+            else emit(pi, k + 1, rel ? Math.min(k + 1, H_MAX) : h, p2, mask, y, vy, press, air);
           }
         }
-        if (sx === 0 && sy === 0) break;
       }
-      if (!ground && b.vy >= 0) {
-        const bottom = b.y + PH; let best = null;
-        for (const p of plats) {
-          if (b.x + PW <= p.x || b.x >= p.x + p.w) continue;
-          if (prevBottom <= p.y + 1 && bottom >= p.y && (!best || p.y < best.y)) best = p;
+    }
+    return next;
+  }
+
+  /**
+   * Passada para a frente. Guarda a camada do início de cada janela de 96 quadros.
+   * Onde não sobra estado sem dano, registra a falha e segue com 1,0 s de invulnerabilidade (como no jogo).
+   */
+  function forward() {
+    const snaps = [];
+    const fails = [];
+    const invulnAt = new Uint8Array(NFRAMES + 2);
+    let layer = start();
+    let invulnUntil = -1;
+    let maxStates = 1;
+    for (let f = 1; f <= NFRAMES; f++) {
+      if ((f - 1) % CHUNK === 0) snaps.push(layer);
+      const culprits = new Set();
+      let next = step(f, layer, f <= invulnUntil, false, culprits);
+      if (next.keys.length === 0) {
+        fails.push({ f, culprits: [...culprits] });
+        invulnUntil = f + Math.round(UBER.invuln * HZ);
+        next = step(f, layer, true, false, null);
+      }
+      if (f <= invulnUntil) invulnAt[f] = 1;
+      layer = next;
+      if (layer.keys.length > maxStates) maxStates = layer.keys.length;
+    }
+    return { snaps, fails, invulnAt, last: layer, maxStates };
+  }
+
+  /** Recalcula as camadas de uma janela gravando sucessores e marca quem ainda fecha a fase (`alive`). */
+  function chunkLayers(ci, fw, aliveNext) {
+    const f0 = ci * CHUNK;
+    const f1 = Math.min(NFRAMES, f0 + CHUNK);
+    const src = fw.snaps[ci];
+    const layers = [{ keys: src.keys, ys: src.ys, vys: src.vys, map: src.map, succ: null }];
+    for (let f = f0 + 1; f <= f1; f++) layers.push(step(f, layers[layers.length - 1], fw.invulnAt[f] === 1, true, null));
+    const last = layers[layers.length - 1];
+    last.alive = last.keys.map((key) => (aliveNext ? aliveNext.has(key) : true));
+    for (let i = layers.length - 2; i >= 0; i--) {
+      const L = layers[i];
+      const N = layers[i + 1];
+      L.alive = L.succ.map((ss) => ss.some((s) => N.alive[s.c]));
+    }
+    return { f0, f1, layers };
+  }
+
+  /**
+   * Passada para trás + medições. Para cada entidade: quadros de aperto de soco que a acertam e quadros
+   * de decolagem que a atravessam no ar, sempre em execuções que vão do começo ao fim sem dano.
+   */
+  function analyze(fw) {
+    const nChunks = fw.snaps.length;
+    const punchFrames = ents.map(() => new Set());
+    const takeoffFrames = ents.map(() => new Set());
+    const airPunchFrames = ents.map(() => new Set()); // apertos no ar que acertam (informativo, fora da R10)
+    const hopFrames = ents.map(() => new Set()); // decolagens que passam por cima de um alvo SEM socar
+    const AIR_ONLY = 'zX'; // alvos da faixa alta: só o soco no ar alcança
+    const coinOk = coins.map(() => false);
+    const crossAt = new Map(); // quadro → obstáculos de pular cujo centro o Pardo cruza
+    for (const e of ents) {
+      if (!JUMP_OBST.includes(e.ch) && !(e.punchable && e.harmful && e.row === 8)) continue;
+      const f = Math.round(e.fEnc);
+      (crossAt.get(f) ?? crossAt.set(f, []).get(f)).push(e);
+    }
+    const aliveStart = new Array(nChunks + 1).fill(null);
+    for (let ci = nChunks - 1; ci >= 0; ci--) {
+      const { f0, layers } = chunkLayers(ci, fw, aliveStart[ci + 1]);
+      for (let i = 0; i < layers.length; i++) {
+        const f = f0 + i;
+        const L = layers[i];
+        const N = layers[i + 1];
+        if (N) {
+          for (let s = 0; s < L.keys.length; s++) {
+            if (!L.alive[s]) continue;
+            for (const t of L.succ[s]) {
+              if (!t.hits || !N.alive[t.c]) continue;
+              const ck = N.keys[t.c];
+              const p = (ck >> (K_BITS + H_BITS)) & ((1 << P_BITS) - 1);
+              const k = ck & K_MAX;
+              for (const id of t.hits) {
+                const pressF = f + 1 - (p - 1);
+                if (t.air && !AIR_ONLY.includes(ents[id].ch)) airPunchFrames[id].add(pressF); else punchFrames[id].add(pressF);
+                if (ents[id].ch === 'z' && k > 0) takeoffFrames[id].add(f + 1 - k + 1);
+              }
+            }
+          }
         }
-        if (best) { b.y = best.y - PH; b.vy = 0; ground = true; }
+        if (i === 0 && ci > 0) continue; // a camada inicial já foi medida como final da janela anterior
+        const cross = crossAt.get(f);
+        const cs = coinsAt[f];
+        if (!cross && cs.length === 0) continue;
+        const maskOf = (key) => (key >> MASK_SHIFT) & ((1 << SLOTS) - 1);
+        for (let s = 0; s < L.keys.length; s++) {
+          if (!L.alive[s]) continue;
+          const k = L.keys[s] & K_MAX;
+          if (cross && k > 0) {
+            for (const e of cross) {
+              if (!e.punchable) takeoffFrames[e.id].add(f - k + 1);
+              else if (!(maskOf(L.keys[s]) & e.bit)) hopFrames[e.id].add(f - k + 1);
+            }
+          }
+          const y = L.ys[s];
+          for (const c of cs) if (!coinOk[c]) { const b = coins[c].box; if (y < b[1] + b[3] && y + PLAYER_H > b[1]) coinOk[c] = true; }
+        }
       }
-      if (hazard(b.x, b.y) || b.y > H * T + 32) return null;
-      touchCoins(b.x, b.y, got);
-      if (ground) { for (const g of got) touched.add(g); return { x: b.x, y: b.y }; }
+      aliveStart[ci] = new Set(layers[0].keys.filter((_, s) => layers[0].alive[s]));
     }
-    return null;
+    return { punchFrames, takeoffFrames, airPunchFrames, hopFrames, coinOk, aliveStart };
   }
 
-  const Q = 4;
-  const seen = new Map();
-  const queue = [];
-  const back = new Map();
-  let from = -1;
-  const push = (x, y) => {
-    let q = Math.round(x / Q) * Q;
-    if (!(bodyFree(q, y) && supported(q, y) && !hazard(q, y))) q = x;
-    if (!(bodyFree(q, y) && supported(q, y)) || hazard(q, y)) return;
-    const key = Math.round(q * 4) * 512 + (y + 64);
-    if (from >= 0 && from !== key) { let l = back.get(key); if (!l) back.set(key, (l = [])); l.push(from); }
-    if (seen.has(key)) return;
-    seen.set(key, [q, y]);
-    queue.push([q, y, key]);
-  };
-  const cuts = [999, 2, 5, 8, 11, 14, 18];
-  function expand(x, y) {
-    const tmp = []; touchCoins(x, y, tmp); for (const g of tmp) touched.add(g);
-    for (const d of [-1, 1]) {
-      const nx = x + d * Q;
-      if (!bodyFree(nx, y)) continue;
-      if (hazard(nx, y)) continue;
-      if (supported(nx, y)) push(nx, y);
-      else for (const v of [env.run, env.run * 0.4]) for (const dir of [d, 0, -d]) { const r = fly(nx, y, d * v, 0, dir, 999); if (r) push(r.x, r.y); }
+  /** Uma execução do começo ao fim sem dano: em cada quadro, a ação mais "preguiçosa" que ainda fecha a fase. */
+  function extractPath(fw, an) {
+    const actions = [];
+    let key = 0;
+    for (let ci = 0; ci < fw.snaps.length; ci++) {
+      const { f0, layers } = chunkLayers(ci, fw, an.aliveStart[ci + 1]);
+      let s = layers[0].map.get(key);
+      for (let i = 0; i + 1 < layers.length; i++) {
+        const t = layers[i].succ[s].find((x) => layers[i + 1].alive[x.c]);
+        if (!t) return null;
+        if (t.press) actions.push({ f: f0 + i + 1, press: t.press });
+        if (t.hits) actions.push({ f: f0 + i + 1, hits: t.hits });
+        s = t.c;
+      }
+      key = layers[layers.length - 1].keys[s];
     }
-    for (const v0 of [-env.run, 0, env.run]) for (const dir of [-1, 0, 1]) for (const cut of cuts) {
-      const r = fly(x, y, v0, -env.jump, dir, cut);
-      if (r) push(r.x, r.y);
+    return actions;
+  }
+
+  return { forward, analyze, extractPath };
+}
+
+/** maior sequência de quadros consecutivos de um conjunto: [tamanho, primeiro quadro] */
+function longestRun(set) {
+  const fs = [...set].sort((a, b) => a - b);
+  let best = 0, bestStart = -1, run = 0, start = -1;
+  for (let i = 0; i < fs.length; i++) {
+    if (i > 0 && fs[i] === fs[i - 1] + 1) run++; else { run = 1; start = fs[i]; }
+    if (run > best) { best = run; bestStart = start; }
+  }
+  return [best, bestStart];
+}
+
+const secs = (f) => (f / HZ).toFixed(2).padStart(6) + 's';
+const describeFail = (x) => `c.${frameBar(x.f)} (${secs(x.f).trim()}): ${[...new Set(x.culprits.map((e) => `'${e.ch}' ${pos(e.col)}`))].join(', ') || '?'}`;
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// 4. EXECUÇÃO
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+const st = staticChecks();
+let report = null;
+if (st) {
+  const ents = buildEntities(st.all);
+  const coins = st.coins.map((c) => ({ ...c }));
+
+  // Passada 1 — envelope reduzido: existe execução do começo ao fim sem dano
+  const sim1 = makeSim(ents, coins, { jumpScale: 0.95 });
+  const fw1 = sim1.forward();
+  for (const x of fw1.fails) err(`passada 1 (pulo a 95 %): dano inevitável em ${describeFail(x)}`);
+  let path = null;
+  if (fw1.fails.length === 0 && PRINT) {
+    const an1 = sim1.analyze(fw1);
+    path = sim1.extractPath(fw1, an1);
+    if (!path) err('passada 1: não foi possível reconstruir a execução sem dano');
+  }
+
+  // Passada 2 — envelope real: moedas, alvos e janelas (R10)
+  const sim2 = makeSim(ents, coins, {});
+  const fw2 = sim2.forward();
+  for (const x of fw2.fails) err(`passada 2 (envelope real): dano inevitável em ${describeFail(x)}`);
+  const an2 = sim2.analyze(fw2);
+  coins.forEach((c, i) => { if (!an2.coinOk[i]) err(`passada 2: moeda de ${pos(c.col)} (linha ${c.row}) não é coletável sem direcional e sem dano`); });
+  const rows = [];
+  let minPunch = null, minTake = null;
+  for (const e of ents) {
+    const ato1 = e.bar <= ACTS[0].to; // embarque + Ato 1 usam o piso mais folgado
+    const [needP, needT] = ato1 ? R10.ato1 : R10.base;
+    const row = { e, punch: null, take: null, hop: null };
+    const under = e.row === 8 && ents.some((h) => HIGH_OBST.includes(h.ch) && e.col >= h.col && e.col <= h.col + (h.ch === 'G' ? 2 : 0));
+    if (under && e.harmful) row.hop = longestRun(an2.hopFrames[e.id]);
+    if (e.punchable) {
+      const [n, f] = longestRun(an2.punchFrames[e.id]);
+      row.punch = [n, f];
+      if (n === 0) err(`passada 2: '${e.ch}' (${LEGEND[e.ch]}) de ${pos(e.col)} não é socável ${'zX'.includes(e.ch) ? '' : 'em pé '}numa execução sem dano`);
+      else if (n < needP) err(`R10 ${pos(e.col)}: janela de soco de '${e.ch}' com ${n} quadros (mínimo ${needP})`);
+      if (n > 0 && (!minPunch || n < minPunch.n)) minPunch = { n, e };
     }
-    const p = platUnder(x, y + PH);
-    if (p && p.g >= 0) for (const o of plats) if (o.g === p.g && o !== p) push(x, o.y - PH);
+    if (JUMP_OBST.includes(e.ch) || e.ch === 'z') {
+      const [n, f] = longestRun(an2.takeoffFrames[e.id]);
+      row.take = [n, f];
+      if (n === 0) { if (e.ch !== 'z') err(`passada 2: '${e.ch}' de ${pos(e.col)} não é pulável numa execução sem dano`); }
+      else if (n < needT) err(`R10 ${pos(e.col)}: janela de decolagem de '${e.ch}' com ${n} quadros (mínimo ${needT})`);
+      if (n > 0 && (!minTake || n < minTake.n)) minTake = { n, e };
+    }
+    rows.push(row);
   }
-  return {
-    seen, touched, isSolid, bodyFree, supported, back,
-    run(seeds) {
-      for (const [x, y] of seeds) push(x, y);
-      for (let i = 0; i < queue.length; i++) { const [x, y, key] = queue[i]; from = key; expand(x, y); }
-      from = -1;
-    },
-  };
-}
 
-function punchable(sim, states, removed, reach) {
-  const out = new Set();
-  const byRow = new Map();
-  for (const [x, y] of states) {
-    if (!(sim.bodyFree(x, y) && sim.supported(x, y))) continue;
-    const feet = y + PH;
-    if (feet % T) continue;
-    const fr = feet / T;
-    if (!byRow.has(fr)) byRow.set(fr, []);
-    byRow.get(fr).push([x, y]);
-  }
-  for (const c of 'B?W') for (const [bx, by] of all(c)) {
-    const i = by * W + bx;
-    if (removed.has(i)) continue;
-    search: for (let diff = 1; diff <= reach; diff++) for (const [x, y] of byRow.get(by + diff) ?? []) {
-      const gapL = bx * T - (x + PW), gapR = x - (bx + 1) * T;
-      const gap = gapL >= 0 ? gapL : gapR;
-      if (gap < -2 || gap > 14) continue;
-      if (gapL < 0 && gapR < 0) continue;
-      if (diff === 3 && !sim.bodyFree(x, y - 30)) continue;
-      out.add(i); break search;
+  // Passada 3 — robustez (só avisa): aproximação de 80 e de 160 px/s
+  const robust = [];
+  for (const s of [-UBER.steer, UBER.steer]) {
+    const fw3 = makeSim(ents, coins, { steer: s }).forward();
+    for (const x of fw3.fails) {
+      const msg = `robustez (aproximação de ${UBER.speed + s} px/s): sem solução em ${describeFail(x)}`;
+      warn(msg);
+      robust.push({ speed: UBER.speed + s, bar: frameBar(x.f) });
     }
   }
-  return out;
+  report = { ents, coins, rows, path, minPunch, minTake, robust, maxStates: Math.max(fw1.maxStates, fw2.maxStates) };
 }
 
-function explore(env, label) {
-  const removed = new Set();
-  const reached = new Map();
-  const coins = new Set();
-  let seeds = [[P[0] * T + (T - PW) / 2, (P[1] + 1) * T - PH]];
-  let sim;
-  for (let pass = 0; pass < 12; pass++) {
-    sim = simulate(env, removed);
-    sim.run(seeds.filter(([x, y]) => sim.bodyFree(x, y) && sim.supported(x, y)));
-    for (const [k, v] of sim.seen) reached.set(k, v);
-    for (const c of sim.touched) coins.add(c);
-    const more = punchable(sim, sim.seen.values(), removed, 2);
-    if (!more.size) break;
-    for (const i of more) removed.add(i);
-    seeds = [...reached.values()];
+// ── --print ─────────────────────────────────────────────────────────────────────────────────────────────────
+if (PRINT && report) {
+  const { ents, rows, path } = report;
+  const win = (w) => (w ? (w[0] ? `${String(w[0]).padStart(2)}q` : ' —') : '   ');
+  console.log('PARTITURA — encontro na posição neutra · resposta · janelas (quadros de 1/60 s)');
+  console.log('compasso   encontro  marc.  soco  decol.  resposta');
+  let lastBar = 0;
+  for (const r of rows) {
+    const e = r.e;
+    if (e.bar !== lastBar) { if (lastBar && e.bar - lastBar > 1) console.log('  ·'); lastBar = e.bar; }
+    const under = !r.hop ? '' : r.hop[0] === 0 ? ' — OBRIGATÓRIO (nenhum pulo passa)' : ` — sob '${HIGH_OBST.includes(ROWS[5][e.col]) ? ROWS[5][e.col] : 'G'}': soco esperado (um pulinho baixo ainda passa: ${r.hop[0]}q de decolagem)`;
+    console.log(`${pos(e.col)}  ${secs(e.fEnc)}    ${e.ch}     ${win(r.punch)}   ${win(r.take)}    ${RESPOSTA[e.ch]}${under}`);
   }
-  const hittable = new Set(removed);
-  for (let pass = 0; pass < 12; pass++) {
-    const more = punchable(simulate(env, hittable), reached.values(), hittable, 3);
-    if (!more.size) break;
-    for (const i of more) hittable.add(i);
+  if (path) {
+    console.log('\nEXECUÇÃO SEM DANO (passada 1, pulo a 95 %; em cada quadro a ação mais tardia que ainda fecha a fase)');
+    const byId = new Map(ents.map((e) => [e.id, e]));
+    let jumpAt = -1;
+    const lines = [];
+    for (const a of path) {
+      const where = `c.${String(frameBar(a.f)).padStart(2, '0')} ${secs(a.f)} q${String(a.f).padStart(4)}`;
+      if (a.hits) { for (const id of a.hits) lines.push(`${where}    → acerta '${byId.get(id).ch}' (${LEGEND[byId.get(id).ch]}) de ${pos(byId.get(id).col)}`); continue; }
+      if (a.press.includes('J')) { jumpAt = a.f; lines.push(`${where}  PULO`); }
+      if (a.press.includes('P')) lines.push(`${where}  SOCO`);
+      if (a.press.includes('R')) lines.push(`${where}    solta o pulo (${a.f - jumpAt} quadros segurando)`);
+    }
+    console.log(lines.join('\n'));
+    console.log(`(${path.filter((a) => a.press?.includes('J')).length} pulos, ${path.filter((a) => a.press?.includes('P')).length} socos)`);
   }
-  const cells = new Set();
-  for (const [x, y] of reached.values()) for (let tx = Math.floor(x / T); tx <= Math.floor((x + PW - EPS) / T); tx++) cells.add(`${tx},${Math.floor((y + PH - 1) / T)}`);
-  const standsAt = (col, row) => cells.has(`${col},${row}`);
-  notes.push(`${label}: ${reached.size} posições de apoio, ${coins.size}/${n('c')} moedas, ${hittable.size} blocos socáveis`);
-  const stuck = [];
-  if (A) {
-    const ok = new Set(), stack = [];
-    for (const [k, [x, y]] of sim.seen) if (y + PH === (A[1] + 1) * T && x + PW > (A[0] - 1) * T && x < (A[0] + 1) * T) { ok.add(k); stack.push(k); }
-    while (stack.length) for (const f of sim.back.get(stack.pop()) ?? []) if (!ok.has(f)) { ok.add(f); stack.push(f); }
-    for (const [k, [x, y]] of sim.seen) if (!ok.has(k)) stuck.push([Math.floor((x + PW / 2) / T), Math.floor((y + PH - 1) / T)]);
-  }
-  return { reached, coins, removed, hittable, standsAt, cells, stuck };
+  console.log('');
 }
 
-if (!errors.length) {
-  // 7a. Caminho obrigatório com folga (envelope reduzido)
-  const safeEnv = explore({ jump: 285, run: 99 }, 'envelope reduzido (pulo 95%, corrida 90%)');
-  if (A && !safeEnv.standsAt(A[0], A[1]) && !safeEnv.standsAt(A[0] - 1, A[1])) err(`objetivo A inalcançável (${A}) com o envelope reduzido`);
-  for (const [x, y] of all('K')) if (!safeEnv.standsAt(x, y)) err(`checkpoint ${x},${y} inalcançável com o envelope reduzido`);
-  for (const [x, y] of all('V')) if (!safeEnv.standsAt(x - 1, y) && !safeEnv.standsAt(x + 1, y) && !safeEnv.standsAt(x, y)) err(`cooler ${x},${y} inalcançável com o envelope reduzido`);
-  if (safeEnv.stuck.length) err(`becos sem saída (posições de onde o objetivo A não é mais alcançável): ${[...new Set(safeEnv.stuck.map(([x, y]) => `${x},${y}`))].slice(0, 30).join(' ')}`);
-  for (const x of wallCols) {
-    let y = H - 1;
-    while (y > 0 && !'B?W'.includes(at(x, y))) y--;
-    if (!safeEnv.removed.has(y * W + x)) err(`parede de barreiras na coluna ${x}: base não socável a partir de um ponto alcançável`);
-  }
-  // 7b. Tudo coletável e socável com o envelope real
-  const full = explore({ jump: 300, run: 110 }, 'envelope real');
-  const lost = all('c').filter(([x, y]) => !full.coins.has(y * W + x));
-  if (lost.length) err(`${lost.length} moeda(s) não coletável(is): ${lost.slice(0, 12).map((p) => p.join(',')).join(' ')}${lost.length > 12 ? ' …' : ''}`);
-  for (const c of '?W') for (const [x, y] of all(c)) if (!full.hittable.has(y * W + x)) err(`caixa '${c}' em ${x},${y} não socável`);
-  for (const [x, y] of all('z')) if (!full.standsAt(x, y) && !full.standsAt(x - 1, y) && !full.standsAt(x + 1, y)) err(`pichador ${x},${y}: o Pardo não alcança o poleiro`);
-  const optional = [...full.cells].filter((k) => !safeEnv.cells.has(k)).map((k) => k.split(',').map(Number)).sort((a, b) => a[0] - b[0]);
-  const cols = [...new Set(optional.map(([x]) => x))];
-  notes.push(`colunas com apoio só no envelope real (opcional/difícil): ${cols.length ? cols.join(',') : 'nenhuma'}`);
-  if (VERBOSE) {
-    const never = [];
-    for (let x = 0; x < W; x++) for (let y = 1; y <= 10; y++) if (surface(x, y) && !solid(at(x, y - 1)) && at(x, y - 1) !== '-' && !full.standsAt(x, y - 1)) never.push(`${x},${y}`);
-    notes.push(`superfícies nunca pisadas: ${never.join(' ') || 'nenhuma'}`);
-  }
+// ── Resumo ──────────────────────────────────────────────────────────────────────────────────────────────────
+if (st) {
+  const n = (ch) => st.all.filter((m) => m.ch === ch).length;
+  console.log(`mapa ${ROWS[0].length}×${ROWS.length} · ${BARS.length} compassos · ${NFRAMES} quadros (${(NFRAMES / HZ).toFixed(1)} s)`);
+  console.log(`contagens: ${Object.keys(EXPECTED).map((ch) => `${ch}=${n(ch)}`).join(' ')} · moedas=${st.coins.length}`);
 }
-
-if (process.argv.includes('--print')) {
-  for (let x0 = 0; x0 < W; x0 += 60) {
-    console.log('    ' + Array.from({ length: Math.min(60, W - x0) }, (_, i) => ((x0 + i) % 10 === 0 ? '|' : ' ')).join('') + `  (${x0}-${Math.min(W, x0 + 60) - 1})`);
-    rows.forEach((r, y) => console.log(String(y).padStart(2) + '  ' + r.slice(x0, x0 + 60)));
-  }
+if (report) {
+  const { minPunch, minTake } = report;
+  if (minPunch) console.log(`menor janela de soco: ${minPunch.n} quadros ('${minPunch.e.ch}' em ${pos(minPunch.e.col)})`);
+  if (minTake) console.log(`menor janela de decolagem: ${minTake.n} quadros ('${minTake.e.ch}' em ${pos(minTake.e.col)})`);
+  const a1 = report.rows.filter((r) => r.e.bar <= ACTS[0].to);
+  const mp = Math.min(...a1.filter((r) => r.punch?.[0]).map((r) => r.punch[0]));
+  const mt = Math.min(...a1.filter((r) => r.take?.[0]).map((r) => r.take[0]));
+  console.log(`no embarque + Ato 1: soco ≥ ${mp} quadros, decolagem ≥ ${mt} quadros`);
 }
-console.log(`mapa ${W}x${H}`);
-console.log('contagens:', Object.fromEntries(Object.keys(count).filter((c) => 'PKAcmMdyupzVBW?^~-'.includes(c)).map((c) => [c, n(c)])));
-console.log('checkpoints em:', all('K').map(([x]) => x).sort((a, b) => a - b).join(', '), '| ônibus em:', buses.join(', '));
-console.log('paredes de barreiras em colunas:', wallCols.join(','));
-console.log(notes.join('\n'));
-if (warns.length) console.log(warns.join('\n'));
-if (errors.length) { console.error('\nERROS:\n' + errors.join('\n')); process.exit(1); }
-console.log('\nlevel5 OK');
+for (const w of warnings) console.log(`AVISO: ${w}`);
+if (errors.length) {
+  for (const e of errors) console.error(`ERRO: ${e}`);
+  console.error(`level5 FALHOU (${errors.length} erro${errors.length > 1 ? 's' : ''})`);
+  process.exit(1);
+}
+console.log(`passada 1 (pulo a 95 %): fecha sem dano · passada 2 (envelope real): moedas, alvos e R10 conferidos · passada 3: ${warnings.length} aviso(s)`);
+console.log('level5 OK');

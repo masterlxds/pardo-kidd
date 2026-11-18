@@ -480,7 +480,7 @@ export const SPRITE_SPEC = {
   caixa: [12, 12, 2],
 
   // ── Obstáculos (art/uber.ts) — base na última linha, alinhados à esquerda da célula
-  /** limitador de altura: barra ZEBRADA "2,0 m" entre postes; a barra fica em y 32..44 do sprite (base = asfalto) */
+  /** limitador de altura: barra ZEBRADA "2,0 m" entre postes; a barra fica em y 32..44 do sprite; o jogo alinha a barra à zona que fere e completa os postes até o asfalto */
   obst_limitador: [16, 48, 1],
   /** faixa de obra "OBRAS — CET": cavalete duplo zebrado, 2 colunas; a lona fica em y 32..44 do sprite */
   obst_faixa: [32, 48, 1],

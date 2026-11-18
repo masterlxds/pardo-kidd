@@ -33,7 +33,7 @@ export const UBER = {
   truckScreenX: 232,
   truckBars: 8,
   /** a rolagem desacelera linearmente até parar ao longo dos últimos stopBars compassos */
-  stopBars: 3,
+  stopBars: 2,
   /** estrelas da corrida: maxStars − gotas perdidas (mín. 1); bônus = starBonus × estrelas */
   maxStars: 5,
   starBonus: 500,
@@ -53,16 +53,20 @@ export const UBER_BANDS = {
 /** Retângulo relativo: dx a partir do canto esquerdo da CÉLULA do marcador; y absoluto de mundo. */
 export interface UberZone { dx: number; y: number; w: number; h: number }
 
-/** Zonas que FEREM dos obstáculos indestrutíveis (menores que o desenho, de propósito). */
+/**
+ * Zonas que FEREM dos obstáculos indestrutíveis (menores que o desenho, de propósito).
+ * As altas descem até y=110: o Pardo em pé (topo em 124) passa, mas nem o pulo mínimo (~16 px) cabe por baixo —
+ * é isso que torna obrigatório o soco em quem vem pela faixa baixa sob uma placa ou luminária.
+ */
 export const UBER_OBSTACLES = {
   /** L — limitador de altura (1 coluna): PULE */
   limitador: { dx: 2, y: 130, w: 12, h: 12 },
   /** F — faixa de obra (2 colunas): PULE */
   faixa: { dx: 2, y: 130, w: 28, h: 12 },
   /** G — placa de pórtico (3 colunas): NÃO PULE */
-  placa: { dx: 2, y: 80, w: 44, h: 16 },
+  placa: { dx: 2, y: 82, w: 44, h: 28 },
   /** i — luminária de túnel (1 coluna): NÃO PULE */
-  luminaria: { dx: 2, y: 82, w: 12, h: 12 },
+  luminaria: { dx: 2, y: 96, w: 12, h: 14 },
 } as const satisfies Record<string, UberZone>;
 export type UberObstacleKind = keyof typeof UBER_OBSTACLES;
 

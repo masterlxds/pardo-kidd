@@ -1,48 +1,40 @@
 import type { Background } from '../core/types';
-import { VIEW_H, VIEW_W } from '../core/constants';
+import { RENDER_SCALE, VIEW_H, VIEW_W } from '../core/constants';
+import { UBER } from '../game/uberRules';
+import { LEVEL5_RAMP_COLS, LEVEL5_ROWS } from '../game/level5';
 
 /*
- * Parallax da Fase 5 — "Marginal de São Paulo (De Uber até o Galpão)".
+ * Parallax da Fase 5 — "Marginal de São Paulo (De Uber até o Galpão)", versão 2.
  *
- * 100% Canvas 2D procedural. As camadas estáticas são pré-renderizadas uma única vez em canvases
- * offscreen na escala RENDER_SCALE (S = 2) no boot para rodar a 60 FPS cravados.
+ * Quatro trechos que contam a passagem da noite ao amanhecer (GDD §7), trocando nas rampas do mapa:
+ *  1. Marginal Tietê à noite — céu azul-escuro, skyline com janelas acesas, pista expressa ao fundo
+ *     com faróis e o Tietê refletindo neon.
+ *  2. Minhocão — elevado num corredor de prédios colados e altos, janelas acesas, varais e grafites.
+ *  3. Túnel — parede de azulejos com faixa de luz correndo e TETO sólido preso ao mundo, cuja borda
+ *     inferior fica em y de mundo 80 (as luminárias `i` do mapa ficam penduradas logo abaixo).
+ *  4. Ponte Estaiada ao amanhecer — céu virando rosa/pêssego, mastro em X com estais, cidade ao longe.
  *
- * Direção visual inspirada em Mega Man X4 (Jet Stingray) ambientada na Marginal Tietê /
- * Ponte Estaiada / Minhocão à noite:
- *  - Céu noturno paulistano em dithering Bayer (#07091a → #101534 → #1d204a → #352758 → #4c315e),
- *    estrelas no alto, lua com halo e helicóptero distante patrulhando com holofote.
- *  - Camada 1 (parallax 0.10): Skyline monumental de São Paulo (antenas de treliça da Av. Paulista
- *    com luzes vermelhas de aviação piscando, Banespão/Farol Santander, Edifício Copan em curvas
- *    horizontais iluminadas e a Ponte Estaiada Octávio Frias de Oliveira com mastro em "X" em LEDs
- *    ciano/turquesa e cabos estaiados dourados).
- *  - Camada 2 (parallax 0.26): Via Expressa Elevada / Minhocão com pilares de concreto, pórticos
- *    verdes de sinalização ("MARGINAL TIETÊ") e feixes horizontais de luz (light trails) vermelhos
- *    e brancos/amarelos deslizando em alta velocidade.
- *  - Camada 3 (parallax 0.52): Rio Tietê (y = 122..180) com águas escuras e reflexos horizontais
- *    trêmulos de néon e vapor de sódio, mureta/guard-rail da Marginal, outdoors neon e postes
- *    passando em velocidade.
- *  - Primeiro plano (parallax 1.35): linhas cinéticas sutis de vento nas bordas superior e inferior
- *    e feixes verticais translúcidos de postes passando em alta velocidade sem tapar a visão.
+ * Pontos de troca derivados do MAPA (LEVEL5_RAMP_COLS e o 3º `K` da linha 11), com fallback nos
+ * compassos 22 / 40 / 57 enquanto o mapa for stub. A troca é um crossfade de 1 compasso (192 px)
+ * centrado no ponto, medido na posição neutra do Pardo (camX + UBER.screenNeutral).
+ *
+ * LEITURA: a região de jogo (y de tela ≈ 60..136) tem baixo contraste e baixa saturação; cada trecho
+ * termina com um "véu" translúcido nessa faixa. Amarelo/preto zebrado, verde de placa, branco puro e
+ * laranja vivo ficam reservados ao gameplay.
+ *
+ * Desempenho: tudo o que é estático é pré-renderizado em canvases offscreen (escala S) no create;
+ * por quadro só há drawImage em faixas e alguns fillRect animados.
  */
 
-const S = 2;
-/** Margem superior lógica dos canvases de camada para absorver deslocamento vertical da câmera. */
-const MT = 24;
-const LH = 240;
-/** camY de referência com o Pardo no teto do Uber / pista principal (mapa de 14 linhas: 224 - 180 = 44). */
-const BASE_CAM_Y = 44;
-
-/** Linha de base do skyline distante. */
-const SKY_GY = 112;
-/** Linha do tabuleiro da Via Expressa / Minhocão. */
-const VIA_Y = 104;
-/** Linha da mureta / margem do Rio Tietê. */
-const BANK_Y = 122;
-
-const P_CLOUD = 512;
-const P_SKY = 640;
-const P_VIA = 512;
-const P_BANK = 512;
+const S = RENDER_SCALE;
+const TILE = UBER.tile;
+/** 1 compasso de câmera (px): duração do crossfade entre trechos. */
+const BAR_PX = UBER.barCols * TILE;
+/** Borda inferior do teto do túnel (y de MUNDO). */
+const TUNNEL_CEIL_WORLD_Y = 80;
+/** Região de jogo (y de tela) onde o fundo precisa ficar calmo. */
+const PLAY_TOP = 60;
+const PLAY_BOTTOM = 136;
 
 type Rnd = () => number;
 type Ctx = CanvasRenderingContext2D;
@@ -69,6 +61,10 @@ function ri(rnd: Rnd, n: number): number {
   return Math.floor(rnd() * n);
 }
 
+function pick<T>(rnd: Rnd, arr: readonly T[], fallback: T): T {
+  return arr[ri(rnd, arr.length)] ?? fallback;
+}
+
 /** Hash 2D determinístico em [0, 1). */
 function h2(x: number, y: number, seed: number): number {
   let n = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(seed | 0, 1442695041);
@@ -83,30 +79,35 @@ function bayer(x: number, y: number): number {
 
 const snap = (v: number): number => Math.round(v * S) / S;
 
-/** Canvas offscreen em escala S; `margin` é o deslocamento vertical lógico aplicado ao desenho. */
-function mk(w: number, h: number, margin: number): { cv: Cv; c: Ctx } {
+function smooth(t: number): number {
+  const k = Math.min(1, Math.max(0, t));
+  return k * k * (3 - 2 * k);
+}
+
+/** Canvas offscreen em escala S, desenhado em unidades lógicas. */
+function mk(w: number, h: number): { cv: Cv; c: Ctx } {
   const cv = document.createElement('canvas');
   cv.width = Math.round(w * S);
   cv.height = Math.round(h * S);
   const c = cv.getContext('2d');
   if (!c) throw new Error('Canvas 2D indisponível para o cenário da Marginal de São Paulo');
+  c.imageSmoothingEnabled = false;
   c.scale(S, S);
-  c.translate(0, margin);
   return { cv, c };
 }
 
 function R(c: Ctx, x: number, y: number, w: number, h: number, col: string): void {
   c.fillStyle = col;
-  c.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+  c.fillRect(x, y, w, h);
 }
 
-/** Linha pixelada construída em passos de meio pixel / 1 pixel. */
+/** Linha pixelada (pontos de w×w) — estais, mastro, varais. */
 function pline(c: Ctx, x0: number, y0: number, x1: number, y1: number, w: number, col: string): void {
-  const n = Math.max(1, Math.ceil(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0))));
+  const n = Math.max(1, Math.ceil(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) * 2));
   c.fillStyle = col;
   for (let i = 0; i <= n; i++) {
     const t = i / n;
-    c.fillRect(Math.round(x0 + (x1 - x0) * t - w / 2), Math.round(y0 + (y1 - y0) * t - w / 2), w, w);
+    c.fillRect(snap(x0 + (x1 - x0) * t - w / 2), snap(y0 + (y1 - y0) * t - w / 2), w, w);
   }
 }
 
@@ -128,32 +129,40 @@ function radial(c: Ctx, x: number, y: number, r: number, rgb: string, a: number)
   c.fillRect(x - r, y - r, r * 2, r * 2);
 }
 
-function drawTiled(ctx: Ctx, img: Cv, period: number, offset: number, y: number): void {
-  const w = img.width / S;
-  const h = img.height / S;
-  for (let x = -mod(offset, period); x < VIEW_W; x += period) {
-    ctx.drawImage(img, x, y, w, h);
-  }
-}
-
-// ─── 1. Céu Noturno Paulistano (Bayer dithering + estrelas + lua + helicóptero) ──
-
-const SKY_STOPS: readonly (readonly [number, string])[] = [
-  [0, '#07091a'],
-  [26, '#101534'],
-  [56, '#1d204a'],
-  [86, '#352758'],
-  [112, '#4c315e'],
-  [132, '#24193c'],
-  [180, '#070b18'],
-];
-
 function rgbOf(h: string): [number, number, number] {
   const n = Number.parseInt(h.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-function buildSky(): Cv {
+// ─── camadas ─────────────────────────────────────────────────────────────────
+
+/** Faixa horizontal repetida: canvas de largura `period` × VIEW_H rolando a camX·f. */
+interface Layer {
+  readonly cv: Cv;
+  readonly period: number;
+  readonly f: number;
+}
+
+function drawLayer(ctx: Ctx, L: Layer, camX: number, dy: number): void {
+  const off = snap(camX * L.f);
+  const y = snap(dy * L.f);
+  for (let x = -mod(off, L.period); x < VIEW_W; x += L.period) {
+    ctx.drawImage(L.cv, x, y, L.period, VIEW_H);
+  }
+}
+
+/** Posição de tela (x) de um ponto `px` de um padrão de período `period` que rola a camX·f. */
+function each(camX: number, f: number, period: number, px: number, margin: number, fn: (sx: number) => void): void {
+  const base = px - mod(camX * f, period);
+  for (let sx = base - period; sx < VIEW_W + margin; sx += period) {
+    if (sx > -margin) fn(snap(sx));
+  }
+}
+
+type Stop = readonly [number, string];
+
+/** Céu em degradê com dithering Bayer (pixel lógico) + decoração opcional por pixel. */
+function buildSky(stops: readonly Stop[], deco?: (put: (x: number, y: number, rgb: string) => void, rnd: Rnd) => void, seed = 1): Cv {
   const cv = document.createElement('canvas');
   cv.width = VIEW_W * S;
   cv.height = VIEW_H * S;
@@ -163,778 +172,820 @@ function buildSky(): Cv {
   const d = new Uint32Array(img.data.buffer);
   const pack = (rgb: readonly [number, number, number]): number =>
     (0xff000000 | (rgb[2] << 16) | (rgb[1] << 8) | rgb[0]) >>> 0;
-  const put = (lx: number, ly: number, col: number): void => {
+  const putN = (lx: number, ly: number, col: number): void => {
     if (lx < 0 || lx >= VIEW_W || ly < 0 || ly >= VIEW_H) return;
     for (let j = 0; j < S; j++) {
       for (let i = 0; i < S; i++) d[(ly * S + j) * cv.width + lx * S + i] = col;
     }
   };
-
   for (let ly = 0; ly < VIEW_H; ly++) {
     let i = 0;
-    while (i < SKY_STOPS.length - 2 && ly >= (SKY_STOPS[i + 1]?.[0] ?? VIEW_H)) i++;
-    const a = SKY_STOPS[i] ?? SKY_STOPS[0];
-    const b = SKY_STOPS[i + 1] ?? a;
+    while (i < stops.length - 2 && ly >= (stops[i + 1]?.[0] ?? VIEW_H)) i++;
+    const a = stops[i] ?? stops[0];
+    const b = stops[i + 1] ?? a;
     if (!a || !b) continue;
-    const t = (ly - a[0]) / Math.max(1, b[0] - a[0]);
+    const t = Math.min(1, Math.max(0, (ly - a[0]) / Math.max(1, b[0] - a[0])));
     const ca = pack(rgbOf(a[1]));
     const cb = pack(rgbOf(b[1]));
-    for (let lx = 0; lx < VIEW_W; lx++) {
-      put(lx, ly, t > bayer(lx, ly) ? cb : ca);
-    }
+    for (let lx = 0; lx < VIEW_W; lx++) putN(lx, ly, t > bayer(lx, ly) ? cb : ca);
   }
-
-  // Estrelas sutis no alto da noite paulistana
-  const rnd = mulberry32(8085);
-  for (let k = 0; k < 44; k++) {
-    const lx = ri(rnd, VIEW_W);
-    const ly = ri(rnd, 66);
-    const bright = rnd() < 0.25;
-    put(lx, ly, pack(bright ? [232, 236, 255] : [132, 142, 198]));
-  }
-
-  // Lua crescente/cheia pálida com halo dithered no canto superior direito
-  const mCx = 264;
-  const mCy = 24;
-  const cHaloOuter = pack([32, 42, 88]);
-  const cHaloInner = pack([68, 82, 138]);
-  const cMoonBody = pack([230, 234, 248]);
-  const cMoonShade = pack([178, 188, 220]);
-  for (let dy = -16; dy <= 16; dy++) {
-    for (let dx = -16; dx <= 16; dx++) {
-      const dist = Math.hypot(dx, dy);
-      const lx = mCx + dx;
-      const ly = mCy + dy;
-      if (dist <= 6.2) {
-        const crater = (dx === 1 && dy === -1) || (dx === -2 && dy === 2) || (dx === 2 && dy === 2);
-        put(lx, ly, crater || dx > 3 ? cMoonShade : cMoonBody);
-      } else if (dist <= 10.5) {
-        const k = (10.5 - dist) / 4.3;
-        if (k * 0.7 > bayer(lx, ly)) put(lx, ly, cHaloInner);
-      } else if (dist <= 15.5) {
-        const k = (15.5 - dist) / 5.0;
-        if (k * 0.45 > bayer(lx, ly)) put(lx, ly, cHaloOuter);
-      }
-    }
-  }
-
+  if (deco) deco((x, y, rgb) => putN(Math.round(x), Math.round(y), pack(rgbOf(rgb))), mulberry32(seed));
   ctx.putImageData(img, 0, 0);
   return cv;
 }
 
-function buildClouds(): Cv {
-  const { cv, c } = mk(P_CLOUD, 72, 0);
-  const rnd = mulberry32(8123);
-  const banks: readonly (readonly [number, number, number, number])[] = [
-    [18, 34, 136, 10],
-    [176, 48, 108, 8],
-    [304, 28, 152, 11],
-    [418, 52, 92, 7],
-  ];
-  for (const [bx, by, bw, bh] of banks) {
-    const prof: number[] = [];
-    for (let dx = 0; dx < bw; dx += 2) {
-      const u = dx / bw;
-      prof.push(Math.pow(Math.sin(Math.PI * u), 0.8) * bh * (0.72 + 0.28 * rnd()));
-    }
-    rep(c, P_CLOUD, () => {
-      prof.forEach((p, i) => {
-        const x = bx + i * 2;
-        R(c, x, by - p, 2, p, 'rgba(26,24,58,0.68)');
-        R(c, x, by - 2, 2, 2, 'rgba(138,76,126,0.34)');
-        if (p > 5) R(c, x, by - p, 2, 1, 'rgba(84,96,158,0.25)');
-      });
+/** Estrelas esparsas acima de `maxY`. */
+function stars(put: (x: number, y: number, rgb: string) => void, rnd: Rnd, n: number, maxY: number, dim: string, bright: string): void {
+  for (let k = 0; k < n; k++) put(ri(rnd, VIEW_W), ri(rnd, maxY), rnd() < 0.25 ? bright : dim);
+}
+
+/** Véu que achata contraste/saturação na região de jogo (bordas suaves de 10 px). */
+function makeVeil(rgb: string, a: number): (ctx: Ctx) => void {
+  return (ctx) => {
+    const g = ctx.createLinearGradient(0, PLAY_TOP - 10, 0, PLAY_BOTTOM + 10);
+    const e = 10 / (PLAY_BOTTOM - PLAY_TOP + 20);
+    g.addColorStop(0, `rgba(${rgb},0)`);
+    g.addColorStop(e, `rgba(${rgb},${a})`);
+    g.addColorStop(1 - e, `rgba(${rgb},${a})`);
+    g.addColorStop(1, `rgba(${rgb},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, PLAY_TOP - 10, VIEW_W, PLAY_BOTTOM - PLAY_TOP + 20);
+  };
+}
+
+/** Linha de prédios com janelas: janelas acima da região de jogo são mais vivas. */
+function buildingRow(
+  c: Ctx,
+  rnd: Rnd,
+  period: number,
+  base: number,
+  hMin: number,
+  hMax: number,
+  wMin: number,
+  wMax: number,
+  cols: readonly string[],
+  winP: number,
+  seed: number,
+  onTop?: (x: number, top: number, w: number) => void,
+): void {
+  let x = 0;
+  while (x < period) {
+    const w = wMin + ri(rnd, wMax - wMin + 1);
+    const h = hMin + ri(rnd, hMax - hMin + 1);
+    const top = base - h;
+    const col = pick(rnd, cols, '#161a36');
+    const roof = ri(rnd, 3);
+    const x0 = x;
+    rep(c, period, () => {
+      R(c, x0, top, w, VIEW_H - top, col);
+      if (roof === 0) R(c, x0 + 2, top - 3, Math.max(3, w - 6), 3, col);
+      R(c, x0, top, w, 1, 'rgba(120,128,180,0.18)');
+      for (let wy = top + 3; wy < base - 3; wy += 4) {
+        for (let wx = x0 + 2; wx < x0 + w - 2; wx += 3) {
+          const v = h2(wx, wy, seed);
+          if (v >= winP) continue;
+          const hi = wy < PLAY_TOP;
+          const k = v / winP;
+          R(c, wx, wy, 1, 2, k < 0.6 ? (hi ? '#d8a462' : '#6e6150') : k < 0.85 ? (hi ? '#b67c4c' : '#5e5048') : hi ? '#79b8d0' : '#4c5a6a');
+        }
+      }
+    });
+    onTop?.(x0, top, w);
+    x += w + 1 + ri(rnd, 3);
+  }
+}
+
+// ─── Trecho 1: Marginal Tietê à noite ─────────────────────────────────────────
+
+interface Scene {
+  draw(ctx: Ctx, camX: number, dy: number, time: number): void;
+  fg(ctx: Ctx, camX: number, time: number): void;
+}
+
+interface Blink {
+  x: number;
+  y: number;
+  phase: number;
+}
+
+function sceneMarginal(): Scene {
+  const sky = buildSky(
+    [
+      [0, '#05071a'],
+      [36, '#0b1030'],
+      [76, '#151c46'],
+      [104, '#262652'],
+      [118, '#1a1a3c'],
+      [180, '#0a0b18'],
+    ],
+    (put, rnd) => {
+      stars(put, rnd, 46, 56, '#7f88c0', '#e2e6ff');
+      // Lua pálida com halo
+      for (let dy = -12; dy <= 12; dy++) {
+        for (let dx = -12; dx <= 12; dx++) {
+          const d = Math.hypot(dx, dy);
+          const x = 266 + dx;
+          const y = 22 + dy;
+          if (d <= 5.5) put(x, y, dx > 2 ? '#b2bcdc' : '#e6eaf8');
+          else if (d <= 11 && ((11 - d) / 5.5) * 0.6 > bayer(x, y)) put(x, y, '#2a3672');
+        }
+      }
+    },
+    8085,
+  );
+
+  // Skyline distante (f 0.08)
+  const P_SKY = 640;
+  const skyline = mk(P_SKY, VIEW_H);
+  const blinks: Blink[] = [];
+  {
+    const rnd = mulberry32(5101);
+    const { c } = skyline;
+    buildingRow(c, rnd, P_SKY, 114, 22, 52, 12, 26, ['#141834', '#181c3c', '#12162e'], 0.07, 11);
+    buildingRow(c, rnd, P_SKY, 114, 34, 76, 14, 30, ['#10132a', '#131730', '#0f1228'], 0.11, 23, (x, top, w) => {
+      if (rnd() < 0.3 && top - 12 < PLAY_TOP - 4) {
+        rep(c, P_SKY, () => R(c, x + (w >> 1), top - 12, 1, 12, '#2c2e52'));
+        blinks.push({ x: x + (w >> 1), y: top - 12, phase: x * 0.13 });
+      }
     });
   }
+  const L_SKY: Layer = { cv: skyline.cv, period: P_SKY, f: 0.08 };
+
+  // Pista expressa do outro lado do rio (f 0.3): tabuleiro, pilares e postes
+  const P_EXP = 512;
+  const exp = mk(P_EXP, VIEW_H);
+  {
+    const { c } = exp;
+    R(c, 0, 97, P_EXP, 1, '#262a48');
+    for (let x = 0; x < P_EXP; x += 4) R(c, x, 97, 1, 3, '#20243e');
+    R(c, 0, 100, P_EXP, 6, '#1c1f36');
+    R(c, 0, 100, P_EXP, 1, '#2a2e4c');
+    R(c, 0, 106, P_EXP, 2, '#131528');
+    for (let x = 12; x < P_EXP; x += 64) R(c, x, 108, 6, 10, '#161930');
+    for (let x = 40; x < P_EXP; x += 128) {
+      R(c, x, 84, 1, 13, '#262a46');
+      R(c, x - 3, 84, 4, 1, '#262a46');
+      R(c, x - 4, 85, 3, 1, '#8a7a5c');
+      radial(c, x - 2, 88, 8, '170,140,100', 0.12);
+    }
+  }
+  const L_EXP: Layer = { cv: exp.cv, period: P_EXP, f: 0.3 };
+
+  // Rio Tietê (f 0.55): margem oposta, outdoors neon foscos e reflexos
+  const P_RIV = 512;
+  const riv = mk(P_RIV, VIEW_H);
+  const neon: readonly (readonly [number, string, string])[] = [
+    [60, '#7a4c80', '122,76,128'],
+    [196, '#3e7484', '62,116,132'],
+    [300, '#8a7050', '138,112,80'],
+    [420, '#6c4a7e', '108,74,126'],
+  ];
+  {
+    const { c } = riv;
+    const rnd = mulberry32(6203);
+    // Margem oposta
+    R(c, 0, 110, P_RIV, 4, '#11132a');
+    for (let x = 0; x < P_RIV; x += 6) if (h2(x, 1, 7) < 0.4) R(c, x, 111, 1, 1, '#5a5048');
+    // Outdoors neon (pequenos, foscos)
+    for (const [nx, col] of neon) {
+      R(c, nx + 8, 102, 1, 8, '#1a1c34');
+      R(c, nx, 94, 18, 8, '#181a32');
+      R(c, nx + 1, 95, 16, 6, col);
+      R(c, nx + 3, 97, 12, 2, 'rgba(10,12,30,0.45)');
+    }
+    // Água
+    const g = c.createLinearGradient(0, 114, 0, 146);
+    g.addColorStop(0, '#111737');
+    g.addColorStop(1, '#070a1a');
+    c.fillStyle = g;
+    c.fillRect(0, 114, P_RIV, 32);
+    // Reflexos verticais quebrados dos outdoors
+    for (const [nx, , rgb] of neon) {
+      for (let y = 116; y < 144; y += 2) {
+        const a = 0.42 * (1 - (y - 116) / 30);
+        const w = 4 + ri(rnd, 12);
+        R(c, nx + 9 - w / 2 + ri(rnd, 3) - 1, y, w, 1, `rgba(${rgb},${a.toFixed(2)})`);
+      }
+    }
+    // Reflexos esparsos das janelas do skyline
+    for (let k = 0; k < 70; k++) {
+      R(c, ri(rnd, P_RIV), 116 + ri(rnd, 24), 1 + ri(rnd, 3), 1, 'rgba(150,126,92,0.22)');
+    }
+  }
+  const L_RIV: Layer = { cv: riv.cv, period: P_RIV, f: 0.55 };
+
+  // Margem da pista (f 0.9): mureta e acostamento
+  const P_BANK = 256;
+  const bank = mk(P_BANK, VIEW_H);
+  {
+    const { c } = bank;
+    R(c, 0, 144, P_BANK, 36, '#0f1018');
+    R(c, 0, 144, P_BANK, 6, '#23252f');
+    R(c, 0, 144, P_BANK, 1, '#33364a');
+    for (let x = 0; x < P_BANK; x += 32) R(c, x, 145, 1, 5, '#181a24');
+  }
+  const L_BANK: Layer = { cv: bank.cv, period: P_BANK, f: 0.9 };
+
+  const veil = makeVeil('20,24,52', 0.3);
+
+  return {
+    draw(ctx, camX, dy, time) {
+      ctx.drawImage(sky, 0, 0, VIEW_W, VIEW_H);
+      drawLayer(ctx, L_SKY, camX, dy);
+      // Luzes vermelhas de aviação piscando no alto das antenas (acima da região de jogo)
+      for (const b of blinks) {
+        if (Math.sin(time * 2.6 + b.phase) < 0.1) continue;
+        each(camX, L_SKY.f, P_SKY, b.x, 2, (sx) => {
+          ctx.fillStyle = '#c8443c';
+          ctx.fillRect(sx, snap(b.y + dy * L_SKY.f), 1, 1);
+        });
+      }
+      drawLayer(ctx, L_EXP, camX, dy);
+      // Faróis na pista expressa: brancos (sentido contrário) e lanternas (mesmo sentido), foscos
+      const offE = camX * L_EXP.f;
+      for (let k = 0; k < 9; k++) {
+        const x1 = mod(k * 61 - offE - time * 150, VIEW_W + 40) - 20;
+        ctx.fillStyle = 'rgba(214,206,186,0.5)';
+        ctx.fillRect(snap(x1), snap(101 + dy * L_EXP.f), 2, 1);
+        ctx.fillRect(snap(x1 + 3), snap(101 + dy * L_EXP.f), 2, 1);
+        const x2 = mod(k * 47 + 13 - offE + time * 40, VIEW_W + 40) - 20;
+        ctx.fillStyle = 'rgba(170,70,80,0.45)';
+        ctx.fillRect(snap(x2), snap(103 + dy * L_EXP.f), 1, 1);
+        ctx.fillRect(snap(x2 + 3), snap(103 + dy * L_EXP.f), 1, 1);
+      }
+      drawLayer(ctx, L_RIV, camX, dy);
+      // Brilho trêmulo do neon na água
+      for (const [nx, , rgb] of neon) {
+        each(camX, L_RIV.f, P_RIV, nx + 9, 20, (sx) => {
+          for (let r = 0; r < 4; r++) {
+            const y = 118 + r * 6 + dy * L_RIV.f;
+            const w = 6 + 4 * Math.sin(time * 3 + r * 1.7 + nx);
+            ctx.fillStyle = `rgba(${rgb},0.3)`;
+            ctx.fillRect(snap(sx - w / 2 + Math.sin(time * 2 + r) * 2), snap(y), snap(w), 1);
+          }
+        });
+      }
+      drawLayer(ctx, L_BANK, camX, dy);
+      veil(ctx);
+    },
+    fg(ctx, camX, time) {
+      speedLines(ctx, camX, time, '200,212,240', 0.16);
+      poles(ctx, camX, 'lamp', '#0b0d18', '210,180,130');
+    },
+  };
+}
+
+// ─── Trecho 2: Minhocão ──────────────────────────────────────────────────────
+
+const CLOTHES = ['#6a5a6e', '#5a6a72', '#7a6a5a', '#6e6e6e', '#5c5470'] as const;
+
+/** Varal entre duas janelas com roupas penduradas (cores foscas). */
+function varal(c: Ctx, rnd: Rnd, x: number, y: number, w: number): void {
+  R(c, x, y, w, 1, '#3e3a46');
+  for (let px = x + 2; px < x + w - 2; px += 3 + ri(rnd, 2)) {
+    R(c, px, y + 1, 2, 2 + ri(rnd, 3), pick(rnd, CLOTHES, '#6a5a6e'));
+  }
+}
+
+/** Pichação: letras altas e angulosas (estilo pixo) em tom escuro/fosco. */
+function pixo(c: Ctx, rnd: Rnd, x: number, y: number, n: number, col: string): void {
+  let px = x;
+  for (let i = 0; i < n; i++) {
+    const h = 8 + ri(rnd, 5);
+    R(c, px, y - h, 1, h, col);
+    const kind = ri(rnd, 4);
+    if (kind === 0) R(c, px, y - h, 3, 1, col);
+    if (kind === 1) R(c, px + 2, y - h, 1, h, col);
+    if (kind === 2) R(c, px, y - (h >> 1), 3, 1, col);
+    if (kind === 3) {
+      R(c, px + 1, y - h + 2, 1, 2, col);
+      R(c, px + 2, y - h, 1, h - 3, col);
+    }
+    px += 4 + ri(rnd, 2);
+  }
+}
+
+function sceneMinhocao(): Scene {
+  const sky = buildSky(
+    [
+      [0, '#110e26'],
+      [18, '#251a3a'],
+      [40, '#3a2742'],
+      [70, '#2a2034'],
+      [180, '#141018'],
+    ],
+    (put, rnd) => stars(put, rnd, 10, 16, '#6a6488', '#b8b2d4'),
+    3301,
+  );
+
+  // Fachadas do fundo (f 0.3): altas, coladas, varais e ar-condicionado
+  const P_FAR = 512;
+  const far = mk(P_FAR, VIEW_H);
+  {
+    const { c } = far;
+    const rnd = mulberry32(7307);
+    let x = 0;
+    while (x < P_FAR) {
+      const w = 28 + ri(rnd, 30);
+      const top = 6 + ri(rnd, 22);
+      const col = pick(rnd, ['#2a2536', '#2f2a38', '#262232', '#2c2632'] as const, '#2a2536');
+      const x0 = x;
+      const seed = 31 + x0;
+      const hasVaral = rnd() < 0.5;
+      const varalRows = [ri(rnd, 6), 6 + ri(rnd, 6)];
+      rep(c, P_FAR, () => {
+        R(c, x0, top, w, VIEW_H - top, col);
+        R(c, x0, top, w, 2, '#3a3444');
+        R(c, x0 + w - 1, top, 1, VIEW_H - top, '#1c1926');
+        let row = 0;
+        for (let wy = top + 5; wy < 150; wy += 7, row++) {
+          for (let wx = x0 + 3; wx < x0 + w - 4; wx += 6) {
+            const v = h2(wx, wy, seed);
+            const hi = wy < PLAY_TOP;
+            const lit = v < 0.32;
+            R(c, wx, wy, 3, 4, lit ? (v < 0.24 ? (hi ? '#c49a62' : '#7a6650') : hi ? '#7d92b4' : '#56607a') : '#1e1b27');
+            if (v > 0.9) R(c, wx, wy + 4, 3, 1, '#3a3640');
+          }
+          if (hasVaral && varalRows.includes(row)) varal(c, mulberry32(seed + row), x0 + 3, wy + 5, w - 6);
+        }
+      });
+      x += w;
+    }
+  }
+  const L_FAR: Layer = { cv: far.cv, period: P_FAR, f: 0.3 };
+
+  // Fachadas próximas (f 0.8): mais escuras, janelas grandes, grafites; becos raros mostram o fundo
+  const P_NEAR = 640;
+  const near = mk(P_NEAR, VIEW_H);
+  {
+    const { c } = near;
+    const rnd = mulberry32(7411);
+    let x = 0;
+    while (x < P_NEAR) {
+      const w = 64 + ri(rnd, 52);
+      const top = -4 + ri(rnd, 14);
+      const col = pick(rnd, ['#1b1820', '#201c26', '#1d1b22'] as const, '#1b1820');
+      const x0 = x;
+      const seed = 91 + x0;
+      const pal = mulberry32(seed);
+      const tagCol = pick(pal, ['#0e0c12', '#3a3048', '#2e3a40'] as const, '#0e0c12');
+      const bomb = pick(pal, ['#4a4058', '#3e4a52', '#4c4448'] as const, '#4a4058');
+      rep(c, P_NEAR, () => {
+        R(c, x0, top, w, VIEW_H - top, col);
+        R(c, x0, top, 2, VIEW_H - top, '#26222e');
+        R(c, x0 + w - 2, top, 2, VIEW_H - top, '#141218');
+        // Faixas de laje entre andares
+        for (let fy = top + 16; fy < 140; fy += 16) R(c, x0, fy, w, 1, '#24202c');
+        for (let wy = top + 4; wy < 132; wy += 16) {
+          for (let wx = x0 + 6; wx < x0 + w - 10; wx += 14) {
+            const v = h2(wx, wy, seed);
+            const hi = wy < PLAY_TOP - 8;
+            R(c, wx - 1, wy - 1, 8, 10, '#15131a');
+            R(c, wx, wy, 6, 8, v < 0.22 ? (hi ? '#a0805a' : '#5a4c3e') : v < 0.3 ? (hi ? '#6a7a96' : '#3e4656') : '#18161e');
+            R(c, wx, wy + 4, 6, 1, '#15131a');
+            if (v > 0.82) R(c, wx - 2, wy + 9, 10, 1, '#2a2632'); // sacada
+          }
+        }
+        // Grafite grande fosco + pichação na parte baixa do prédio (rnd novo: as 2 cópias ficam iguais)
+        const graf = mulberry32(seed + 1);
+        const gx = x0 + 8 + ri(graf, Math.max(1, w - 50));
+        R(c, gx, 112, 34, 12, bomb);
+        R(c, gx + 2, 114, 30, 8, col);
+        for (let k = 0; k < 4; k++) R(c, gx + 4 + k * 7, 115, 5, 6, bomb);
+        pixo(c, graf, x0 + 6, 106, Math.max(2, Math.floor((w - 12) / 6)), tagCol);
+      });
+      // Varal entre prédios vizinhos, no alto
+      if (rnd() < 0.5) rep(c, P_NEAR, () => varal(c, mulberry32(seed + 5), x0 + w - 20, top + 30, 40));
+      x += w + (rnd() < 0.25 ? 10 + ri(rnd, 14) : 0);
+    }
+  }
+  const L_NEAR: Layer = { cv: near.cv, period: P_NEAR, f: 0.8 };
+
+  // Guarda-corpo do elevado (f 0.95) com pichações
+  const P_PAR = 256;
+  const par = mk(P_PAR, VIEW_H);
+  {
+    const { c } = par;
+    const rnd = mulberry32(7523);
+    R(c, 0, 142, P_PAR, 38, '#121016');
+    R(c, 0, 142, P_PAR, 8, '#2e2a34');
+    R(c, 0, 142, P_PAR, 1, '#3e3a46');
+    for (let x = 0; x < P_PAR; x += 40) R(c, x, 143, 1, 7, '#1c1a22');
+    for (let x = 8; x < P_PAR - 30; x += 70 + ri(rnd, 30)) pixo(c, rnd, x, 150, 4 + ri(rnd, 3), '#1a1820');
+  }
+  const L_PAR: Layer = { cv: par.cv, period: P_PAR, f: 0.95 };
+
+  const veil = makeVeil('30,26,40', 0.3);
+
+  return {
+    draw(ctx, camX, dy) {
+      ctx.drawImage(sky, 0, 0, VIEW_W, VIEW_H);
+      drawLayer(ctx, L_FAR, camX, dy);
+      drawLayer(ctx, L_NEAR, camX, dy);
+      drawLayer(ctx, L_PAR, camX, dy);
+      veil(ctx);
+    },
+    fg(ctx, camX, time) {
+      speedLines(ctx, camX, time, '200,190,210', 0.15);
+      poles(ctx, camX, 'lamp', '#0c0a10', '200,170,130');
+    },
+  };
+}
+
+// ─── Trecho 3: Túnel ─────────────────────────────────────────────────────────
+
+function sceneTunel(): Scene {
+  const P_WALL = 256;
+  const wall = mk(P_WALL, VIEW_H);
+  {
+    const { c } = wall;
+    const rnd = mulberry32(8807);
+    R(c, 0, 0, P_WALL, VIEW_H, '#121418');
+    // Sombra sob o teto
+    R(c, 0, 66, P_WALL, 6, '#1a1d22');
+    // Azulejos 8×6 com rejunte
+    const tile = ['#36404a', '#333d46', '#38424c', '#343e48'] as const;
+    for (let y = 72; y < 140; y += 6) {
+      for (let x = 0; x < P_WALL; x += 8) {
+        R(c, x, y, 8, 6, '#283038');
+        R(c, x, y, 7, 5, tile[Math.floor(h2(x, y, 3) * tile.length)] ?? '#36404a');
+      }
+    }
+    // Manchas de fuligem escorrendo
+    for (let k = 0; k < 14; k++) {
+      const x = ri(rnd, P_WALL);
+      const w = 2 + ri(rnd, 4);
+      const h = 20 + ri(rnd, 40);
+      rep(c, P_WALL, () => R(c, x, 72, w, h, 'rgba(10,12,16,0.18)'));
+    }
+    // Calha da faixa de luz
+    R(c, 0, 78, P_WALL, 3, '#1e2329');
+    R(c, 0, 79, P_WALL, 1, '#59666c');
+    // Nichos de emergência
+    for (let x = 60; x < P_WALL; x += 128) {
+      R(c, x, 104, 20, 32, '#22282e');
+      R(c, x + 1, 105, 18, 30, '#1c2126');
+      R(c, x + 8, 108, 4, 2, '#5a3a3c');
+    }
+    // Rodapé e meio-fio
+    R(c, 0, 136, P_WALL, 8, '#22272d');
+    R(c, 0, 136, P_WALL, 1, '#2e343b');
+    R(c, 0, 144, P_WALL, 36, '#0e1013');
+  }
+  const L_WALL: Layer = { cv: wall.cv, period: P_WALL, f: 0.9 };
+
+  const veil = makeVeil('26,30,36', 0.25);
+
+  return {
+    draw(ctx, camX, dy, time) {
+      drawLayer(ctx, L_WALL, camX, dy);
+      // Faixa de luz correndo pela calha (mais rápida que a rolagem)
+      const y = snap(79 + dy * L_WALL.f);
+      const span = VIEW_W + 120;
+      for (let k = 0; k < 3; k++) {
+        const x = mod(k * 147 - time * 260 - camX * 0.9, span) - 60;
+        const g = ctx.createLinearGradient(x, 0, x + 48, 0);
+        g.addColorStop(0, 'rgba(190,214,214,0)');
+        g.addColorStop(0.7, 'rgba(190,214,214,0.55)');
+        g.addColorStop(1, 'rgba(190,214,214,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(snap(x), y, 48, 1);
+        ctx.fillStyle = 'rgba(160,190,196,0.06)';
+        ctx.fillRect(snap(x + 8), y + 1, 36, 10);
+      }
+      veil(ctx);
+    },
+    fg(ctx, camX, time) {
+      speedLines(ctx, camX, time, '170,190,200', 0.2);
+      poles(ctx, camX, 'bollard', '#0a0b0e', '');
+    },
+  };
+}
+
+/** Padrão do teto do túnel (128 × 96): a borda inferior fica na base do canvas. */
+const CEIL_P = 128;
+const CEIL_H = 96;
+function buildCeiling(): Cv {
+  const { cv, c } = mk(CEIL_P, CEIL_H);
+  const b = CEIL_H;
+  R(c, 0, 0, CEIL_P, b, '#14161a');
+  for (let x = 0; x < CEIL_P; x += 32) R(c, x, 0, 1, b - 8, '#0e1013');
+  for (let y = b - 40; y > 0; y -= 24) R(c, 0, y, CEIL_P, 1, '#1a1d22');
+  // Eletrocalha
+  R(c, 0, b - 14, CEIL_P, 3, '#1e2126');
+  R(c, 0, b - 14, CEIL_P, 1, '#2a2e34');
+  for (let x = 6; x < CEIL_P; x += 16) R(c, x, b - 11, 1, 3, '#1a1c20');
+  // Viga/beiral da borda inferior
+  R(c, 0, b - 7, CEIL_P, 7, '#262a30');
+  R(c, 0, b - 7, CEIL_P, 1, '#343940');
+  R(c, 0, b - 1, CEIL_P, 1, '#0c0d10');
+  for (let x = 0; x < CEIL_P; x += 64) R(c, x, b - 6, 1, 5, '#1c1f24');
   return cv;
 }
 
-/** Desenha um helicóptero distante do trânsito de São Paulo com cone de busca e luz estroboscópica. */
-function drawHelicopter(ctx: Ctx, camX: number, dySky: number, time: number): void {
-  const period = VIEW_W + 140;
-  const hx = snap(mod(220 - time * 11 - camX * 0.04, period) - 50);
-  const hy = snap(29 + dySky + Math.sin(time * 1.9) * 1.8);
-  if (hx < -30 || hx > VIEW_W + 30) return;
+// ─── Trecho 4: Ponte Estaiada ao amanhecer ───────────────────────────────────
 
-  // Feixe cônico de holofote varrendo a metrópole ao longe
-  const sweep = Math.sin(time * 1.1) * 8;
-  ctx.save();
-  ctx.fillStyle = 'rgba(210, 240, 255, 0.065)';
-  ctx.beginPath();
-  ctx.moveTo(hx - 2, hy + 2);
-  ctx.lineTo(hx - 18 + sweep, hy + 46);
-  ctx.lineTo(hx - 5 + sweep, hy + 46);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
+function scenePonte(): Scene {
+  const sky = buildSky(
+    [
+      [0, '#1c1d44'],
+      [28, '#33305e'],
+      [56, '#55426a'],
+      [82, '#7a5672'],
+      [102, '#9a6c78'],
+      [116, '#b08680'],
+      [130, '#7a5e6c'],
+      [180, '#2a2236'],
+    ],
+    (put, rnd) => {
+      stars(put, rnd, 12, 24, '#7a78a8', '#c8c4e8');
+      // Sol nascendo, pálido e meio escondido atrás da cidade
+      for (let dy = -14; dy <= 14; dy++) {
+        for (let dx = -14; dx <= 14; dx++) {
+          const d = Math.hypot(dx, dy);
+          const x = 236 + dx;
+          const y = 104 + dy;
+          if (d <= 7) put(x, y, '#d8b49c');
+          else if (d <= 13 && ((13 - d) / 6) * 0.55 > bayer(x, y)) put(x, y, '#c0948a');
+        }
+      }
+    },
+    9403,
+  );
 
-  // Silhueta escura da aeronave (cauda à direita, nariz à esquerda)
-  ctx.fillStyle = '#090b1c';
-  ctx.fillRect(hx - 3, hy, 6, 3); // cabine
-  ctx.fillRect(hx - 4, hy + 1, 1, 2); // nariz
-  ctx.fillRect(hx + 3, hy + 1, 6, 1); // cone de cauda
-  ctx.fillRect(hx + 8, hy - 1, 1, 2); // leme vertical
-  ctx.fillRect(hx - 2, hy + 3, 5, 0.5); // esquis
-
-  // Parabrisa iluminado
-  ctx.fillStyle = '#5ee8ff';
-  ctx.fillRect(hx - 3.5, hy + 1, 2, 1);
-
-  // Rotor principal girando em alta frequência
-  const bladeW = Math.sin(time * 38) > 0 ? 11 : 7;
-  ctx.fillStyle = 'rgba(180, 200, 240, 0.55)';
-  ctx.fillRect(snap(hx - bladeW * 0.5), hy - 1, bladeW, 0.5);
-
-  // Luz de navegação piscando na cauda (vermelha) e barriga (branca)
-  if (Math.sin(time * 9) > 0.2) {
-    ctx.fillStyle = '#ff384c';
-    ctx.fillRect(hx + 8, hy - 1, 1, 1);
+  // Nuvens finas iluminadas por baixo (f 0.04)
+  const P_CL = 512;
+  const cl = mk(P_CL, VIEW_H);
+  {
+    const { c } = cl;
+    const rnd = mulberry32(9411);
+    for (const [bx, by, bw] of [
+      [20, 30, 130],
+      [190, 44, 90],
+      [320, 22, 150],
+    ] as const) {
+      for (let dx = 0; dx < bw; dx += 2) {
+        const h = Math.max(1, Math.round(Math.sin((Math.PI * dx) / bw) * (3 + ri(rnd, 3))));
+        rep(c, P_CL, () => {
+          R(c, bx + dx, by - h, 2, h, 'rgba(70,56,100,0.7)');
+          R(c, bx + dx, by, 2, 1, 'rgba(214,150,140,0.55)');
+        });
+      }
+    }
   }
-  ctx.fillStyle = '#fff6c8';
-  ctx.fillRect(hx - 2, hy + 2, 1, 1);
+  const L_CL: Layer = { cv: cl.cv, period: P_CL, f: 0.04 };
+
+  // Cidade ao longe (f 0.1)
+  const P_CITY = 640;
+  const city = mk(P_CITY, VIEW_H);
+  buildingRow(city.c, mulberry32(9421), P_CITY, 118, 10, 34, 10, 24, ['#4a3c5c', '#54445f', '#463a58'], 0.04, 41);
+  const L_CITY: Layer = { cv: city.cv, period: P_CITY, f: 0.1 };
+
+  // Ponte Estaiada (f 0.35): mastro em X, estais em leque, tabuleiro curvo
+  const P_BR = 768;
+  const MX = 420;
+  const br = mk(P_BR, VIEW_H);
+  {
+    const { c } = br;
+    const deckY = 118;
+    // Estais: das cabeças do mastro até o tabuleiro, em leque dos dois lados
+    for (let k = 0; k < 9; k++) {
+      const hy = 16 + k * 5;
+      for (const side of [-1, 1]) {
+        const tx = MX + side * (40 + k * 18);
+        pline(c, MX + side * ((hy - 16) * 0.12), hy, tx, deckY, 0.5, 'rgba(206,182,196,0.32)');
+      }
+    }
+    // Pernas do mastro cruzando em X
+    for (const side of [-1, 1]) {
+      pline(c, MX + side * 26, deckY + 6, MX - side * 14, 4, 3, '#3e3250');
+      pline(c, MX + side * 26 + 1, deckY + 6, MX - side * 14 + 1, 4, 1, '#8a7488');
+    }
+    // Tabuleiro
+    R(c, 0, deckY, P_BR, 4, '#3a3048');
+    R(c, 0, deckY, P_BR, 1, '#6a5670');
+    R(c, 0, deckY + 4, P_BR, 2, '#2a2236');
+    for (let x = 30; x < P_BR; x += 96) R(c, x, deckY + 6, 6, 14, '#2e2640');
+  }
+  const L_BR: Layer = { cv: br.cv, period: P_BR, f: 0.35 };
+
+  // Rio ao amanhecer (f 0.55)
+  const P_RIV = 512;
+  const riv = mk(P_RIV, VIEW_H);
+  {
+    const { c } = riv;
+    const rnd = mulberry32(9431);
+    const g = c.createLinearGradient(0, 124, 0, 150);
+    g.addColorStop(0, '#5a4660');
+    g.addColorStop(1, '#2a2236');
+    c.fillStyle = g;
+    c.fillRect(0, 124, P_RIV, 26);
+    for (let k = 0; k < 60; k++) {
+      R(c, ri(rnd, P_RIV), 126 + ri(rnd, 20), 3 + ri(rnd, 10), 1, 'rgba(196,150,146,0.25)');
+    }
+  }
+  const L_RIV: Layer = { cv: riv.cv, period: P_RIV, f: 0.55 };
+
+  // Guarda-corpo da pista (f 0.9)
+  const P_BANK = 256;
+  const bank = mk(P_BANK, VIEW_H);
+  {
+    const { c } = bank;
+    R(c, 0, 144, P_BANK, 36, '#18141e');
+    R(c, 0, 144, P_BANK, 6, '#3a3442');
+    R(c, 0, 144, P_BANK, 1, '#544a5c');
+    for (let x = 0; x < P_BANK; x += 32) R(c, x, 145, 1, 5, '#2a2432');
+  }
+  const L_BANK: Layer = { cv: bank.cv, period: P_BANK, f: 0.9 };
+
+  const veil = makeVeil('84,66,92', 0.28);
+
+  return {
+    draw(ctx, camX, dy, time) {
+      ctx.drawImage(sky, 0, 0, VIEW_W, VIEW_H);
+      drawLayer(ctx, L_CL, camX + time * 30, dy);
+      drawLayer(ctx, L_CITY, camX, dy);
+      drawLayer(ctx, L_BR, camX, dy);
+      // Luz de aviação no topo do mastro (acima da região de jogo)
+      if (Math.sin(time * 2.4) > 0) {
+        each(camX, L_BR.f, P_BR, MX, 4, (sx) => {
+          ctx.fillStyle = '#c8443c';
+          ctx.fillRect(sx - 14, snap(3 + dy * L_BR.f), 1, 1);
+          ctx.fillRect(sx + 14, snap(3 + dy * L_BR.f), 1, 1);
+        });
+      }
+      drawLayer(ctx, L_RIV, camX, dy);
+      drawLayer(ctx, L_BANK, camX, dy);
+      veil(ctx);
+    },
+    fg(ctx, camX, time) {
+      speedLines(ctx, camX, time, '236,214,214', 0.16);
+      poles(ctx, camX, 'lamp', '#231c2c', '230,190,170');
+    },
+  };
 }
 
-// ─── 2. Camada 1 — Skyline Monumental de São Paulo à Noite (parallax 0.10) ───
+// ─── primeiro plano compartilhado ────────────────────────────────────────────
 
-interface Skyline {
-  readonly cv: Cv;
-  readonly lights: readonly { x: number; y: number; phase: number }[];
+/** Linhas de vento: só nas faixas y 38..54 e 166..178 (fora da região do Pardo e das ameaças). */
+const LINES = (() => {
+  const rnd = mulberry32(9901);
+  return Array.from({ length: 16 }, (_, i) => ({
+    x: ri(rnd, VIEW_W + 100),
+    y: i % 2 === 0 ? 38 + ri(rnd, 16) : 166 + ri(rnd, 12),
+    len: 10 + ri(rnd, 26),
+    speed: 60 + ri(rnd, 120),
+  }));
+})();
+
+function speedLines(ctx: Ctx, camX: number, time: number, rgb: string, a: number): void {
+  ctx.fillStyle = `rgba(${rgb},${a})`;
+  for (const s of LINES) {
+    const sx = VIEW_W + 40 - mod(s.x + camX * 1.6 + time * s.speed, VIEW_W + 100);
+    ctx.fillRect(snap(sx), s.y, snap(s.len), 0.5);
+  }
 }
 
-function buildSkyline(): Skyline {
-  const { cv, c } = mk(P_SKY, LH, MT);
-  const rnd = mulberry32(9011);
-  const lights: { x: number; y: number; phase: number }[] = [];
+/**
+ * Poste/pilar passando rápido (f 1.5), de vez em quando. Só a cabeça do poste aparece no alto
+ * (y < 52) e o pé do pilar embaixo (y > 164): nunca cobre a região de jogo.
+ */
+function poles(ctx: Ctx, camX: number, kind: 'lamp' | 'bollard', col: string, glow: string): void {
+  const P = 560;
+  each(camX, 1.5, P, 200, 24, (x) => {
+    if (kind === 'lamp') {
+      ctx.fillStyle = col;
+      ctx.fillRect(x, 0, 4, 28);
+      ctx.fillRect(x - 16, 26, 20, 2);
+      ctx.fillRect(x - 18, 28, 10, 2);
+      const g = ctx.createRadialGradient(x - 13, 30, 0, x - 13, 30, 20);
+      g.addColorStop(0, `rgba(${glow},0.14)`);
+      g.addColorStop(1, `rgba(${glow},0)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(x - 33, 28, 40, 22);
+    }
+    ctx.fillStyle = col;
+    ctx.fillRect(x - 2, 166, kind === 'lamp' ? 10 : 6, VIEW_H - 166);
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.fillRect(x - 2, 166, 1, VIEW_H - 166);
+  });
+}
 
-  const paintBuildingRow = (
-    cols: readonly string[],
-    hMin: number,
-    hMax: number,
-    wMin: number,
-    wMax: number,
-    winP: number,
-    seed: number,
-    antennas: boolean,
-    skipRanges: readonly (readonly [number, number])[],
-  ): void => {
-    let x = 0;
-    while (x < P_SKY) {
-      const w = wMin + ri(rnd, wMax - wMin + 1);
-      const inSkip = skipRanges.some(([a, b]) => x + w > a && x < b);
-      const h = inSkip ? 14 + ri(rnd, 16) : hMin + ri(rnd, hMax - hMin + 1);
-      const col = cols[ri(rnd, cols.length)] ?? '#12152e';
-      const top = SKY_GY - h;
-      const roof = ri(rnd, 4);
-      const ant = antennas && !inSkip && rnd() < 0.35;
-      rep(c, P_SKY, () => {
-        R(c, x, top, w, h + 40, col);
-        R(c, x, top, w, 1, 'rgba(130,115,185,0.22)');
-        if (roof === 0) R(c, x + 2, top - 3, Math.max(3, w - 6), 3, col);
-        if (roof === 1) R(c, x + w - 6, top - 4, 4, 4, col);
-        if (ant) {
-          R(c, x + (w >> 1), top - 10, 1, 10, '#3a3860');
-        }
-        for (let wy = top + 4; wy < SKY_GY - 4; wy += 4) {
-          for (let wx = x + 2; wx < x + w - 3; wx += 3) {
-            const v = h2(wx, wy, seed);
-            if (v >= winP) continue;
-            const k = v / winP;
-            const wCol = k < 0.52 ? '#f4bd6a' : k < 0.78 ? '#d68c4a' : '#7ad6f0';
-            R(c, wx, wy, 1, 2, wCol);
-          }
-        }
-      });
-      if (ant) lights.push({ x: x + (w >> 1), y: top - 10, phase: x * 0.17 });
-      x += w + 1 + ri(rnd, 3);
+// ─── pontos de troca (derivados do mapa) ─────────────────────────────────────
+
+/** Coluna inicial do compasso n (1-based). */
+const barCol = (n: number): number => UBER.barCols * (n - 1);
+
+/** x de mundo das três trocas de cenário: 1→2, 2→3, 3→4. */
+function computeSwitches(): [number, number, number] {
+  const r0 = LEVEL5_RAMP_COLS[0];
+  const r1 = LEVEL5_RAMP_COLS[1];
+  const row11 = LEVEL5_ROWS[11] ?? '';
+  const ks: number[] = [];
+  for (let x = 0; x < row11.length; x++) if (row11[x] === 'K') ks.push(x);
+  const k3 = ks[2];
+  const s1 = (r0 ?? barCol(22)) * TILE;
+  const s2 = Math.max((r1 !== undefined ? r1 + UBER.rampCols : barCol(40)) * TILE, s1 + BAR_PX);
+  const s3 = Math.max((k3 ?? barCol(57)) * TILE, s2 + BAR_PX);
+  return [s1, s2, s3];
+}
+
+/** Fábrica do parallax da Fase 5 — Marginal de São Paulo (noite → Minhocão → túnel → amanhecer). */
+export function createUberBackground(): Background {
+  const scenes: readonly Scene[] = [sceneMarginal(), sceneMinhocao(), sceneTunel(), scenePonte()];
+  const [s1, s2, s3] = computeSwitches();
+  const sw = [s1, s2, s3] as const;
+  const ceiling = buildCeiling();
+  const half = BAR_PX / 2;
+
+  // Buffer do trecho que está entrando durante o crossfade
+  const buf = document.createElement('canvas');
+  buf.width = VIEW_W * S;
+  buf.height = VIEW_H * S;
+  const bctx = buf.getContext('2d');
+  if (!bctx) throw new Error('Canvas 2D indisponível para o cenário da Marginal de São Paulo');
+  bctx.imageSmoothingEnabled = false;
+  bctx.setTransform(S, 0, 0, S, 0, 0);
+
+  /** [trecho atual, trecho seguinte, peso do seguinte] na posição neutra do Pardo. */
+  const mix = (camX: number): [number, number, number] => {
+    const x = camX + UBER.screenNeutral;
+    for (let i = 0; i < sw.length; i++) {
+      const s = sw[i] ?? 0;
+      if (x < s - half) return [i, i, 0];
+      if (x < s + half) return [i, i + 1, smooth((x - (s - half)) / BAR_PX)];
+    }
+    return [3, 3, 0];
+  };
+
+  const drawCeiling = (ctx: Ctx, camX: number, camY: number): void => {
+    const x0 = s2 - camX;
+    const x1 = s3 - camX;
+    if (x1 < -32 || x0 > VIEW_W + 32) return;
+    const bottom = TUNNEL_CEIL_WORLD_Y - camY;
+    const cx0 = Math.max(0, x0);
+    const cx1 = Math.min(VIEW_W, x1);
+    if (cx1 > cx0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(cx0, 0, cx1 - cx0, bottom);
+      ctx.clip();
+      // Padrão preso ao mundo (múltiplos de CEIL_P em x de mundo), como as luminárias
+      for (let x = -mod(camX, CEIL_P); x < cx1; x += CEIL_P) {
+        if (x + CEIL_P < cx0) continue;
+        ctx.drawImage(ceiling, snap(x), bottom - CEIL_H, CEIL_P, CEIL_H);
+      }
+      ctx.restore();
+    }
+    // Emboques (entrada e saída) de concreto, presos ao mundo
+    for (const [px, dir] of [
+      [x0, -1],
+      [x1, 1],
+    ] as const) {
+      if (px < -28 || px > VIEW_W + 28) continue;
+      const fx = snap(dir < 0 ? px - 22 : px);
+      ctx.fillStyle = '#2c2e34';
+      ctx.fillRect(fx, 0, 22, bottom + 6);
+      ctx.fillStyle = '#3c4048';
+      ctx.fillRect(fx, bottom + 4, 22, 2);
+      ctx.fillRect(dir < 0 ? fx : fx + 21, 0, 1, bottom + 6);
+      ctx.fillStyle = '#1a1c20';
+      ctx.fillRect(dir < 0 ? fx + 21 : fx, 0, 1, bottom + 6);
+      for (let y = 8; y < bottom; y += 12) {
+        ctx.fillStyle = '#25272c';
+        ctx.fillRect(fx + 1, y, 20, 1);
+      }
     }
   };
 
-  // Fileira de fundo: silhueta azul-noturna esfumaçada
-  paintBuildingRow(
-    ['#1b1c3e', '#212248', '#181a38'],
-    38,
-    84,
-    14,
-    26,
-    0.08,
-    19,
-    false,
-    [[416, 566]],
-  );
-
-  // Marco 1: Banespão / Farol Santander (torre escalonada Art Déco em x = 52..84)
-  const bx = 68;
-  rep(c, P_SKY, () => {
-    // Base larga
-    R(c, bx - 15, SKY_GY - 54, 30, 64, '#131632');
-    R(c, bx - 15, SKY_GY - 54, 30, 1, '#323564');
-    // Corpo médio escalonado
-    R(c, bx - 11, SKY_GY - 76, 22, 24, '#161938');
-    R(c, bx - 11, SKY_GY - 76, 22, 1, '#383b6e');
-    // Torre central alta
-    R(c, bx - 7, SKY_GY - 92, 14, 18, '#181c3d');
-    R(c, bx - 4, SKY_GY - 98, 8, 6, '#1e2248');
-    R(c, bx - 2, SKY_GY - 102, 4, 4, '#282c5a');
-    // Mastro no topo
-    R(c, bx, SKY_GY - 111, 1, 9, '#55588a');
-
-    // Frisos verticais iluminados característicos do Farol Santander
-    for (const vx of [bx - 8, bx - 4, bx, bx + 3, bx + 7]) {
-      for (let vy = SKY_GY - 72; vy < SKY_GY - 10; vy += 4) {
-        if (h2(vx, vy, 41) < 0.65) {
-          R(c, vx, vy, 1, 2, '#f5c26b');
-        }
-      }
-    }
-    // Lanterna do mirante no topo iluminada em âmbar dourado
-    R(c, bx - 3, SKY_GY - 95, 6, 2, '#ffe08a');
-    radial(c, bx, SKY_GY - 94, 10, '255,200,95', 0.25);
-  });
-  lights.push({ x: bx, y: SKY_GY - 111, phase: 0.4 });
-
-  // Marco 2: Arranha-céus da Av. Paulista com grandes antenas de treliça e luzes de aviação
-  for (const [ax, aw, ah] of [
-    [138, 26, 78],
-    [224, 24, 72],
-    [584, 26, 76],
-  ] as const) {
-    const top = SKY_GY - ah;
-    rep(c, P_SKY, () => {
-      R(c, ax, top, aw, ah + 40, '#121530');
-      R(c, ax, top, aw, 1, 'rgba(130,150,220,0.28)');
-      R(c, ax + 1, top, 1, ah, 'rgba(120,140,210,0.14)');
-      // Base da torre de transmissão no terraço
-      const mx = ax + (aw >> 1);
-      R(c, mx - 4, top - 4, 8, 4, '#1b1f42');
-      // Mastro de treliça da Paulista
-      R(c, mx - 2, top - 38, 1, 34, '#464a7a');
-      R(c, mx + 1, top - 38, 1, 34, '#464a7a');
-      R(c, mx, top - 46, 1, 10, '#5e6298');
-      for (let ty = top - 36; ty < top - 4; ty += 5) {
-        pline(c, mx - 2, ty, mx + 1, ty + 4, 1, '#393d69');
-      }
-      R(c, mx - 4, top - 28, 8, 1, '#585c90');
-      R(c, mx - 3, top - 16, 6, 1, '#585c90');
-
-      // Janelas corporativas em faixas horizontais
-      for (let wy = top + 5; wy < SKY_GY - 6; wy += 4) {
-        const litRow = h2(ax, wy, 73) < 0.45;
-        for (let wx = ax + 3; wx < ax + aw - 3; wx += 3) {
-          const v = h2(wx, wy, 77);
-          if (v < (litRow ? 0.55 : 0.18)) {
-            R(c, wx, wy, 2, 1, v < 0.25 ? '#7ce2ff' : '#f2be68');
-          }
-        }
-      }
-    });
-    lights.push({ x: ax + (aw >> 1), y: top - 46, phase: ax * 0.11 });
-    lights.push({ x: ax + (aw >> 1), y: top - 28, phase: ax * 0.11 + 1.4 });
-  }
-
-  // Marco 3: Edifício Copan (x = 304..376) com suas icônicas curvas horizontais iluminadas
-  const copanX = 304;
-  const copanW = 68;
-  const copanTop = SKY_GY - 74;
-  rep(c, P_SKY, () => {
-    // Silhueta curva em "S" do bloco de concreto
-    for (let y = copanTop; y < SKY_GY + 10; y++) {
-      for (let dx = 0; dx < copanW; dx++) {
-        const u = dx / copanW;
-        const curve = Math.sin(u * Math.PI * 2) * 3.5;
-        const py = Math.round(y + curve);
-        if (py >= copanTop - 4 && py < SKY_GY + 12) {
-          R(c, copanX + dx, py, 1, 1, dx < 22 || (dx > 44 && dx < 54) ? '#1c2044' : '#121530');
-        }
-      }
-    }
-    // Brises horizontais curvos do Copan com janelas acesas acompanhando a ondulação
-    for (let fy = copanTop + 3; fy < SKY_GY - 4; fy += 3) {
-      for (let dx = 2; dx < copanW - 2; dx++) {
-        const u = dx / copanW;
-        const curve = Math.sin(u * Math.PI * 2) * 3.5;
-        const py = Math.round(fy + curve);
-        // Linha do brise de concreto
-        R(c, copanX + dx, py, 1, 1, '#2b305e');
-        // Fita luminosa de apartamentos sob o brise
-        const v = h2(dx >> 1, fy, 99);
-        if (v < 0.42) {
-          R(c, copanX + dx, py + 1, 1, 1, v < 0.28 ? '#f6c36b' : '#7ae4ff');
-        }
-      }
-    }
-  });
-
-  // Marco 4: Ponte Estaiada Octávio Frias de Oliveira (x = 416..568)
-  // Mastro em "X" iluminado em LEDs ciano/turquesa e cabos estaiados dourados!
-  const pCx = 492;
-  const pDeckY = 104;
-  const pTopY = 24;
-  rep(c, P_SKY, () => {
-    // Halo noturno suave atrás do mastro estaiado
-    radial(c, pCx, 66, 46, '24,210,235', 0.14);
-    radial(c, pCx, 82, 52, '245,180,70', 0.1);
-
-    // Cabos estaiados dourados partindo dos braços superiores do "X" até o tabuleiro
-    for (let i = 0; i < 9; i++) {
-      const ay = pTopY + 5 + i * 3.6;
-      const t = (ay - pTopY) / (pDeckY - pTopY);
-      // Posição X nos braços superiores do X (que cruzam a cintura em y = 68)
-      const spreadTop = 18 * (1 - t * 1.45);
-      const lxAnchor = pCx - Math.abs(spreadTop);
-      const rxAnchor = pCx + Math.abs(spreadTop);
-      const colCable = i % 2 === 0 ? 'rgba(248,188,80,0.72)' : 'rgba(224,154,58,0.52)';
-      pline(c, lxAnchor, ay, pCx - 16 - i * 6.5, pDeckY - 1, 1, colCable);
-      pline(c, rxAnchor, ay, pCx + 16 + i * 6.5, pDeckY - 1, 1, colCable);
-    }
-
-    // Pernas do mastro em "X" (cruzamento inferior na cintura y = 68 e abertura no topo)
-    // Perna esquerda-base -> direita-topo e direita-base -> esquerda-topo
-    pline(c, pCx - 20, SKY_GY + 6, pCx - 3, 68, 3, '#183a56');
-    pline(c, pCx + 20, SKY_GY + 6, pCx + 3, 68, 3, '#183a56');
-    pline(c, pCx - 3, 68, pCx - 15, pTopY, 3, '#183a56');
-    pline(c, pCx + 3, 68, pCx + 15, pTopY, 3, '#183a56');
-
-    // Núcleo iluminado em LEDs ciano/turquesa no mastro em "X"
-    pline(c, pCx - 19, SKY_GY + 4, pCx - 2, 68, 1.5, '#19d4e8');
-    pline(c, pCx + 19, SKY_GY + 4, pCx + 2, 68, 1.5, '#19d4e8');
-    pline(c, pCx - 2, 68, pCx - 14, pTopY, 1.5, '#2cf0ff');
-    pline(c, pCx + 2, 68, pCx + 14, pTopY, 1.5, '#2cf0ff');
-
-    // Travessas horizontais do mastro em "X"
-    R(c, pCx - 6, 66, 12, 4, '#24e2f5');
-    R(c, pCx - 15, pTopY + 2, 30, 2, '#24e2f5');
-    R(c, pCx - 11, 90, 22, 2, '#16a8be');
-
-    // Tabuleiro curvo suspenso da Ponte Estaiada
-    R(c, pCx - 78, pDeckY - 1, 156, 3, '#283358');
-    R(c, pCx - 78, pDeckY - 1, 156, 1, '#5ceeff');
-    for (let lx = pCx - 74; lx <= pCx + 74; lx += 8) {
-      R(c, lx, pDeckY - 3, 2, 1, '#ffd278');
-    }
-  });
-  lights.push({ x: pCx - 14, y: pTopY - 2, phase: 0.9 });
-  lights.push({ x: pCx + 14, y: pTopY - 2, phase: 2.1 });
-
-  // Fileira dianteira de prédios mais baixos (sem cobrir a Ponte Estaiada nem o Copan)
-  paintBuildingRow(
-    ['#0d1026', '#11142d', '#0b0d20'],
-    18,
-    46,
-    12,
-    22,
-    0.15,
-    33,
-    true,
-    [
-      [50, 88],
-      [134, 168],
-      [298, 378],
-      [412, 572],
-    ],
-  );
-
-  // Névoa luminosa âmbar/magenta na base do horizonte urbano
-  const g = c.createLinearGradient(0, SKY_GY - 34, 0, SKY_GY + 4);
-  g.addColorStop(0, 'rgba(190,100,150,0)');
-  g.addColorStop(0.7, 'rgba(210,120,130,0.16)');
-  g.addColorStop(1, 'rgba(245,160,90,0.22)');
-  c.fillStyle = g;
-  c.fillRect(0, SKY_GY - 34, P_SKY, 38);
-
-  // Base escura abaixo do horizonte
-  R(c, 0, SKY_GY, P_SKY, 90, '#0a0e20');
-  return { cv, lights };
-}
-
-// ─── 3. Camada 2 — Via Expressa Elevada / Minhocão & Light Trails (parallax 0.26) ──
-
-interface LightTrail {
-  readonly yOff: number;
-  readonly len: number;
-  readonly speed: number;
-  readonly phase: number;
-  readonly color: string;
-  readonly core: string;
-}
-
-const LIGHT_TRAILS: readonly LightTrail[] = [
-  // Feixes vermelhos (lanternas traseiras) e brancos/amarelos (faróis) em alta velocidade
-  { yOff: -1.5, len: 38, speed: 240, phase: 12, color: 'rgba(255,46,76,0.55)', core: '#ff7088' },
-  { yOff: -2.5, len: 26, speed: 310, phase: 110, color: 'rgba(255,215,90,0.6)', core: '#fff6c0' },
-  { yOff: -1.0, len: 44, speed: 195, phase: 210, color: 'rgba(255,38,68,0.5)', core: '#ff5a70' },
-  { yOff: -3.0, len: 32, speed: 280, phase: 330, color: 'rgba(255,235,150,0.65)', core: '#ffffff' },
-  { yOff: -2.0, len: 28, speed: 350, phase: 420, color: 'rgba(255,50,80,0.55)', core: '#ff8096' },
-  { yOff: -1.5, len: 36, speed: 260, phase: 485, color: 'rgba(255,200,70,0.55)', core: '#ffe898' },
-];
-
-function buildViaduct(): Cv {
-  const { cv, c } = mk(P_VIA, LH, MT);
-
-  // Pilares de concreto armado do Minhocão / Via Expressa
-  for (let px = 28; px < P_VIA; px += 64) {
-    rep(c, P_VIA, () => {
-      // Capitel trapezoidal sob a viga
-      c.fillStyle = '#181c36';
-      c.beginPath();
-      c.moveTo(px - 12, VIA_Y + 7);
-      c.lineTo(px + 12, VIA_Y + 7);
-      c.lineTo(px + 7, VIA_Y + 13);
-      c.lineTo(px - 7, VIA_Y + 13);
-      c.closePath();
-      c.fill();
-      // Coluna central de concreto com sombra lateral
-      R(c, px - 6, VIA_Y + 12, 12, 32, '#151930');
-      R(c, px - 6, VIA_Y + 12, 2, 32, '#252b4e');
-      R(c, px + 4, VIA_Y + 12, 2, 32, '#0c0f20');
-    });
-  }
-
-  // Postes duplos de vapor de sódio ao longo do viaduto elevado
-  for (let lx = 16; lx < P_VIA; lx += 64) {
-    rep(c, P_VIA, () => {
-      R(c, lx, VIA_Y - 22, 1, 22, '#282e52');
-      R(c, lx - 5, VIA_Y - 22, 11, 1, '#363e6b');
-      R(c, lx - 6, VIA_Y - 22, 3, 1, '#ffd480');
-      R(c, lx + 4, VIA_Y - 22, 3, 1, '#ffd480');
-      radial(c, lx, VIA_Y - 21, 18, '255,180,75', 0.25);
-    });
-  }
-
-  // Tabuleiro elevado de concreto (Minhocão)
-  R(c, 0, VIA_Y - 1, P_VIA, 2, '#343b66'); // guarda-corpo superior iluminado
-  R(c, 0, VIA_Y + 1, P_VIA, 5, '#1d2240'); // viga principal
-  R(c, 0, VIA_Y + 6, P_VIA, 2, '#0f1226'); // sombra inferior da laje
-  // Frisos e juntas de dilatação da viga
-  for (let x = 0; x < P_VIA; x += 16) {
-    R(c, x, VIA_Y + 1, 1, 5, '#13172e');
-    R(c, x + 4, VIA_Y - 1, 4, 1, 'rgba(255,190,100,0.25)');
-  }
-
-  // Pórticos verdes de sinalização rodoviária da Marginal ("MARGINAL TIETÊ" e "PONTE ESTAIADA")
-  const gantries: readonly { x: number; w: number; top: string; bot: string }[] = [
-    { x: 86, w: 88, top: 'MARGINAL TIETÊ', bot: 'EXPRESSA  ↗' },
-    { x: 334, w: 92, top: 'AV. PAULISTA', bot: 'AEROPORTO ↗' },
-  ];
-  for (const g of gantries) {
-    rep(c, P_VIA, () => {
-      const gy = VIA_Y - 26;
-      // Colunas metálicas treliçadas do pórtico
-      R(c, g.x - 4, gy + 2, 2, 25, '#2b3256');
-      R(c, g.x + g.w + 2, gy + 2, 2, 25, '#2b3256');
-      R(c, g.x - 4, gy + 4, g.w + 8, 2, '#38406b');
-      // Placa verde refletiva padrão DER/CET
-      R(c, g.x, gy - 2, g.w, 15, '#0b3d2e');
-      R(c, g.x, gy - 2, g.w, 1, '#269b6e');
-      R(c, g.x, gy + 12, g.w, 1, '#07261c');
-      R(c, g.x + 1, gy - 1, g.w - 2, 13, '#0e4f3b');
-      // Moldura branca interna sutil
-      R(c, g.x + 2, gy, g.w - 4, 1, 'rgba(220,245,235,0.45)');
-      R(c, g.x + 2, gy + 10, g.w - 4, 1, 'rgba(220,245,235,0.45)');
-      // Texto legível na placa
-      c.fillStyle = '#e8fff4';
-      c.font = 'bold 5px monospace';
-      c.textAlign = 'center';
-      c.fillText(g.top, g.x + g.w / 2, gy + 4.5);
-      c.fillStyle = '#ffd878';
-      c.font = 'bold 4.5px monospace';
-      c.fillText(g.bot, g.x + g.w / 2, gy + 9.2);
-      // Pequenos refletores superiores iluminando a placa
-      for (const rx of [g.x + 14, g.x + g.w / 2, g.x + g.w - 14]) {
-        R(c, rx - 1, gy - 4, 3, 2, '#ffe6a0');
-        radial(c, rx, gy + 2, 10, '180,255,220', 0.14);
-      }
-    });
-  }
-
-  return cv;
-}
-
-function drawViaductLightTrails(ctx: Ctx, offVia: number, dyVia: number, time: number): void {
-  const baseY = VIA_Y + dyVia;
-  for (const [idx, tr] of LIGHT_TRAILS.entries()) {
-    const dir = idx % 2 === 0 ? 1 : -1;
-    const rawX = tr.phase + dir * time * tr.speed - offVia;
-    const y = snap(baseY + tr.yOff);
-    for (const shift of [0, P_VIA]) {
-      const x = snap(mod(rawX, P_VIA) - shift);
-      if (x + tr.len < 0 || x > VIEW_W) continue;
-      ctx.fillStyle = tr.color;
-      ctx.fillRect(x, y - 0.5, tr.len, 1.5);
-      ctx.fillStyle = tr.core;
-      ctx.fillRect(x + 4, y, Math.max(4, tr.len - 8), 0.5);
-    }
-  }
-}
-
-// ─── 4. Camada 3 — Rio Tietê, Guard-Rail e Outdoors Neon (parallax 0.52) ─────
-
-interface NeonSpot {
-  readonly x: number;
-  readonly rgb: string;
-  readonly hex: string;
-  readonly w: number;
-}
-
-const NEON_SPOTS: readonly NeonSpot[] = [
-  { x: 46, rgb: '255,180,70', hex: '#ffb84a', w: 18 },
-  { x: 116, rgb: '30,225,245', hex: '#28e8ff', w: 28 },
-  { x: 174, rgb: '255,180,70', hex: '#ffb84a', w: 18 },
-  { x: 244, rgb: '255,65,165', hex: '#ff4ab2', w: 30 },
-  { x: 302, rgb: '255,180,70', hex: '#ffb84a', w: 18 },
-  { x: 376, rgb: '255,205,75', hex: '#ffd24c', w: 28 },
-  { x: 430, rgb: '255,180,70', hex: '#ffb84a', w: 18 },
-  { x: 486, rgb: '30,225,245', hex: '#28e8ff', w: 24 },
-];
-
-function buildRiverBank(): Cv {
-  const { cv, c } = mk(P_BANK, LH, MT);
-
-  // Águas escuras do Rio Tietê na metade inferior (y = 122..180+)
-  const riverGrad = c.createLinearGradient(0, BANK_Y, 0, VIEW_H + 36);
-  riverGrad.addColorStop(0, '#070b18');
-  riverGrad.addColorStop(0.25, '#0b1226');
-  riverGrad.addColorStop(0.65, '#0d162e');
-  riverGrad.addColorStop(1, '#060a16');
-  c.fillStyle = riverGrad;
-  c.fillRect(0, BANK_Y, P_BANK, VIEW_H - BANK_Y + 48);
-
-  // Outdoors Neon na margem do Rio Tietê (escuros o bastante para preservar contraste com o plano jogável)
-  const billboards: readonly {
-    x: number;
-    w: number;
-    h: number;
-    border: string;
-    glow: string;
-    title: string;
-    sub: string;
-    tCol: string;
-  }[] = [
-    {
-      x: 98,
-      w: 38,
-      h: 18,
-      border: '#1ad8f0',
-      glow: '26,216,240',
-      title: 'SP 24H',
-      sub: 'MARGINAL',
-      tCol: '#8ef6ff',
-    },
-    {
-      x: 226,
-      w: 40,
-      h: 18,
-      border: '#e83e9e',
-      glow: '232,62,158',
-      title: 'CAFÉ ★',
-      sub: 'EXPRESSO',
-      tCol: '#ff9ed8',
-    },
-    {
-      x: 358,
-      w: 38,
-      h: 18,
-      border: '#f0b23a',
-      glow: '240,178,58',
-      title: 'VIP 5★',
-      sub: 'CORRIDA',
-      tCol: '#ffe294',
-    },
-  ];
-
-  for (const b of billboards) {
-    rep(c, P_BANK, () => {
-      const by = BANK_Y - 26;
-      // Pilares metálicos de sustentação do outdoor
-      R(c, b.x + 6, by + b.h, 2, 10, '#181c34');
-      R(c, b.x + b.w - 8, by + b.h, 2, 10, '#181c34');
-      // Halo neon suave ao redor
-      radial(c, b.x + b.w / 2, by + b.h / 2, 26, b.glow, 0.22);
-      // Painel escuro com borda neon dupla
-      R(c, b.x - 1, by - 1, b.w + 2, b.h + 2, '#080a18');
-      R(c, b.x, by, b.w, b.h, b.border);
-      R(c, b.x + 1, by + 1, b.w - 2, b.h - 2, '#0d1024');
-      // Texto neon
-      c.fillStyle = b.tCol;
-      c.font = 'bold 5.5px monospace';
-      c.textAlign = 'center';
-      c.fillText(b.title, b.x + b.w / 2, by + 7.5);
-      c.fillStyle = '#c8d0f0';
-      c.font = 'bold 4.5px monospace';
-      c.fillText(b.sub, b.x + b.w / 2, by + 13.5);
-    });
-  }
-
-  // Postes curvos de vapor de sódio da Marginal passando em velocidade
-  for (let px = 46; px < P_BANK; px += 128) {
-    rep(c, P_BANK, () => {
-      const topY = BANK_Y - 36;
-      R(c, px, topY, 2, 34, '#222846');
-      R(c, px, topY, 1, 34, '#363f6b');
-      // Braço curvo voltado para a pista/margem
-      pline(c, px, topY, px - 10, topY - 3, 2, '#2a3154');
-      R(c, px - 12, topY - 3, 5, 2, '#ffd884');
-      radial(c, px - 10, topY - 2, 26, '255,175,65', 0.34);
-    });
-  }
-
-  // Mureta de concreto e guard-rail metálico da Marginal Tietê
-  R(c, 0, BANK_Y - 6, P_BANK, 3, '#293054'); // lâmina metálica do guard-rail
-  R(c, 0, BANK_Y - 6, P_BANK, 1, '#465084'); // brilho superior do guard-rail
-  R(c, 0, BANK_Y - 3, P_BANK, 4, '#181c34'); // mureta de concreto
-  R(c, 0, BANK_Y + 1, P_BANK, 2, '#0a0d1c'); // talude escuro junto à água
-
-  // Pontaletes do guard-rail e olhos-de-gato refletivos âmbar/vermelhos
-  for (let x = 0; x < P_BANK; x += 16) {
-    R(c, x, BANK_Y - 6, 2, 5, '#151930');
-    R(c, x + 7, BANK_Y - 5, 2, 1, x % 32 === 0 ? '#ff4658' : '#ffb84a');
-  }
-
-  // Reflexo base estático suave na lâmina d'água
-  for (const sp of NEON_SPOTS) {
-    rep(c, P_BANK, () => {
-      radial(c, sp.x, BANK_Y + 14, sp.w, sp.rgb, 0.16);
-    });
-  }
-
-  return cv;
-}
-
-/** Desenha os reflexos horizontais trêmulos das luzes de néon e postes de sódio nas águas do Rio Tietê. */
-function drawTietêReflections(ctx: Ctx, offBank: number, dyBank: number, time: number): void {
-  const yTop = BANK_Y + 2 + dyBank;
-  const rows = 15;
-
-  for (const [sIdx, sp] of NEON_SPOTS.entries()) {
-    for (const shift of [0, P_BANK]) {
-      const baseCx = mod(sp.x - offBank, P_BANK) - shift;
-      if (baseCx + sp.w < -10 || baseCx - sp.w > VIEW_W + 10) continue;
-
-      ctx.fillStyle = sp.hex;
-      for (let r = 0; r < rows; r++) {
-        const ly = snap(yTop + r * 3.4);
-        if (ly >= VIEW_H) break;
-        const wave = Math.sin(time * 5.2 + r * 1.4 + sIdx * 0.9) * (1.5 + r * 0.18);
-        const wBar = snap(Math.max(2, (sp.w * 0.75) * (1 - r / (rows + 5)) + Math.cos(time * 3.8 + r * 1.9) * 2.5));
-        ctx.globalAlpha = Math.max(0.08, 0.42 - r * 0.022);
-        ctx.fillRect(snap(baseCx - wBar * 0.5 + wave), ly, wBar, 1);
-      }
-    }
-  }
-
-  // Ondulações noturnas esparsas cintilando na correnteza do Tietê
-  ctx.globalAlpha = 0.25;
-  ctx.fillStyle = '#38d8f0';
-  for (let i = 0; i < 18; i++) {
-    const pulse = Math.sin(time * 4.1 + i * 1.7);
-    if (pulse < 0.2) continue;
-    const rx = snap(mod(i * 37 - offBank * 1.05 - time * 14, VIEW_W));
-    const ry = snap(yTop + 3 + ((i * 11) % 46));
-    if (ry < VIEW_H) {
-      ctx.fillRect(rx, ry, pulse > 0.7 ? 5 : 3, 0.5);
-    }
-  }
-  ctx.globalAlpha = 1;
-}
-
-// ─── 5. Primeiro Plano: Linhas Cinéticas e Feixes de Postes (parallax 1.35) ──
-
-interface SpeedLine {
-  readonly x: number;
-  readonly y: number;
-  readonly len: number;
-  readonly speed: number;
-}
-
-function makeSpeedLines(seed: number): SpeedLine[] {
-  const rnd = mulberry32(seed);
-  const lines: SpeedLine[] = [];
-  // Bordas superior (y = 5..26) e inferior (y = 158..176) para não poluir o centro jogável
-  for (let i = 0; i < 14; i++) {
-    const topBand = i % 2 === 0;
-    const y = topBand ? 5 + rnd() * 21 : 158 + rnd() * 17;
-    lines.push({
-      x: rnd() * (VIEW_W + 120),
-      y,
-      len: 18 + rnd() * 28,
-      speed: 220 + rnd() * 140,
-    });
-  }
-  return lines;
-}
-
-/** Fábrica do parallax noturno de alta velocidade da Fase 5 — Marginal de São Paulo. */
-export function createUberBackground(): Background {
-  const sky = buildSky();
-  const clouds = buildClouds();
-  const skyline = buildSkyline();
-  const viaduct = buildViaduct();
-  const riverBank = buildRiverBank();
-  const speedLines = makeSpeedLines(9901);
-
   return {
     draw(ctx, camX, camY, time) {
-      const up = BASE_CAM_Y - camY;
-      const dy = (f: number): number => snap(up * f);
-
-      // 1. Céu noturno com dithering Bayer, lua, nuvens baixas e helicóptero distante
-      ctx.drawImage(sky, 0, 0, VIEW_W, VIEW_H);
-      drawTiled(ctx, clouds, P_CLOUD, snap(camX * 0.03 + time * 1.6), 44 + dy(0.04));
-      drawHelicopter(ctx, camX, dy(0.05), time);
-
-      // 2. Camada 1 — Skyline Monumental de São Paulo à Noite (parallax 0.10)
-      const offSky = snap(camX * 0.1);
-      const dySky = dy(0.1);
-      drawTiled(ctx, skyline.cv, P_SKY, offSky, dySky - MT);
-
-      // Luzes vermelhas de aviação piscando em tempo real nas antenas da Paulista, Banespão e Ponte Estaiada
-      for (const l of skyline.lights) {
-        for (const shift of [0, P_SKY]) {
-          const sx = mod(l.x - offSky, P_SKY) - shift;
-          if (sx < -2 || sx > VIEW_W + 2) continue;
-          if (Math.sin(time * 2.6 + l.phase) < 0.05) continue;
-          ctx.fillStyle = 'rgba(255,56,48,0.32)';
-          ctx.fillRect(snap(sx) - 1.5, snap(l.y + dySky) - 1.5, 4, 4);
-          ctx.fillStyle = '#ff3b30';
-          ctx.fillRect(snap(sx), snap(l.y + dySky), 1, 1);
-        }
+      const dy = UBER.camY - camY;
+      const [a, b, t] = mix(camX);
+      ctx.fillStyle = '#0a0b14';
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      scenes[a]?.draw(ctx, camX, dy, time);
+      if (b !== a && t > 0) {
+        bctx.clearRect(0, 0, VIEW_W, VIEW_H);
+        scenes[b]?.draw(bctx, camX, dy, time);
+        ctx.save();
+        ctx.globalAlpha = t;
+        ctx.drawImage(buf, 0, 0, VIEW_W, VIEW_H);
+        ctx.restore();
       }
-
-      // 3. Camada 2 — Via Expressa Elevada / Minhocão & Rastro de Faróis (parallax 0.26)
-      const offVia = snap(camX * 0.26);
-      const dyVia = dy(0.26);
-      drawTiled(ctx, viaduct, P_VIA, offVia, dyVia - MT);
-      drawViaductLightTrails(ctx, offVia, dyVia, time);
-
-      // 4. Camada 3 — Rio Tietê, Guard-Rail e Outdoors Neon (parallax 0.52)
-      const offBank = snap(camX * 0.52);
-      const dyBank = dy(0.52);
-      drawTiled(ctx, riverBank, P_BANK, offBank, dyBank - MT);
-      drawTietêReflections(ctx, offBank, dyBank, time);
+      drawCeiling(ctx, camX, camY);
     },
 
     drawForeground(ctx, camX, _camY, time) {
-      // Feixes verticais translúcidos de postes de luz passando em parallax 1.35 (sem tapar a visão)
-      const beamPeriod = 220;
-      const beamX = snap(VIEW_W - mod(camX * 1.35 + time * 18, beamPeriod));
-      if (beamX > -28 && beamX < VIEW_W + 28) {
-        const g = ctx.createLinearGradient(beamX - 14, 0, beamX + 14, 0);
-        g.addColorStop(0, 'rgba(255,195,95,0)');
-        g.addColorStop(0.5, 'rgba(255,195,95,0.065)');
-        g.addColorStop(1, 'rgba(255,195,95,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(beamX - 14, 0, 28, VIEW_H);
-
-        // Silhueta sutil de luminária apenas no topo extremo da tela
-        ctx.fillStyle = 'rgba(10,12,26,0.28)';
-        ctx.fillRect(beamX - 1, 0, 2, 10);
+      const [a, b, t] = mix(camX);
+      ctx.save();
+      ctx.globalAlpha = b !== a ? 1 - t : 1;
+      scenes[a]?.fg(ctx, camX, time);
+      if (b !== a && t > 0) {
+        ctx.globalAlpha = t;
+        scenes[b]?.fg(ctx, camX, time);
       }
-
-      // Linhas cinéticas sutis de velocidade/vento nas bordas superior e inferior da tela
-      ctx.fillStyle = 'rgba(190,225,255,0.18)';
-      for (const s of speedLines) {
-        const sx = snap(VIEW_W + 40 - mod(s.x + camX * 1.35 + time * s.speed, VIEW_W + 100));
-        ctx.fillRect(sx, snap(s.y), snap(s.len), 0.5);
-      }
+      ctx.restore();
     },
   };
 }

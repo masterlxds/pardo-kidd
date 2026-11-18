@@ -1,7 +1,8 @@
 import type { Entity, Player, PlayerState, Rect, World } from '../core/types';
 import { Tile } from '../core/types';
 import { PHYS, PLAYER_H, PLAYER_W, SWIM, TILE, SWIM_CEILING, VIEW_W } from '../core/constants';
-import { UBER } from './uberRules';
+import { UBER, uberRampOffset } from './uberRules';
+import { LEVEL5_RAMP_COLS } from './level5';
 import { moveBody } from '../core/physics';
 import type { Input } from '../core/input';
 
@@ -82,6 +83,31 @@ export const SWIM_FEEL = {
   lickSip: 3.2,
 } as const;
 
+/**
+ * Autoscroller (Fase 5, `level.autoscroll`): aceleração do direcional relativa à rolagem (px/s²) e
+ * caminhada livre quando a rolagem para no desembarque (px/s; o Pardo vai até o totem).
+ */
+const RIDE_ACCEL = 600;
+const RIDE_FREE_WALK = 80;
+/** tranco vertical ao levar dano em cima do carro (só se estiver no teto) */
+const RIDE_HURT_VY = 90;
+/** Início (px, borda esquerda) de cada rampa `J` da Fase 5. */
+const RAMP_STARTS_PX: readonly number[] = LEVEL5_RAMP_COLS.map((c) => c * TILE);
+
+/**
+ * Velocidade ATUAL da rolagem (px/s), exposta por game.ts em `GameWorld.scrollSpeed`
+ * (UBER.speed em cruzeiro, desacelerando até 0 no desembarque). Fora de 'playing' vale 0.
+ */
+function rideScroll(world: World): number {
+  const v = (world as World & { readonly scrollSpeed?: number }).scrollSpeed;
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
+/** y de mundo do chão do Pardo no autoscroller: teto do carro, subindo nas rampas. */
+export function rideFloorY(centerX: number): number {
+  return UBER.roofY - uberRampOffset(centerX, RAMP_STARTS_PX);
+}
+
 /** Sprite do corpo 20x24 centralizado na base da hitbox. */
 const SPR_W = 20;
 const SPR_H = 24;
@@ -142,6 +168,8 @@ export class PardoPlayer implements Player {
   private strokeT = 99;
   /** próxima bolhinha do snorkel */
   private bubbleT = 1;
+  /** autoscroller: velocidade horizontal RELATIVA à rolagem (vx = rolagem + rideVx) */
+  private rideVx = 0;
 
   constructor(x: number, y: number) {
     this.respawn(x, y);
@@ -175,6 +203,7 @@ export class PardoPlayer implements Player {
     this.strokeCd = 0;
     this.strokeT = 99;
     this.bubbleT = 1;
+    this.rideVx = 0;
   }
 
   /** Fase da sequência de vitória (lida pelo alien para esconder a mamadeira da mão). */
@@ -191,17 +220,18 @@ export class PardoPlayer implements Player {
     if (this.dead || this.invuln > 0 || this.state === 'drink' || world.state.scene !== 'playing') return;
     const st = world.state;
     st.hydration = Math.max(0, st.hydration - amount);
+    if (world.level.autoscroll) st.rideHits++;
     if (st.hydration <= 0) {
       this.kill(world);
       return;
     }
+    if (world.level.autoscroll) {
+      this.hurtRide(world);
+      return;
+    }
     const dir: 1 | -1 = this.centerX >= sourceX ? 1 : -1;
     const water = world.level.underwater;
-    if (world.level.autoscroll && world.camera.x < world.level.widthPx - VIEW_W - 1) {
-      this.vx = UBER.speed + dir * FEEL.knockbackX * 0.7;
-    } else {
-      this.vx = dir * (water ? SWIM_FEEL.knockbackX : FEEL.knockbackX);
-    }
+    this.vx = dir * (water ? SWIM_FEEL.knockbackX : FEEL.knockbackX);
     this.vy = -(water ? SWIM_FEEL.knockbackY : FEEL.knockbackY);
     this.facing = dir === 1 ? -1 : 1;
     this.onGround = false;
@@ -210,6 +240,23 @@ export class PardoPlayer implements Player {
     this.punchT = 0;
     this.hurtT = FEEL.hurtTime;
     this.invuln = FEEL.invulnTime;
+    this.setState('hurt');
+    world.audio.play('hurt');
+    world.shake(2, 0.15);
+  }
+
+  /** Dano no autoscroller: sem empurrão horizontal, tranco vertical só no teto, invulnerabilidade curta. */
+  private hurtRide(world: World): void {
+    if (this.onGround) {
+      this.vy = -RIDE_HURT_VY;
+      this.onGround = false;
+    }
+    this.facing = 1;
+    this.standingOn = null;
+    this.jumping = false;
+    this.punchT = 0;
+    this.hurtT = FEEL.hurtTime;
+    this.invuln = UBER.invuln;
     this.setState('hurt');
     world.audio.play('hurt');
     world.shake(2, 0.15);
@@ -337,9 +384,10 @@ export class PardoPlayer implements Player {
       return;
     }
 
-    const autoscroll = Boolean(world.level.autoscroll);
-    const scrolling = autoscroll && world.state.scene === 'playing' && world.camera.x < world.level.widthPx - VIEW_W - 1;
-    const baseVx = scrolling ? UBER.speed : 0;
+    if (world.level.autoscroll) {
+      this.updateRide(dt, world, input);
+      return;
+    }
 
     const left = input.down('left');
     const right = input.down('right');
@@ -368,19 +416,17 @@ export class PardoPlayer implements Player {
     // movimento horizontal
     if (inHurt) {
       // sem controle; leve arrasto
-      this.vx = approach(this.vx, baseVx, FEEL.airDrag * dt);
+      this.vx = approach(this.vx, 0, FEEL.airDrag * dt);
     } else if (this.punchT > 0) {
-      if (this.onGround) this.vx = approach(this.vx, baseVx, FEEL.groundFriction * 2 * dt); // trava no chão
+      if (this.onGround) this.vx = approach(this.vx, 0, FEEL.groundFriction * 2 * dt); // trava no chão
       // no ar mantém a inércia
     } else {
       if (dirIn !== 0) this.facing = dirIn > 0 ? 1 : -1;
-      else if (scrolling && this.onGround) this.facing = 1;
-      const target = baseVx + dirIn * PHYS.runMax;
-      const relVx = this.vx - baseVx;
+      const target = dirIn * PHYS.runMax;
       let rate: number;
       if (this.onGround) {
         if (dirIn === 0) rate = FEEL.groundFriction;
-        else if (Math.sign(relVx) !== 0 && Math.sign(relVx) !== dirIn) rate = FEEL.turnAccel;
+        else if (Math.sign(this.vx) !== 0 && Math.sign(this.vx) !== dirIn) rate = FEEL.turnAccel;
         else rate = FEEL.groundAccel;
       } else {
         rate = dirIn === 0 ? FEEL.airDrag : FEEL.airAccel;
@@ -410,29 +456,6 @@ export class PardoPlayer implements Player {
 
     this.physics(dt, world);
 
-    if (scrolling) {
-      const maxRight = world.camera.x + VIEW_W - 8 - this.w;
-      if (this.x > maxRight) {
-        this.x = maxRight;
-        if (this.vx > baseVx) this.vx = baseVx;
-      }
-      const minLeft = world.camera.x + 6;
-      if (this.x < minLeft) {
-        if (this.x < world.camera.x - 2) {
-          // Espremido contra a borda esquerda por um obstáculo sólido: leva dano e salta para destravar
-          this.hurt(world, this.centerX + 8, 1);
-          if (this.dead) return;
-          this.x = world.camera.x + 12;
-          this.y = Math.max(16, this.y - 24);
-          this.vx = baseVx + 40;
-          this.vy = -180;
-        } else {
-          this.x = minLeft;
-          if (this.vx < baseVx) this.vx = baseVx;
-        }
-      }
-    }
-
     // perigos
     const hz = this.touchedHazard(world);
     if (hz !== null || this.y > world.level.heightPx + 32) {
@@ -442,10 +465,123 @@ export class PardoPlayer implements Player {
 
     // estado
     if (this.state === 'hurt' && !inHurt && this.hurtT === 0) this.setState(this.onGround ? 'idle' : 'fall');
-    if (this.state === 'punch' && this.punchT === 0) this.setState(this.locomotionState(baseVx));
+    if (this.state === 'punch' && this.punchT === 0) this.setState(this.locomotionState());
     if (this.state !== 'hurt' && this.state !== 'punch') {
-      const next = this.locomotionState(baseVx);
+      const next = this.locomotionState();
       if (next !== this.state) this.setState(next);
+    }
+  }
+
+  /**
+   * Autoscroller (Fase 5): o Pardo anda com o carro. vx = rolagem atual + rideVx (direcional ±UBER.steer,
+   * aceleração suave, também no ar); centro preso em camera.x + [screenMin, screenMax]; olha sempre para a frente.
+   * Pulo e soco idênticos às outras fases. Chão = teto do carro (rideFloorY), sem colisão com tiles.
+   */
+  private updateRide(dt: number, world: World, input: Input): void {
+    const scroll = rideScroll(world);
+    // rolagem parada no desembarque: caminha livre até o totem
+    const free = scroll <= 0;
+    const dirIn = (input.down('right') ? 1 : 0) - (input.down('left') ? 1 : 0);
+    this.facing = 1;
+
+    // timers
+    if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
+    if (this.punchT > 0) this.punchT = Math.max(0, this.punchT - dt);
+    this.coyoteT = this.onGround ? FEEL.coyote : Math.max(0, this.coyoteT - dt);
+    this.bufferT = input.pressed('jump') ? FEEL.jumpBuffer : Math.max(0, this.bufferT - dt);
+
+    const inHurt = this.hurtT > 0;
+    const punching = this.punchT > 0;
+    const punchRecovery = punching && FEEL.punchTime - this.punchT >= FEEL.punchWindup + FEEL.punchActive;
+
+    // soco (mesmo das outras fases; sempre para a frente)
+    if (!inHurt && !punching && input.pressed('punch')) {
+      this.punchT = FEEL.punchTime;
+      this.punchId++;
+      this.setState('punch');
+      world.audio.play('punch');
+    }
+    const lockedPunch = this.punchT > 0 && !punchRecovery;
+
+    // horizontal, relativo à rolagem
+    if (inHurt) {
+      this.rideVx = approach(this.rideVx, 0, RIDE_ACCEL * dt);
+    } else if (this.punchT > 0) {
+      if (this.onGround) this.rideVx = approach(this.rideVx, 0, FEEL.groundFriction * 2 * dt); // trava no teto
+      // no ar mantém a inércia
+    } else {
+      this.rideVx = approach(this.rideVx, dirIn * (free ? RIDE_FREE_WALK : UBER.steer), RIDE_ACCEL * dt);
+    }
+
+    // pulo (permitido também na recuperação do soco)
+    if (!inHurt && !lockedPunch && this.bufferT > 0 && (this.onGround || this.coyoteT > 0)) {
+      this.vy = -PHYS.jumpVel;
+      this.jumping = true;
+      this.onGround = false;
+      this.coyoteT = 0;
+      this.bufferT = 0;
+      if (this.punchT > 0) this.punchT = 0;
+      this.setState('jump');
+      world.audio.play('jump');
+      world.fx('dust', this.centerX, this.y + this.h - 2, -1);
+    }
+    if (this.jumping && this.vy < 0 && !input.down('jump')) {
+      this.vy *= FEEL.jumpCut;
+      this.jumping = false;
+    }
+    if (this.vy >= 0) this.jumping = false;
+
+    // move e prende o centro na faixa da tela
+    this.vx = scroll + this.rideVx;
+    this.x += this.vx * dt;
+    const camX = world.camera.x;
+    const minC = camX + UBER.screenMin;
+    const maxC = camX + (free ? VIEW_W - 24 : UBER.screenMax);
+    if (this.centerX < minC) {
+      this.x = minC - this.w / 2;
+      if (this.rideVx < 0) this.rideVx = 0;
+    } else if (this.centerX > maxC) {
+      this.x = maxC - this.w / 2;
+      if (this.rideVx > 0) this.rideVx = 0;
+    }
+    this.vx = scroll + this.rideVx;
+
+    this.rideVertical(dt, world);
+
+    // estado
+    if (this.state === 'hurt' && !inHurt && this.hurtT === 0) this.setState(this.onGround ? 'idle' : 'fall');
+    if (this.state === 'punch' && this.punchT === 0) this.setState(this.locomotionState(this.vx - this.rideVx));
+    if (this.state !== 'hurt' && this.state !== 'punch') {
+      const next = this.locomotionState(this.vx - this.rideVx);
+      if (next !== this.state) this.setState(next);
+    }
+  }
+
+  /** Vertical no autoscroller: grudado no teto do carro (rampas incluídas) ou em queda até pousar nele. */
+  private rideVertical(dt: number, world: World): void {
+    const wasGround = this.onGround;
+    const fallSpeed = this.vy;
+    const floor = rideFloorY(this.centerX);
+    this.standingOn = null;
+    if (this.onGround) {
+      // sem quicar na descida da rampa
+      this.y = floor - this.h;
+      this.vy = 0;
+    } else {
+      this.vy = Math.min(this.vy + PHYS.gravity * dt, PHYS.maxFall);
+      this.y += this.vy * dt;
+      if (this.y + this.h >= floor) {
+        this.y = floor - this.h;
+        this.vy = 0;
+        this.onGround = true;
+      }
+    }
+    if (this.onGround && !wasGround) {
+      this.jumping = false;
+      if (fallSpeed > FEEL.landFxVy) {
+        world.audio.play('land');
+        world.fx('dust', this.centerX, this.y + this.h - 2);
+      }
     }
   }
 
@@ -643,6 +779,7 @@ export class PardoPlayer implements Player {
       this.updateDrinkSwim(dt, world);
       return;
     }
+    const ride = Boolean(world.level.autoscroll);
     if (this.drinkPhase === 'walk') {
       const d = this.drinkX - this.centerX;
       if (this.onGround && (Math.abs(d) < 1.5 || this.drinkT > 2.5)) {
@@ -665,7 +802,14 @@ export class PardoPlayer implements Player {
         this.drinkDone = true;
       }
     }
-    this.physics(dt, world);
+    if (ride) {
+      // autoscroller: continua no teto do carro (sem colisão com tiles)
+      this.rideVx = 0;
+      this.x += this.vx * dt;
+      this.rideVertical(dt, world);
+    } else {
+      this.physics(dt, world);
+    }
     if (this.y > world.level.heightPx + 32) {
       // segurança: nunca deveria cair durante a vitória
       this.drinkPhase = 'done';
@@ -725,7 +869,7 @@ export class PardoPlayer implements Player {
         break;
       case 'run': {
         name = 'pardo_run';
-        const runVx = Math.abs(this.vx - (world.level.autoscroll && world.camera.x < world.level.widthPx - VIEW_W - 1 ? UBER.speed : 0));
+        const runVx = Math.abs(world.level.autoscroll ? this.rideVx : this.vx);
         frame = Math.floor(this.animT * (6 + runVx / 16));
         break;
       }

@@ -1,6 +1,6 @@
 # Pardo Kidd in Quixadá World
 
-Plataforma 2D retro 8-bit com seis fases e uma **Fase Bônus secreta ("Tubo do Bonfim")**, estágio especial pseudo-3D em meio-tubo desbloqueado após a Fase 3. **Fase 1, "Trilha dos Monólitos"** (sertão cearense): o Pardo sai do povoado, atravessa o Desfiladeiro Seco e a Subida da Galinha Choca, e chega à Capela do Horizonte para beber da Caneca Esmaltada. **Fase 2, "Coração da Amazônia"**: rio, cachoeiras e cipós até a aldeia, onde um alien de chapéu de explorador espera com a mamadeira do índio. **Fase 3, "Bahia World"** (subaquática): o sonho do Pardo no fundo da Baía de Todos-os-Santos, até o santuário da sereia Jandira e o Cajado Jailnesco — com todas as fitinhas coletadas, um vórtice leva à **Fase Bônus, "Tubo do Bonfim"** (corrida pseudo-3D em meio-tubo com o parceiro **Caramelo-Tails**). **Fase 4, "Favela do Rio"** (do morro ao Tribunal): sob um sol de 40°C, o Pardo sobe a favela carioca até o pátio do Tribunal, onde **Amaro**, o faxineiro, o espera com uma **Garrafa de Água Mineral**. **Fase 5, "Marginal de São Paulo"** (De Uber até o Galpão): autoscroller noturno em alta velocidade onde o Pardo vai surfando no teto de um carro sedã preto escrito `UBER` (com o motorista visível), pulando vãos do viaduto sobre o Rio Tietê e socando o trânsito paulistano até o desembarque VIP 5 estrelas na portaria da transportadora. **Fase 6, "Transportadora de São Paulo"** (Hora do Café): após desembarcar do Uber de madrugada, o Pardo atravessa o pátio, as docas e o galpão até a copa, onde o conferente **Renan Maia** lhe entrega um café. Detalhes em `lore.md`.
+Plataforma 2D retro 8-bit com seis fases e uma **Fase Bônus secreta ("Tubo do Bonfim")**, estágio especial pseudo-3D em meio-tubo desbloqueado após a Fase 3. **Fase 1, "Trilha dos Monólitos"** (sertão cearense): o Pardo sai do povoado, atravessa o Desfiladeiro Seco e a Subida da Galinha Choca, e chega à Capela do Horizonte para beber da Caneca Esmaltada. **Fase 2, "Coração da Amazônia"**: rio, cachoeiras e cipós até a aldeia, onde um alien de chapéu de explorador espera com a mamadeira do índio. **Fase 3, "Bahia World"** (subaquática): o sonho do Pardo no fundo da Baía de Todos-os-Santos, até o santuário da sereia Jandira e o Cajado Jailnesco — com todas as fitinhas coletadas, um vórtice leva à **Fase Bônus, "Tubo do Bonfim"** (corrida pseudo-3D em meio-tubo com o parceiro **Caramelo-Tails**). **Fase 4, "Favela do Rio"** (do morro ao Tribunal): sob um sol de 40°C, o Pardo sobe a favela carioca até o pátio do Tribunal, onde **Amaro**, o faxineiro, o espera com uma **Garrafa de Água Mineral**. **Fase 5, "Marginal de São Paulo"** (De Uber até o Galpão): autoscroller noturno onde o Pardo vai em pé no teto de um sedã preto escrito `UBER` (com o motorista visível), pulando obstáculos, socando o trânsito paulistano e voando sobre rampas de obra até o desembarque na portaria da transportadora, com avaliação da corrida em estrelas. **Fase 6, "Transportadora de São Paulo"** (Hora do Café): após desembarcar do Uber de madrugada, o Pardo atravessa o pátio, as docas e o galpão até a copa, onde o conferente **Renan Maia** lhe entrega um café. Detalhes em `lore.md`.
 
 ## Controles
 
@@ -43,15 +43,21 @@ Ao vencer a Fase 3 com **`3/3` Fitinhas do Bonfim** (ou acessando diretamente vi
 
 ## Fase 5 — "Marginal de São Paulo" (De Uber até o Galpão)
 
-Após a água mineral do Amaro no Rio, o Pardo desembarca em São Paulo de madrugada e chama uma corrida pelo aplicativo para chegar a tempo do turno na transportadora. Fase **autoscroller** de alta velocidade inspirada em *Mega Man X4 (Jet Stingray)* e *Donkey Kong Country (Mine Cart Carnage)*, ao som de chiptune rock inspirado em *Mega Man*:
+Após a água mineral do Amaro no Rio, o Pardo desembarca em São Paulo de madrugada e chama uma corrida pelo aplicativo para chegar a tempo do turno na transportadora. Fase **autoscroller linear** inspirada em *Mega Man X4 (Jet Stingray)* e *Donkey Kong Country (Mine Cart Carnage)*, escrita em compassos ao ritmo da trilha chiptune rock (150 BPM). A corrida atravessa Marginal Tietê, Minhocão, Túnel e Ponte Estaiada, do escuro ao amanhecer, em cerca de 2 minutos:
 
-- **Surf no carro preto da Uber:** o Pardo viaja em cima do teto de um sedã preto escrito `UBER` na lateral (com o motorista visível ao volante). No referencial do veículo, `←`/`→` movem o Pardo para trás e para a frente sobre o carro e pela tela, preservando o embalo nos pulos para pousar de volta no teto do Uber.
-- **Vãos do viaduto e obstáculos urbanos:** nos vãos abertos sobre a água do Rio Tietê, o carro mergulha pela rampa inferior e o Pardo precisa saltar de viaduto em viaduto, subir no teto de ônibus engarrafados e passarelas metálicas ou quebrar barreiras da CET no soco.
-- **Bestiário paulistano (todos derrotados com 1 golpe):**
-  - **Motoboy do Grau:** empina a moto ("dando grau") com faíscas e arranca em direção ao Pardo (1 soco).
-  - **Drone de Delivery:** quadricóptero que flutua em senoide, trava a mira e dá um rasante diagonal (1 soco).
-  - **Faria Limer de Patinete:** desliza pela pista e salta num *bunny-hop* com o patinete elétrico ao se aproximar (1 soco).
-  - **Pichador do Viaduto:** posicionado no alto de ônibus e passarelas, arremessa latas de spray em arco que também podem ser destruídas no soco (+10 pontos; 1 soco derrota o pichador).
+- **Pardo e carro como uma unidade:** o Pardo viaja em pé no teto de um sedã preto escrito `UBER` (com o motorista visível). O carro é invulnerável, é só o chão do Pardo e anda sempre junto com ele; não dá para cair do carro e não há nada para escalar. Uma pista só, sem rota alternativa.
+- **Rolagem constante a 120 px/s.** O direcional só **acelera/freia** o Pardo em relação à rolagem (`→` aproxima do perigo, `←` compra tempo de reação); a fase inteira é vencível só com pulo e soco.
+- **Três respostas, sempre legíveis:** cada ameaça pede **PULE**, **SOQUE** ou **NÃO PULE**, e a regra é de cor/forma: obstáculos zebrados baixos (limitador de altura, faixa de obra) pedem pulo; obstáculos altos (placa de pórtico, luminária de túnel) punem o pulo, então fique no chão; o que é laranja ou vem em movimento (barreira da CET, inimigos) se resolve no soco.
+- **Bestiário paulistano (todos caem com 1 soco):**
+  - **Motoboy do Grau** e **Motoboy do Corredor** (mais rápido): vêm de frente pela pista.
+  - **Fila de Faria Limers de patinete:** vários patinetes em sequência, cada um com seu soco.
+  - **Drone de Delivery:** avisa a mira e faz um rasante; dá para socar em pé no rasante ou no ar antes dele.
+  - **Pichador de rapel:** desce em corda do alto com o spray na faixa baixa; exige pulo e **soco no ar**.
+  - **Caixas do caminhão-baú:** o caminhão preso no canto da tela na reta final arremessa caixas baixas e altas.
+- **Isopor do ambulante:** socar o isopor devolve **+1 gota**; não fere se errado.
+- **Checkpoints por passagem:** basta cruzar a bandeira, sem tocar em nada; o compasso do checkpoint é sempre livre de ameaças.
+- **Saltos de rampa:** três vezes a pista acaba numa rampa de obra e o Uber voa um compasso inteiro sobre o vão, com um arco de moedas para pegar no ar, sem ameaças. Cada rampa troca o cenário.
+- **Avaliação da corrida:** você começa com 5 estrelas e cada gota perdida tira uma (mínimo 1). Na tela de vitória aparece `AVALIAÇÃO DA CORRIDA` com as estrelas e o bônus de **500 pontos × estrelas**; durante a fase, as estrelas atuais ficam discretas no topo da tela.
 
 Objetivo: chegar ao **Desembarque VIP 5 Estrelas (`UBER 5★`)** na portaria da Transportadora de São Paulo e beber a água gelada de cortesia da corrida.
 
@@ -88,7 +94,7 @@ node scripts/check-level.mjs        # valida o mapa da Fase 1
 node scripts/check-level2.mjs       # valida o mapa da Fase 2
 node scripts/check-level3.mjs       # valida o mapa da Fase 3 (dimensões, contagens, alcançabilidade a nado, fissuras)
 node scripts/check-level4.mjs       # valida o mapa da Fase 4 (dimensões, contagens, alcançabilidade)
-node scripts/check-level5.mjs       # valida o mapa da Fase 5 — Marginal de São Paulo (autoscroller no Uber)
+node scripts/check-level5.mjs       # valida a Fase 5 — Marginal de São Paulo (compassos, regras de `uberRules.ts` e bot determinístico)
 node scripts/check-level6.mjs       # valida o mapa da Fase 6 — Transportadora de São Paulo
 node scripts/check-bonus.mjs        # valida a Fase Bônus (3 trechos, metas 20/45/70, ondas de moedas/bombas e simulação)
 ```
@@ -103,7 +109,7 @@ O projeto usa o framework Vite com saída em `dist` (ver `vercel.json`).
 
 ## Estrutura
 
-Resumo; o detalhamento de módulos e donos está em `PLAN.md` (Fase 1), `PLAN-FASE2.md` (Fase 2), `PLAN-FASE3.md` (Fase 3), `PLAN-FASE4.md` (Fase 4), `PLAN-FASE5.md` (Fase 5 — Uber & reordenação da Fase 6), `PLAN-FASE6.md` (Transportadora) e `PLAN-BONUS.md` (Fase Bônus).
+Resumo; o detalhamento de módulos e donos está em `PLAN.md` (Fase 1), `PLAN-FASE2.md` (Fase 2), `PLAN-FASE3.md` (Fase 3), `PLAN-FASE4.md` (Fase 4), `PLAN-FASE5.md` (Fase 5 — Uber, versão 2), `PLAN-FASE6.md` (Transportadora) e `PLAN-BONUS.md` (Fase Bônus).
 
 ```
 index.html          contrato de DOM (#stage, #game, #touch, #btn-*)
@@ -120,18 +126,19 @@ src/
     level2.ts       Fase 2 "Coração da Amazônia"
     level3.ts       Fase 3 "Bahia World" (subaquática)
     level4.ts       Fase 4 "Favela do Rio"
-    level5.ts       Fase 5 "Marginal de São Paulo" (autoscroller no Uber)
+    level5.ts       Fase 5 "Marginal de São Paulo" (mapa por compassos: LEVEL5_BARS → LEVEL5_ROWS)
+    uberRules.ts    contrato numérico da Fase 5 (UBER, zonas, uberStars), sem imports
     level6.ts       Fase 6 "Transportadora de São Paulo"
     bonus.ts        Fase Bônus "Tubo do Bonfim" (meio-tubo pseudo-3D)
     objects.ts      moedas, plataformas, cipó-d'água, alien, caneca
     objects3.ts     bolhas, fitinhas do Bonfim, Jandira e cajado (Fase 3)
     objects4.ts     filtro de barro e Amaro (Fase 4)
-    objects5.ts     carro preto da Uber, cooler 5 estrelas e desembarque (Fase 5)
+    objects5.ts     carro preto da Uber, isopor, checkpoints, rampas e desembarque (Fase 5)
     objects6.ts     bebedouro, movers e Renan Maia (Fase 6)
     enemies.ts      inimigos (Fases 1–2)
     enemies3.ts     inimigos marinhos (Fase 3)
     enemies4.ts     inimigos cariocas (Fase 4)
-    enemies5.ts     inimigos da Marginal: motoboy, drone, patinete e pichador (Fase 5)
+    enemies5.ts     inimigos da Marginal: motoboy, patinetes, drone, pichador e caixas (Fase 5)
     enemies6.ts     inimigos da transportadora (Fase 6)
     hud.ts          HUD e telas
   gfx/              paleta, sprites em grade de caracteres, atlas, fontes
@@ -152,7 +159,7 @@ src/
     art/enemies4.ts   sprites dos inimigos da Fase 4
     art/rio.ts        tiles, objetos e decoração do Rio (Fase 4)
     art/uber.ts       carro preto da Uber, desembarque 5★, tiles e objetos da Marginal (Fase 5)
-    art/enemies5.ts   sprites dos inimigos da Fase 5 (motoboy, drone, patinete, pichador)
+    art/enemies5.ts   sprites dos inimigos da Fase 5 (motoboy, drone, patinete, pichador, caixa)
     art/maia.ts       sprites do Renan Maia, xícara de café e Pardo bebendo (Fase 6)
     art/enemies6.ts   sprites dos inimigos da Fase 6
     art/sampa.ts      tiles, objetos e decoração da transportadora (Fase 6)

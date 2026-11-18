@@ -207,9 +207,8 @@ export function buildLevel(def: LevelDef): Level {
         const e = def.marker(m.ch, { left, top, cx: left + TILE / 2, mover });
         if (e) out.push(e);
       }
-      if (def.autoscroll && spawnM) {
-        out.unshift(createUberCar(playerSpawn.x + PLAYER_W / 2));
-      }
+      // Fase 5: o carro nasce sob o spawn; ao renascer num checkpoint, game.ts (prepareRide) o recoloca sob o Pardo
+      if (def.autoscroll) out.unshift(createUberCar(playerSpawn.x + PLAYER_W / 2));
       return out;
     },
     draw(ctx, world: World) {
@@ -244,8 +243,8 @@ export function buildLevel(def: LevelDef): Level {
         if (px + w < camX || px > camX + VIEW_W) continue;
         sp.draw(ctx, name, 0, px, (d.row + 1) * TILE - h);
       }
-      // checkpoints
-      for (const cp of cps) {
+      // checkpoints (no autoscroller são por passagem de coluna: o mapa põe a decoração própria, sem bandeira)
+      for (const cp of def.autoscroll ? [] : cps) {
         const cx = cp.x + PLAYER_W / 2, by = cp.y + PLAYER_H;
         if (cx < camX - 16 || cx > camX + VIEW_W + 16) continue;
         const reached = world.player.x >= cp.x - 4;
