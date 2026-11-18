@@ -1,5 +1,4 @@
 import type { Entity, World } from '../core/types';
-import { TILE } from '../core/constants';
 import { createDrop } from './objects';
 
 /** Objetos e NPCs da Fase 4 — Favela do Rio (PLAN-FASE4.md §3). */
@@ -44,11 +43,11 @@ export function createClayFilter(x: number, y: number): Entity {
  * (centerX, footY) = centro da base. Hitbox 16x22.
  */
 export function createAmaroGoal(centerX: number, footY: number): Entity {
+  // Personagem silencioso: não fala; apenas varre o pátio, entrega a água mineral e comemora.
   const HW = 16;
   const HH = 22;
   let won = false;
   let delivered = false;
-  let greeted = false;
   let sweepOffset = 0;
   let sweepDir: 1 | -1 = -1;
   let dustTimer = 0.45;
@@ -77,17 +76,6 @@ export function createAmaroGoal(centerX: number, footY: number): Entity {
           dustTimer = 0.9;
           world.fx('dust', e.x - 2, footY - 2, -1);
         }
-
-        // Fala de aproximação (<= 7.5 tiles = 120px)
-        if (!greeted) {
-          const pcx = world.player.x + world.player.w / 2;
-          const acx = e.x + e.w / 2;
-          if (Math.abs(pcx - acx) <= 7.5 * TILE) {
-            greeted = true;
-            world.audio.play('talk');
-            world.say('AMARO', 'OPA DOUTOR! PISOU NO CHÃO LIMPO? TOMA UMA ÁGUA MINERAL AÍ!', 4.2);
-          }
-        }
         return;
       }
 
@@ -95,8 +83,6 @@ export function createAmaroGoal(centerX: number, footY: number): Entity {
         if (scene === 'winning' && !delivered) {
           delivered = true;
           world.audio.play('deliver');
-          world.audio.play('talk');
-          world.say('AMARO', 'ÁGUA MINERAL TRINCANDO DIRETO DO BEBEDOURO DO TRIBUNAL!', 3.8);
         }
 
         const stage = drinkStage(world);
