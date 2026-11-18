@@ -22,10 +22,12 @@ import { MAIA } from '../src/gfx/art/maia.ts';
 import { ENEMIES5 } from '../src/gfx/art/enemies5.ts';
 import { SAMPA } from '../src/gfx/art/sampa.ts';
 import { BONUS_ART } from '../src/gfx/art/bonus.ts';
+import { UBER } from '../src/gfx/art/uber.ts';
+import { ENEMIES_UBER } from '../src/gfx/art/enemiesUber.ts';
 
 const out = process.argv[2] ?? 'art-preview.png';
 const filter = process.argv[3] ?? '';
-const art = { ...PARDO, ...ENEMIES, ...WORLD, ...DECOR, ...ENEMIES2, ...AMAZON, ...PARDO_SWIM, ...JANDIRA, ...SEA, ...BAHIA, ...AMARO, ...ENEMIES4, ...RIO, ...MAIA, ...ENEMIES5, ...SAMPA, ...BONUS_ART };
+const art = { ...PARDO, ...ENEMIES, ...WORLD, ...DECOR, ...ENEMIES2, ...AMAZON, ...PARDO_SWIM, ...JANDIRA, ...SEA, ...BAHIA, ...AMARO, ...ENEMIES4, ...RIO, ...MAIA, ...ENEMIES5, ...SAMPA, ...BONUS_ART, ...UBER, ...ENEMIES_UBER };
 const D = 2; // arte em alta resolução = D× o tamanho lógico do spec
 const lowres = [];
 const errors = [];

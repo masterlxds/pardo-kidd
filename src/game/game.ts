@@ -13,7 +13,7 @@ import type {
   SpriteAtlas,
   World,
 } from '../core/types';
-import { AIR_BUBBLE_TIME, COINS_PER_LIFE, EASY_LIVES, AIR_COUNTDOWN, MAX_AIR, MAX_HYDRATION, RENDER_SCALE, START_LIVES, TILE, VIEW_H, VIEW_W } from '../core/constants';
+import { AIR_BUBBLE_TIME, COINS_PER_LIFE, EASY_LIVES, AIR_COUNTDOWN, MAX_AIR, MAX_HYDRATION, RENDER_SCALE, START_LIVES, TILE, UBER_SPEED, VIEW_H, VIEW_W } from '../core/constants';
 import { overlaps } from '../core/physics';
 import type { Input } from '../core/input';
 import { createPlayer, LICK_STAFF_OFFSET, type PardoPlayer } from './player';
@@ -35,6 +35,7 @@ import { createAmazonBackground } from '../gfx/background2';
 import { createBahiaBackground } from '../gfx/background3';
 import { createRioBackground } from '../gfx/background4';
 import { createSampaBackground } from '../gfx/background5';
+import { createUberBackground } from '../gfx/backgroundUber';
 import { createAtlas } from '../gfx/atlas';
 import { createAudio } from '../audio/audio';
 import { drawText } from '../gfx/font';
@@ -299,7 +300,7 @@ export class GameWorld implements World {
     let goal: Entity | null = null;
     let best = Infinity;
     for (const e of this.entities) {
-      if (e.dead || (e.kind !== 'mug' && e.kind !== 'goal' && e.kind !== 'staff' && e.kind !== 'amaro' && e.kind !== 'maia')) continue;
+      if (e.dead || (e.kind !== 'mug' && e.kind !== 'goal' && e.kind !== 'staff' && e.kind !== 'amaro' && e.kind !== 'uber_goal' && e.kind !== 'maia')) continue;
       const d = Math.abs(e.x + e.w / 2 - px);
       if (d < best) {
         best = d;
@@ -320,6 +321,10 @@ export class GameWorld implements World {
       // para à esquerda dele, ao alcance do braço estendido, e olha para ele
       const cx = goal.x + goal.w / 2;
       this.player.startDrink(cx - MAIA_STAND_OFF, 'coffee', 1);
+    } else if (goal && goal.kind === 'uber_goal') {
+      const cx = goal.x + goal.w / 2;
+      const side: 1 | -1 = px <= cx ? -1 : 1;
+      this.player.startDrink(cx + side * GOAL_STAND_OFF, 'mineral', side === -1 ? 1 : -1);
     } else if (goal && goal.kind === 'amaro') {
       const cx = goal.x + goal.w / 2;
       const side: 1 | -1 = px <= cx ? -1 : 1;
@@ -433,15 +438,17 @@ export class GameWorld implements World {
     let bg = this.backgrounds.get(theme);
     if (!bg) {
       bg =
-        theme === 'sampa'
-          ? createSampaBackground()
-          : theme === 'rio'
-          ? createRioBackground()
-          : theme === 'bahia'
-            ? createBahiaBackground()
-            : theme === 'amazonia'
-              ? createAmazonBackground()
-              : createBackground();
+        theme === 'uber'
+          ? createUberBackground()
+          : theme === 'sampa'
+            ? createSampaBackground()
+            : theme === 'rio'
+              ? createRioBackground()
+              : theme === 'bahia'
+                ? createBahiaBackground()
+                : theme === 'amazonia'
+                  ? createAmazonBackground()
+                  : createBackground();
       this.backgrounds.set(theme, bg);
     }
     return bg;
@@ -891,6 +898,12 @@ export class GameWorld implements World {
   }
 
   private snapCamera(): void {
+    if (this.level.autoscroll) {
+      this.camera.x = this.player.centerX - 72;
+      this.camera.y = this.player.y + this.player.h / 2 - VIEW_H * CAM_ANCHOR_Y;
+      this.clampCamera();
+      return;
+    }
     const t = this.cameraTarget();
     this.camera.x = t.x;
     this.camera.y = t.y;
@@ -899,11 +912,27 @@ export class GameWorld implements World {
 
   private updateCamera(dt: number): void {
     const p = this.player;
+    const c = this.camera;
+    if (this.level.autoscroll) {
+      if (this.state.scene === 'playing' && !p.dead) {
+        c.x = Math.min(Math.max(0, this.level.widthPx - VIEW_W), c.x + UBER_SPEED * dt);
+      }
+      const t = this.cameraTarget();
+      if (!p.dead) {
+        c.y += (t.y - c.y) * Math.min(1, dt * CAM_FOLLOW_Y);
+        const top = p.y - 24;
+        const bottom = p.y + p.h + 16;
+        if (top < c.y) c.y = top;
+        if (bottom > c.y + VIEW_H) c.y = bottom - VIEW_H;
+      }
+      this.clampCamera();
+      this.updateShake(dt);
+      return;
+    }
     // look-ahead suave na direção em que olha (mais forte correndo)
     const want = p.facing * CAM_LOOKAHEAD * (Math.abs(p.vx) > 20 ? 1 : 0.6);
     this.lookAhead += (want - this.lookAhead) * Math.min(1, dt * CAM_LOOK_RATE);
     const t = this.cameraTarget();
-    const c = this.camera;
     c.x += (t.x - c.x) * Math.min(1, dt * CAM_FOLLOW_X);
     // vertical: segue mais devagar, mas nunca deixa o Pardo sair da tela
     if (!p.dead) {

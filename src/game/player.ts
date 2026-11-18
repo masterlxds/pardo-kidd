@@ -1,6 +1,6 @@
 import type { Entity, Player, PlayerState, Rect, World } from '../core/types';
 import { Tile } from '../core/types';
-import { PHYS, PLAYER_H, PLAYER_W, SWIM, TILE, SWIM_CEILING } from '../core/constants';
+import { PHYS, PLAYER_H, PLAYER_W, SWIM, TILE, SWIM_CEILING, UBER_SPEED, VIEW_W } from '../core/constants';
 import { moveBody } from '../core/physics';
 import type { Input } from '../core/input';
 
@@ -196,7 +196,11 @@ export class PardoPlayer implements Player {
     }
     const dir: 1 | -1 = this.centerX >= sourceX ? 1 : -1;
     const water = world.level.underwater;
-    this.vx = dir * (water ? SWIM_FEEL.knockbackX : FEEL.knockbackX);
+    if (world.level.autoscroll && world.camera.x < world.level.widthPx - VIEW_W - 1) {
+      this.vx = UBER_SPEED + dir * FEEL.knockbackX * 0.7;
+    } else {
+      this.vx = dir * (water ? SWIM_FEEL.knockbackX : FEEL.knockbackX);
+    }
     this.vy = -(water ? SWIM_FEEL.knockbackY : FEEL.knockbackY);
     this.facing = dir === 1 ? -1 : 1;
     this.onGround = false;
@@ -332,6 +336,10 @@ export class PardoPlayer implements Player {
       return;
     }
 
+    const autoscroll = Boolean(world.level.autoscroll);
+    const scrolling = autoscroll && world.state.scene === 'playing' && world.camera.x < world.level.widthPx - VIEW_W - 1;
+    const baseVx = scrolling ? UBER_SPEED : 0;
+
     const left = input.down('left');
     const right = input.down('right');
     const dirIn = (right ? 1 : 0) - (left ? 1 : 0);
@@ -359,17 +367,19 @@ export class PardoPlayer implements Player {
     // movimento horizontal
     if (inHurt) {
       // sem controle; leve arrasto
-      this.vx = approach(this.vx, 0, FEEL.airDrag * dt);
+      this.vx = approach(this.vx, baseVx, FEEL.airDrag * dt);
     } else if (this.punchT > 0) {
-      if (this.onGround) this.vx = approach(this.vx, 0, FEEL.groundFriction * 2 * dt); // trava no chão
+      if (this.onGround) this.vx = approach(this.vx, baseVx, FEEL.groundFriction * 2 * dt); // trava no chão
       // no ar mantém a inércia
     } else {
       if (dirIn !== 0) this.facing = dirIn > 0 ? 1 : -1;
-      const target = dirIn * PHYS.runMax;
+      else if (scrolling && this.onGround) this.facing = 1;
+      const target = baseVx + dirIn * PHYS.runMax;
+      const relVx = this.vx - baseVx;
       let rate: number;
       if (this.onGround) {
         if (dirIn === 0) rate = FEEL.groundFriction;
-        else if (Math.sign(this.vx) !== 0 && Math.sign(this.vx) !== dirIn) rate = FEEL.turnAccel;
+        else if (Math.sign(relVx) !== 0 && Math.sign(relVx) !== dirIn) rate = FEEL.turnAccel;
         else rate = FEEL.groundAccel;
       } else {
         rate = dirIn === 0 ? FEEL.airDrag : FEEL.airAccel;
@@ -399,6 +409,29 @@ export class PardoPlayer implements Player {
 
     this.physics(dt, world);
 
+    if (scrolling) {
+      const maxRight = world.camera.x + VIEW_W - 8 - this.w;
+      if (this.x > maxRight) {
+        this.x = maxRight;
+        if (this.vx > baseVx) this.vx = baseVx;
+      }
+      const minLeft = world.camera.x + 6;
+      if (this.x < minLeft) {
+        if (this.x < world.camera.x - 2) {
+          // Espremido contra a borda esquerda por um obstáculo sólido: leva dano e salta para destravar
+          this.hurt(world, this.centerX + 8, 1);
+          if (this.dead) return;
+          this.x = world.camera.x + 12;
+          this.y = Math.max(16, this.y - 24);
+          this.vx = baseVx + 40;
+          this.vy = -180;
+        } else {
+          this.x = minLeft;
+          if (this.vx < baseVx) this.vx = baseVx;
+        }
+      }
+    }
+
     // perigos
     const hz = this.touchedHazard(world);
     if (hz !== null || this.y > world.level.heightPx + 32) {
@@ -408,9 +441,9 @@ export class PardoPlayer implements Player {
 
     // estado
     if (this.state === 'hurt' && !inHurt && this.hurtT === 0) this.setState(this.onGround ? 'idle' : 'fall');
-    if (this.state === 'punch' && this.punchT === 0) this.setState(this.locomotionState());
+    if (this.state === 'punch' && this.punchT === 0) this.setState(this.locomotionState(baseVx));
     if (this.state !== 'hurt' && this.state !== 'punch') {
-      const next = this.locomotionState();
+      const next = this.locomotionState(baseVx);
       if (next !== this.state) this.setState(next);
     }
   }
@@ -509,9 +542,9 @@ export class PardoPlayer implements Player {
     return this.centerX - this.facing * 4;
   }
 
-  private locomotionState(): PlayerState {
+  private locomotionState(baseVx = 0): PlayerState {
     if (!this.onGround) return this.vy < 0 ? 'jump' : 'fall';
-    return Math.abs(this.vx) > FEEL.runThreshold ? 'run' : 'idle';
+    return Math.abs(this.vx - baseVx) > FEEL.runThreshold ? 'run' : 'idle';
   }
 
   private setState(s: PlayerState): void {
@@ -689,10 +722,12 @@ export class PardoPlayer implements Player {
         name = 'pardo_idle';
         frame = Math.floor(this.animT * 2);
         break;
-      case 'run':
+      case 'run': {
         name = 'pardo_run';
-        frame = Math.floor(this.animT * (6 + Math.abs(this.vx) / 16));
+        const runVx = Math.abs(this.vx - (world.level.autoscroll && world.camera.x < world.level.widthPx - VIEW_W - 1 ? UBER_SPEED : 0));
+        frame = Math.floor(this.animT * (6 + runVx / 16));
         break;
+      }
       case 'jump':
         name = 'pardo_jump';
         break;

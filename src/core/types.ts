@@ -114,7 +114,7 @@ export interface Dialogue {
 }
 
 /** Tema visual/sonoro de uma fase. */
-export type LevelTheme = 'sertao' | 'amazonia' | 'bahia' | 'rio' | 'sampa';
+export type LevelTheme = 'sertao' | 'amazonia' | 'bahia' | 'rio' | 'uber' | 'sampa';
 export type MusicTrack = LevelTheme | 'bonus';
 
 export type SfxName =
@@ -137,10 +137,13 @@ export type SfxName =
   // Fase 4
   /** latido curto do vira-lata caramelo */ | 'bark'
   /** disparo da arma do traficante */ | 'shoot'
-  // Fase 5
+  // Fase 5 — Marginal de São Paulo (Autoscroller no Uber)
+  /** corte de giro da moto do motoboy / motor */ | 'rev'
+  /** buzina dupla na chegada do Uber */ | 'horn'
+  // Fase 6 — Transportadora de São Paulo
   /** guincho do rato derrotado */ | 'squeak'
   /** caixa de papelão do carregador quebrando */ | 'crate'
-  /** gole de café (final da Fase 5) */ | 'sip'
+  /** gole de café (final da Fase 6) */ | 'sip'
   /** bip de alerta da empilhadeira antes da arrancada */ | 'beep'
   /** arremesso do pacote (arremessador) */ | 'throw'
   // Fase Bônus — Tubo do Bonfim
@@ -219,7 +222,9 @@ export type EnemyKind = 'calango' | 'carcara' | 'palma' | 'tatu'
   | 'agua_viva' | 'peixe_agulha' | 'baiacu' | 'dentao' | 'siri' | 'tartaruga' | 'moreia'
   // Fase 4 — Favela do Rio (src/game/enemies4.ts)
   | 'caramelo' | 'pombo' | 'gato' | 'capivara' | 'traficante'
-  // Fase 5 — Transportadora de São Paulo (src/game/enemies5.ts)
+  // Fase 5 — Marginal de São Paulo / Autoscroller no Uber (src/game/enemiesUber.ts)
+  | 'motoboy' | 'drone' | 'patinete' | 'pichador'
+  // Fase 6 — Transportadora de São Paulo (src/game/enemies5.ts)
   | 'rato' | 'carregador' | 'empilhadeira' | 'arremessador';
 
 export interface Level {
@@ -230,6 +235,8 @@ export interface Level {
   readonly theme: LevelTheme;
   /** fase 100% subaquática: física de nado + oxigênio */
   readonly underwater: boolean;
+  /** fase autoscroller sobre o carro preto da Uber (Fase 5 — Marginal de São Paulo) */
+  readonly autoscroll?: boolean;
   readonly cols: number;
   readonly rows: number;
   readonly widthPx: number;
