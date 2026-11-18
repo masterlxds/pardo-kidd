@@ -590,7 +590,7 @@ export function drawBonusEnd(ctx: CanvasRenderingContext2D, world: World): void 
     drawText(ctx, 'AMULETO DO BONFIM!', 160, py + 28, { scale: 2, color: P['8'], align: 'center', shadow: P.k });
     drawBonfimRibbon(ctx, px + 5, py + 48, pw - 10);
 
-    // Ilustração esquerda: Esmeralda do Bonfim brilhando + Pardo e Caramelo-Tails pulando
+    // Ilustração esquerda: Esmeralda do Bonfim brilhando + Pardo e Caramelo-Tails comemorando de frente
     const emBob = Math.round(Math.sin(t * 5));
     ctx.fillStyle = 'rgba(255,243,160,0.45)';
     ctx.fillRect(61, py + 58 + emBob, 36, 22);
@@ -604,8 +604,8 @@ export function drawBonusEnd(ctx: CanvasRenderingContext2D, world: World): void 
     ctx.fillStyle = 'rgba(22,38,79,0.2)';
     ctx.fillRect(38, py + 137, 32, 3);
     ctx.fillRect(88, py + 137, 28, 3);
-    spr(ctx, world, 'pardo_bonus_jump', Math.floor(t * 6) % 2, 34, py + 91 - pJump, 2);
-    spr(ctx, world, 'buddy_bonus_jump', Math.floor(t * 8) % 2, 84, py + 95 - bJump, 2);
+    spr(ctx, world, 'pardo_bonus_cheer', Math.floor(t * 6) % 2, 34, py + 91 - pJump, 2);
+    spr(ctx, world, 'buddy_bonus_cheer', Math.floor(t * 6 + 1) % 2, 84, py + 95 - bJump, 2);
 
     row('MOEDAS NO TUBO', `×${String(st.bonus.coins).padStart(2, '0')}`, py + 64, P.Y);
     row('BÔNUS ESMERALDA', '+5000', py + 81, P['9']);

@@ -442,6 +442,9 @@ export const SPRITE_SPEC = {
   buddy_bonus_run: [18, 22, 4],
   /** Caramelo-Tails de costas pulando com caudas em hélice (2 quadros) */
   buddy_bonus_jump: [18, 22, 2],
+  /** comemoração de frente na tela final (2 quadros: braços em V / braços no alto) */
+  pardo_bonus_cheer: [20, 24, 2],
+  buddy_bonus_cheer: [18, 22, 2],
   // ── Pista e recompensas (art/bonus.ts)
   /** moeda/argola dourada brilhante do meio-tubo em 4 ângulos */
   bonus_coin: [12, 12, 4],

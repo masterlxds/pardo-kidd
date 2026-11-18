@@ -47,7 +47,7 @@ Leia também: [`bonus-refs/gdd_fase_bonus_tubo.md`](bonus-refs/gdd_fase_bonus_tu
   - `left`/`right`: aceleram angularmente o Pardo pelas paredes do tubo; gravidade tangencial ($-g_\theta \sin\theta$) puxa suavemente de volta ao centro ao soltar.
   - `jump`/`punch`: salto radial ($h > 0$) para fora da parede em direção ao centro do tubo, permitindo pular bombas e pegar arcos altos.
 - **Parceiro (Caramelo-Tails):**
-  - Fica em profundidade $z_b \approx 0.145$ (ligeiramente adiante no tubo para nunca ocultar o Pardo em $z_p \approx 0.085$), lendo um histórico de `11` passos (`~0.18s`) de $(\theta, h)$ do Pardo.
+  - Fica em profundidade $z_b \approx 0.085$ (logo atrás do Pardo, que corre à frente em $z_p \approx 0.145$; o desvio lateral e a diferença de altura na tela evitam que ele oculte o herói), lendo um histórico de `11` passos (`~0.18s`) de $(\theta, h)$ do Pardo.
   - Coleta moedas ao seu alcance somando em `bonus.coins`, `st.coins` e `score`, e **não** faz o Pardo perder moedas se encostar em bombas.
 - **Bombas (`bonus_bomb`):**
   - Colisão com o Pardo (quando `invuln <= 0`): `invuln = 1.0s`, toca `'bomb'`, `shake(4, 0.25)`, perde `min(bonus.coins, 5)` moedas do contador do bônus (com animação de moedas espalhando). Nunca tira vida nem hidratação.
