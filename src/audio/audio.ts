@@ -679,6 +679,115 @@ const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
     noise(g, g.sfx, t, 0.18, 0.3, 'bandpass', 500, 2600, 1.2);
     osc(g, g.sfx, 'sine', 320, t, 0.12, 0.08, 760);
   },
+  // corte de giro da moto do Motoboy do Grau ("vrum-VRUUM!", ~0.32s)
+  rev: (g, t) => {
+    const { ctx } = g;
+    const dur = 0.32;
+    const saw = ctx.createOscillator();
+    saw.type = 'sawtooth';
+    const sq = ctx.createOscillator();
+    sq.type = 'square';
+
+    // duas puxadas agressivas de acelerador: 115->310 Hz (0..0.11s) e 190->420 Hz (0.12..0.32s)
+    for (const [o, mult] of [
+      [saw, 1],
+      [sq, 0.5],
+    ] as const) {
+      o.frequency.setValueAtTime(115 * mult, t);
+      o.frequency.exponentialRampToValueAtTime(310 * mult, t + 0.11);
+      o.frequency.exponentialRampToValueAtTime(190 * mult, t + 0.12);
+      o.frequency.exponentialRampToValueAtTime(420 * mult, t + dur);
+    }
+
+    // LFO de 32 Hz modulando a frequência para ronco áspero de motor 8-bit/16-bit
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 32;
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 18;
+    lfo.connect(lfoDepth);
+    lfoDepth.connect(saw.frequency);
+    lfoDepth.connect(sq.frequency);
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = 3;
+    lp.frequency.setValueAtTime(520, t);
+    lp.frequency.exponentialRampToValueAtTime(1450, t + 0.11);
+    lp.frequency.exponentialRampToValueAtTime(720, t + 0.12);
+    lp.frequency.exponentialRampToValueAtTime(1950, t + dur);
+
+    const sawGain = ctx.createGain();
+    sawGain.gain.value = 0.72;
+    const sqGain = ctx.createGain();
+    sqGain.gain.value = 0.38;
+
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(FLOOR, t);
+    amp.gain.exponentialRampToValueAtTime(0.24, t + 0.015);
+    amp.gain.exponentialRampToValueAtTime(0.11, t + 0.115);
+    amp.gain.exponentialRampToValueAtTime(0.32, t + 0.145);
+    amp.gain.exponentialRampToValueAtTime(FLOOR, t + dur);
+
+    saw.connect(sawGain);
+    sq.connect(sqGain);
+    sawGain.connect(lp);
+    sqGain.connect(lp);
+    lp.connect(amp);
+    amp.connect(g.sfx);
+
+    saw.start(t);
+    sq.start(t);
+    lfo.start(t);
+    saw.stop(t + dur + 0.02);
+    sq.stop(t + dur + 0.02);
+    lfo.stop(t + dur + 0.02);
+
+    // rajada curta de ruído filtrado do escapamento
+    noise(g, g.sfx, t, 0.11, 0.13, 'bandpass', 540, 1250, 1.4);
+    noise(g, g.sfx, t + 0.12, 0.2, 0.18, 'bandpass', 680, 1700, 1.5);
+  },
+  // buzina dupla de chegada do Uber 5 estrelas ("bi-bi!", ~0.34s, díade Lá maior 440 + 554.37 Hz)
+  horn: (g, t) => {
+    const { ctx } = g;
+    const honks: readonly (readonly [offset: number, dur: number, peak: number])[] = [
+      [0, 0.11, 0.22],
+      [0.15, 0.17, 0.25],
+    ];
+    for (const [dt, dur, peak] of honks) {
+      const at = t + dt;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(1850, at);
+      lp.Q.value = 1.4;
+
+      const amp = ctx.createGain();
+      envelope(amp, at, peak, dur);
+      lp.connect(amp);
+      amp.connect(g.sfx);
+
+      for (const f of [440, 554.37]) {
+        const sq = ctx.createOscillator();
+        sq.type = 'square';
+        sq.frequency.setValueAtTime(f, at);
+        const sqG = ctx.createGain();
+        sqG.gain.value = 0.55;
+        sq.connect(sqG);
+        sqG.connect(lp);
+        sq.start(at);
+        sq.stop(at + dur + 0.02);
+
+        const saw = ctx.createOscillator();
+        saw.type = 'sawtooth';
+        saw.frequency.setValueAtTime(f * 1.003, at);
+        const sawG = ctx.createGain();
+        sawG.gain.value = 0.45;
+        saw.connect(sawG);
+        sawG.connect(lp);
+        saw.start(at);
+        saw.stop(at + dur + 0.02);
+      }
+    }
+  },
   // mina do meio-tubo: explosão seca 8-bit/16-bit (~0.28s) com varredura de ruído e punch grave
   bomb: (g, t) => {
     noise(g, g.sfx, t, 0.045, 0.32, 'highpass', 3200, 1100);
@@ -1736,6 +1845,269 @@ function scheduleBonus(g: Graph, step: number, t: number): void {
   }
 }
 
+/* ----------------------------------------------------------------------------
+ * Faixa "Mega Marginal X" — Mi menor (E F# G A B C D / D#), 150 BPM, 16 compassos (256 semicolcheias).
+ * Inspirada em Mega Man 2 / 3 e Mega Man X4 (Jet Stingray Stage — Rock Chiptune Capcom):
+ * Parte A (cc. 1–8): Em C D Em | Em C D B7 — ataque de alta velocidade cortando os viadutos.
+ * Parte B (cc. 9–16): C D Bm Em | Am Bm C B7 — refrão heroico com Twin Guitar Lead em terças.
+ * Galloping Mega-Bass em semicolcheias contínuas, guitarra lead em pulso 25% + harmonia twin-lead,
+ * arpejador rápido de tríades e bateria rock/arcade com viradas clássicas de tons descendentes.
+ * ------------------------------------------------------------------------- */
+
+const UBER_BPM = 150;
+const UBER_STEP = 60 / UBER_BPM / 4;
+const UBER_BARS = 16;
+const UBER_LOOP_STEPS = STEPS_PER_BAR * UBER_BARS;
+
+type UberQuality = 'm' | 'M' | '7';
+
+/** Em C D Em | Em C D B7 || C D Bm Em | Am Bm C B7 */
+const UBER_CHORDS: readonly (readonly [root: number, q: UberQuality])[] = [
+  [40, 'm'], [36, 'M'], [38, 'M'], [40, 'm'],
+  [40, 'm'], [36, 'M'], [38, 'M'], [47, '7'],
+  [36, 'M'], [38, 'M'], [47, 'm'], [40, 'm'],
+  [45, 'm'], [47, 'm'], [36, 'M'], [47, '7'],
+];
+
+const UBER_MELODY_BARS: readonly (readonly Note[])[] = [
+  // Parte A (cc. 1–8) — Ataque em Alta Velocidade na Marginal
+  [[76, 2], [76, 1], [79, 1], [83, 3], [81, 1], [79, 2], [78, 2], [76, 4]],
+  [[79, 2], [79, 1], [81, 1], [84, 3], [83, 1], [81, 2], [79, 2], [76, 4]],
+  [[78, 2], [79, 1], [81, 1], [86, 3], [84, 1], [83, 2], [81, 2], [78, 2], [79, 2]],
+  [[83, 4], [79, 2], [76, 4], [0, 2], [76, 1], [78, 1], [79, 1], [81, 1]],
+  [[83, 2], [83, 1], [86, 1], [88, 3], [86, 1], [83, 2], [81, 2], [79, 4]],
+  [[84, 3], [83, 1], [81, 2], [79, 2], [76, 2], [79, 2], [84, 4]],
+  [[81, 2], [83, 2], [86, 3], [84, 1], [83, 2], [81, 2], [78, 2], [81, 2]],
+  [[83, 3], [81, 1], [78, 2], [75, 2], [83, 4], [0, 2], [81, 1], [83, 1]],
+  // Parte B (cc. 9–16) — Refrão Heroico Estilo Mega Man X / Twin Guitar Lead
+  [[84, 3], [84, 3], [83, 2], [84, 2], [88, 4], [86, 2]],
+  [[86, 3], [86, 3], [84, 2], [83, 2], [81, 4], [79, 2]],
+  [[83, 3], [78, 1], [81, 2], [83, 2], [86, 4], [83, 2], [81, 2]],
+  [[79, 2], [83, 2], [88, 4], [86, 2], [83, 2], [0, 2], [79, 1], [81, 1]],
+  [[81, 3], [84, 3], [81, 2], [79, 2], [81, 2], [84, 4]],
+  [[83, 3], [86, 3], [83, 2], [81, 2], [83, 2], [86, 4]],
+  [[88, 3], [91, 1], [88, 2], [86, 2], [84, 2], [83, 2], [81, 2], [79, 2]],
+  [[83, 3], [87, 3], [83, 2], [78, 2], [75, 2], [78, 2], [0, 2]],
+];
+
+/** Baixo em galope contínuo de semicolcheias (Mega Man style): [semicolcheia, intervalo, duração]. */
+const UBER_BASS_GALLOP: readonly (readonly [number, number, number])[] = [
+  [0, 0, 1], [1, 0, 1], [2, 12, 1], [3, 0, 1],
+  [4, 0, 1], [5, 12, 1], [6, 0, 1], [7, 7, 1],
+  [8, 0, 1], [9, 0, 1], [10, 12, 1], [11, 0, 1],
+  [12, 0, 1], [13, 12, 1], [14, 7, 1], [15, 12, 1],
+];
+
+/** Padrões de arpejo rápido em semicolcheias por qualidade do acorde. */
+const UBER_ARP_PATTERNS: Record<UberQuality, readonly number[]> = {
+  m: [0, 3, 7, 12, 7, 3, 0, 7],
+  M: [0, 4, 7, 12, 7, 4, 0, 7],
+  '7': [0, 4, 7, 10, 12, 10, 7, 4],
+};
+
+/** Frequências descendentes da virada clássica de tons estilo Mega Man (passos 12..15). */
+const UBER_TOM_FREQS: readonly number[] = [340, 240, 170, 120];
+
+const UBER_MELODY: (Note | undefined)[] = new Array<Note | undefined>(UBER_LOOP_STEPS).fill(undefined);
+{
+  let pos = 0;
+  for (const bar of UBER_MELODY_BARS) {
+    for (const [midi, steps] of bar) {
+      if (midi > 0) UBER_MELODY[pos] = [midi, steps];
+      pos += steps;
+    }
+  }
+}
+
+/** Calcula a terça diatônica abaixo em Mi menor (E F# G A B C D / D# no B7) para o Twin Guitar Lead. */
+function uberHarmonyMidi(midi: number, q: UberQuality): number {
+  const pc = ((midi % 12) + 12) % 12;
+  if (q === '7') {
+    // Acorde dominante B7 (B D# F# A): harmoniza em Mi menor harmônico
+    if (pc === 11) return midi - 5; // B -> F#
+    if (pc === 3) return midi - 4;  // D# -> B
+    if (pc === 6) return midi - 3;  // F# -> D#
+    if (pc === 9) return midi - 3;  // A -> F#
+  }
+  switch (pc) {
+    case 4: return midi - 4;  // E -> C
+    case 6: return midi - 4;  // F# -> D
+    case 7: return midi - 3;  // G -> E
+    case 9: return midi - 3;  // A -> F#
+    case 11: return midi - 4; // B -> G
+    case 0: return midi - 3;  // C -> A
+    case 2: return midi - 3;  // D -> B
+    case 3: return midi - 4;  // D# -> B
+    default: return midi - 3;
+  }
+}
+
+/** Galloping Mega-Bass: sub em triângulo encorpado + ataque curto filtrado para definição em 150 BPM. */
+function uberBass(g: Graph, midi: number, t: number, steps: number): void {
+  const f = midiToHz(midi);
+  const dur = steps * UBER_STEP * 0.86;
+  osc(g, g.music, 'triangle', f, t, dur, 0.44);
+
+  const o = g.ctx.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(f, t);
+  const lp = g.ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 2.0;
+  lp.frequency.setValueAtTime(1450, t);
+  lp.frequency.exponentialRampToValueAtTime(260, t + dur);
+  const amp = g.ctx.createGain();
+  envelope(amp, t, 0.19, dur);
+  o.connect(lp);
+  lp.connect(amp);
+  amp.connect(g.music);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+}
+
+/** Arpejador chiptune secundário rápido em onda quadrada curta. */
+function uberArp(g: Graph, midi: number, t: number, peak: number): void {
+  osc(g, g.music, 'square', midiToHz(midi), t, UBER_STEP * 0.68, peak);
+}
+
+function uberKick(g: Graph, t: number, level: number): void {
+  osc(g, g.music, 'sine', 155, t, 0.14, 0.58 * level, 40);
+  osc(g, g.music, 'triangle', 280, t, 0.03, 0.2 * level, 65);
+}
+
+function uberSnare(g: Graph, t: number, level: number): void {
+  osc(g, g.music, 'triangle', 240, t, 0.075, 0.24 * level, 110);
+  noise(g, g.music, t, 0.13, 0.28 * level, 'bandpass', 2200, 950, 0.9);
+  noise(g, g.music, t, 0.05, 0.15 * level, 'highpass', 4400);
+}
+
+function uberHat(g: Graph, t: number, open: boolean, peak: number): void {
+  noise(g, g.music, t, open ? 0.055 : 0.022, peak, 'highpass', open ? 7400 : 8200);
+}
+
+/** Tom eletrônico descendente típico das viradas de bateria de Mega Man (NES/SNES). */
+function uberTom(g: Graph, t: number, f0: number): void {
+  osc(g, g.music, 'triangle', f0, t, 0.095, 0.42, f0 * 0.48);
+  osc(g, g.music, 'square', f0, t, 0.055, 0.11, f0 * 0.5);
+  noise(g, g.music, t, 0.03, 0.12, 'bandpass', f0 * 4, f0 * 1.5, 1.4);
+}
+
+/** Lead Guitar em pulso 25% com vibrato 6.5 Hz + Twin Guitar Harmony em terças estilo Capcom. */
+function uberLead(
+  g: Graph,
+  midi: number,
+  t: number,
+  steps: number,
+  q: UberQuality,
+  twin: boolean,
+  partB: boolean,
+): void {
+  const dur = steps * UBER_STEP;
+  const f = midiToHz(midi);
+  const o = g.ctx.createOscillator();
+  o.setPeriodicWave(g.pulse);
+  o.frequency.setValueAtTime(f, t);
+
+  if (steps >= 3) {
+    const lfo = g.ctx.createOscillator();
+    lfo.frequency.value = 6.5;
+    const d = g.ctx.createGain();
+    d.gain.value = f * 0.011;
+    lfo.connect(d);
+    d.connect(o.frequency);
+    lfo.start(t);
+    lfo.stop(t + dur + 0.02);
+  }
+
+  const amp = g.ctx.createGain();
+  const peak = partB ? 0.27 : 0.24;
+  amp.gain.setValueAtTime(FLOOR, t);
+  amp.gain.exponentialRampToValueAtTime(peak, t + ATTACK);
+  amp.gain.exponentialRampToValueAtTime(peak * 0.62, t + dur * 0.74);
+  amp.gain.exponentialRampToValueAtTime(FLOOR, t + dur * 0.95);
+  o.connect(amp);
+  amp.connect(g.music);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+
+  // Segunda guitarra chiptune em harmonia (Twin Guitar Lead da Capcom)
+  if (twin) {
+    const hMidi = uberHarmonyMidi(midi, q);
+    const hf = midiToHz(hMidi);
+    const ho = g.ctx.createOscillator();
+    ho.type = 'square';
+    ho.frequency.setValueAtTime(hf, t);
+    if (steps >= 3) {
+      const hlfo = g.ctx.createOscillator();
+      hlfo.frequency.value = 6.5;
+      const hd = g.ctx.createGain();
+      hd.gain.value = hf * 0.01;
+      hlfo.connect(hd);
+      hd.connect(ho.frequency);
+      hlfo.start(t);
+      hlfo.stop(t + dur + 0.02);
+    }
+    const hAmp = g.ctx.createGain();
+    const hPeak = 0.12;
+    hAmp.gain.setValueAtTime(FLOOR, t);
+    hAmp.gain.exponentialRampToValueAtTime(hPeak, t + ATTACK);
+    hAmp.gain.exponentialRampToValueAtTime(hPeak * 0.6, t + dur * 0.74);
+    hAmp.gain.exponentialRampToValueAtTime(FLOOR, t + dur * 0.95);
+    ho.connect(hAmp);
+    hAmp.connect(g.music);
+    ho.start(t);
+    ho.stop(t + dur + 0.02);
+  }
+
+  // Reforço de oitava grave em triângulo no refrão para encorpar o solo
+  if (partB) {
+    osc(g, g.music, 'triangle', f / 2, t, dur * 0.9, 0.1);
+  }
+}
+
+function scheduleUber(g: Graph, step: number, t: number): void {
+  const bar = Math.floor(step / STEPS_PER_BAR);
+  const s = step % STEPS_PER_BAR;
+  const [root, q] = UBER_CHORDS[bar % UBER_CHORDS.length] ?? [40, 'm'];
+  const isPartB = bar >= 8;
+  const isTurnaround = bar === 7 || bar === 15;
+
+  // 1. Galloping Mega-Bass nas 16 semicolcheias
+  for (const [bs, interval, len] of UBER_BASS_GALLOP) {
+    if (bs === s) uberBass(g, root + interval, t, len);
+  }
+
+  // 2. Arpejador rápido de apoio em semicolcheias
+  const arpOffsets = UBER_ARP_PATTERNS[q];
+  const arpInterval = arpOffsets[s % arpOffsets.length] ?? 0;
+  uberArp(g, root + 24 + arpInterval, t, isPartB ? 0.055 : 0.045);
+
+  // 3. Bateria Rock/Arcade Punchy + virada clássica de tons descendentes de Mega Man nos cc. 8 e 16
+  if (isTurnaround && s >= 12) {
+    uberTom(g, t, UBER_TOM_FREQS[s - 12] ?? 120);
+  } else {
+    if (s === 0 || s === 8) uberKick(g, t, 1.0);
+    else if (s === 3 || s === 6 || s === 10) uberKick(g, t, 0.84);
+    else if (s === 14 && bar % 2 === 1) uberKick(g, t, 0.72);
+
+    if (s === 4 || s === 12) uberSnare(g, t, 1.0);
+    else if ((bar === 3 || bar === 11) && (s === 14 || s === 15)) {
+      uberTom(g, t, s === 14 ? 260 : 175);
+    }
+
+    if (s % 4 === 2) uberHat(g, t, true, 0.075);
+    else if (s % 2 === 0) uberHat(g, t, false, 0.042);
+    else uberHat(g, t, false, 0.026);
+  }
+
+  // 4. Lead Guitar Heroica + Harmonia Twin-Lead (toda a Parte B e fechamentos de frase da Parte A)
+  const note = UBER_MELODY[step];
+  if (note) {
+    const twin = isPartB || bar % 4 === 3;
+    uberLead(g, note[0], t, note[1], q, twin, isPartB);
+  }
+}
+
 interface Track {
   readonly stepDur: number;
   readonly loopSteps: number;
@@ -1747,6 +2119,7 @@ const TRACKS: Record<MusicTrack, Track> = {
   amazonia: { stepDur: STEP, loopSteps: AMZ_LOOP_STEPS, scheduleStep: scheduleAmazonia },
   bahia: { stepDur: BAH_STEP, loopSteps: BAH_LOOP_STEPS, scheduleStep: scheduleBahia },
   rio: { stepDur: RIO_STEP, loopSteps: RIO_LOOP_STEPS, scheduleStep: scheduleRio },
+  uber: { stepDur: UBER_STEP, loopSteps: UBER_LOOP_STEPS, scheduleStep: scheduleUber },
   sampa: { stepDur: SAMPA_STEP, loopSteps: SAMPA_LOOP_STEPS, scheduleStep: scheduleSampa },
   bonus: { stepDur: BONUS_STEP, loopSteps: BONUS_LOOP_STEPS, scheduleStep: scheduleBonus },
 };

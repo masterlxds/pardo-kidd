@@ -18,6 +18,9 @@ import { createAmaroGoal, createClayFilter } from './objects4';
 import { LEVEL5_MOVERS, LEVEL5_ROWS } from './level5';
 import { createSampaEnemy } from './enemies5';
 import { createBebedouro, createMaiaGoal } from './objects5';
+import { LEVEL_UBER_MOVERS, LEVEL_UBER_ROWS } from './levelUber';
+import { createUberEnemy } from './enemiesUber';
+import { createCoolerUber, createUberCar, createUberGoal } from './objectsUber';
 
 type SpriteName = keyof typeof SPRITE_SPEC;
 
@@ -41,6 +44,8 @@ export interface LevelDef {
   theme: LevelTheme;
   /** fase subaquática (física de nado + oxigênio) */
   underwater?: boolean;
+  /** fase autoscroller sobre o carro preto da Uber */
+  autoscroll?: boolean;
   rows: string[];
   movers: Record<string, { range: number; speed: number }>;
   /** caractere → tile */
@@ -151,6 +156,7 @@ export function buildLevel(def: LevelDef): Level {
     name: def.name,
     theme: def.theme,
     underwater: def.underwater ?? false,
+    autoscroll: def.autoscroll ?? false,
     cols,
     rows,
     widthPx: cols * TILE,
@@ -193,6 +199,9 @@ export function buildLevel(def: LevelDef): Level {
         const mover = def.movers[`${m.col},${m.row}`] ?? { range: 4, speed: 30 };
         const e = def.marker(m.ch, { left, top, cx: left + TILE / 2, mover });
         if (e) out.push(e);
+      }
+      if (def.autoscroll && spawnM) {
+        out.unshift(createUberCar(playerSpawn.x + PLAYER_W / 2, 10 * TILE));
       }
       return out;
     },
@@ -464,10 +473,57 @@ export function createLevel4(): Level {
   });
 }
 
-// ── Fase 5 — Transportadora de São Paulo (Hora do Café) ─────────────────────
-export function createLevel5(): Level {
+// ── Fase 5 — Marginal de São Paulo (De Uber até o Galpão) ────────────────────
+export function createLevelUber(): Level {
   return buildLevel({
     index: 4,
+    name: 'MARGINAL DE SÃO PAULO',
+    theme: 'uber',
+    autoscroll: true,
+    rows: LEVEL_UBER_ROWS,
+    movers: LEVEL_UBER_MOVERS,
+    tileChars: {
+      '=': Tile.GroundTop, '#': Tile.Ground, 'R': Tile.Rock, '^': Tile.Spike,
+      'B': Tile.Block, '?': Tile.BlockItem, 'W': Tile.BlockItem, '-': Tile.OneWay, '~': Tile.Water,
+    },
+    dropBlockChars: 'W',
+    decor: {
+      b: 'bus_front', w: 'bus_wheels', s: 'marginal_sign', r: 'speed_radar', l: 'street_light', n: 'traffic_cone',
+    },
+    decorCentered: 'n',
+    tileSprites: {
+      [Tile.GroundTop]: 'tile_ub_top', [Tile.Ground]: 'tile_ub_ground', [Tile.Rock]: 'tile_ub_rock',
+      [Tile.Spike]: 'tile_ub_spike', [Tile.Block]: 'tile_ub_block', [Tile.BlockItem]: 'tile_ub_block_item',
+      [Tile.OneWay]: 'tile_ub_oneway',
+    },
+    tileVariants: [Tile.GroundTop, Tile.Ground],
+    rockRunFrames: 3,
+    terrainOutline: '#0d1020',
+    pitColors: ['#25294a', '#171a34', '#0b0d1e'],
+    flagColors: ['#c9c1a9', '#2ec4b6'],
+    marker(ch, { left, top, cx, mover }) {
+      switch (ch) {
+        case 'c': return createCoin(left + 4, top + 4);
+        case 'y': return createUberEnemy('motoboy', cx, top + TILE);
+        case 'u': return createUberEnemy('drone', cx, top + TILE / 2 + 8);
+        case 'p': return createUberEnemy('patinete', cx, top + TILE);
+        case 'z': return createUberEnemy('pichador', cx, top + TILE);
+        case 'V': return createCoolerUber(left, top + TILE - 32);
+        case 'd': return createCrumblePlatform(left, top, 'platform_beam');
+        case 'm':
+        case 'M':
+          return createMovingPlatform(left, top, ch === 'm' ? 'x' : 'y', mover.range * TILE, mover.speed, 'platform_drone');
+        case 'A': return createUberGoal(cx, top + TILE);
+        default: return null;
+      }
+    },
+  });
+}
+
+// ── Fase 6 — Transportadora de São Paulo (Hora do Café) ─────────────────────
+export function createLevel5(): Level {
+  return buildLevel({
+    index: 5,
     name: 'TRANSPORTADORA DE SÃO PAULO',
     theme: 'sampa',
     rows: LEVEL5_ROWS,

@@ -20,6 +20,8 @@ import { MAIA } from './art/maia';
 import { ENEMIES5 } from './art/enemies5';
 import { SAMPA } from './art/sampa';
 import { BONUS_ART } from './art/bonus';
+import { UBER } from './art/uber';
+import { ENEMIES_UBER } from './art/enemiesUber';
 
 /** `pad` = margem (px reais) em volta de cada quadro na tira, usada pelo halo de contorno. */
 interface Entry { w: number; h: number; frames: number; pad: number; sheet: HTMLCanvasElement; flipped: HTMLCanvasElement }
@@ -48,7 +50,7 @@ function makeCanvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingCo
 
 /** Rasteriza toda a arte em texturas offscreen (uma tira horizontal por sprite + versão espelhada). */
 export function createAtlas(): SpriteAtlas {
-  const art: SpriteArt = { ...PARDO, ...ENEMIES, ...WORLD, ...DECOR, ...ENEMIES2, ...AMAZON, ...PARDO_SWIM, ...JANDIRA, ...SEA, ...BAHIA, ...AMARO, ...ENEMIES4, ...RIO, ...MAIA, ...ENEMIES5, ...SAMPA, ...BONUS_ART };
+  const art: SpriteArt = { ...PARDO, ...ENEMIES, ...WORLD, ...DECOR, ...ENEMIES2, ...AMAZON, ...PARDO_SWIM, ...JANDIRA, ...SEA, ...BAHIA, ...AMARO, ...ENEMIES4, ...RIO, ...MAIA, ...ENEMIES5, ...SAMPA, ...BONUS_ART, ...UBER, ...ENEMIES_UBER };
   const D = RENDER_SCALE;
   const entries = new Map<string, Entry>();
   const rgb = new Map<string, [number, number, number]>();

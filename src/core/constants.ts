@@ -59,3 +59,8 @@ export const SWIM = {
  * mapa subaquático ficam acima da superfície (só céu ou rocha que aflora).
  */
 export const SWIM_CEILING = 48;
+
+// ── Fase 5 (Marginal de São Paulo — Autoscroller no Uber) ──
+/** Velocidade horizontal constante do autoscroll da câmera e do carro preto da Uber (px/s = 5 tiles/s). */
+export const UBER_SPEED = 80;
+
