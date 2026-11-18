@@ -1,6 +1,6 @@
 # Pardo Kidd in Quixadá World
 
-Plataforma 2D retro 8-bit com quatro fases. **Fase 1, "Trilha dos Monólitos"** (sertão cearense): o Pardo sai do povoado, atravessa o Desfiladeiro Seco e a Subida da Galinha Choca, e chega à Capela do Horizonte para beber da Caneca Esmaltada. **Fase 2, "Coração da Amazônia"**: rio, cachoeiras e cipós até a aldeia, onde um alien de chapéu de explorador espera com a mamadeira do índio. **Fase 3, "Bahia World"** (subaquática): o sonho do Pardo no fundo da Baía de Todos-os-Santos, até o santuário da sereia Jandira e o Cajado Jailnesco. **Fase 4, "Favela do Rio"** (do morro ao Tribunal): sob um sol de 40°C, o Pardo sobe a favela carioca até o pátio do Tribunal, onde **Amaro**, o faxineiro, o espera com uma **Garrafa de Água Mineral**. Detalhes em `lore.md`.
+Plataforma 2D retro 8-bit com cinco fases. **Fase 1, "Trilha dos Monólitos"** (sertão cearense): o Pardo sai do povoado, atravessa o Desfiladeiro Seco e a Subida da Galinha Choca, e chega à Capela do Horizonte para beber da Caneca Esmaltada. **Fase 2, "Coração da Amazônia"**: rio, cachoeiras e cipós até a aldeia, onde um alien de chapéu de explorador espera com a mamadeira do índio. **Fase 3, "Bahia World"** (subaquática): o sonho do Pardo no fundo da Baía de Todos-os-Santos, até o santuário da sereia Jandira e o Cajado Jailnesco. **Fase 4, "Favela do Rio"** (do morro ao Tribunal): sob um sol de 40°C, o Pardo sobe a favela carioca até o pátio do Tribunal, onde **Amaro**, o faxineiro, o espera com uma **Garrafa de Água Mineral**. **Fase 5, "Transportadora de São Paulo"** (Hora do Café): de madrugada, o Pardo acorda num pátio de transportadora paulistana, atravessa docas e galpão até a copa, onde o conferente **Renan Maia** lhe entrega um café. Detalhes em `lore.md`.
 
 ## Controles
 
@@ -33,6 +33,19 @@ Mecânicas novas:
 - **Inimigos de 1 e 2 socos:** a maioria cai com um soco. Os blindados (baiacu-dentão, siri, tartaruga e moreia) atordoam com o primeiro soco, por cerca de 1,5 s, e são derrotados pelo segundo. O siri bloqueia socos pela frente enquanto está em guarda.
 - **Fitinhas do Bonfim:** três fitinhas secretas espalhadas pelo recife e pelas ruínas. Cada uma vale 1000 pontos, e a HUD mostra quantas foram coletadas (n/3).
 
+## Fase 5 — "Transportadora de São Paulo" (Hora do Café)
+
+Depois da água do Amaro, a sede passa e vem o sono. O Pardo pega carona num caminhão-baú, acorda numa transportadora de São Paulo de madrugada e atravessa o pátio, as docas e o galpão até a copa da expedição. Fase terrestre: os abismos são os fossos das docas.
+
+Inimigos:
+
+- **Rato de galpão:** 1 soco.
+- **Carregador de caixa:** 2 socos. O primeiro quebra a caixa que ele carrega; sem ela, ele passa a correr atrás do Pardo no mesmo trecho.
+- **Empilhadeira:** indestrutível. O soco só rebate nela. Telegrafa com um alerta antes de arrancar em alta velocidade.
+- **Arremessador de encomendas:** fica no alto e joga pacotes em arco na direção do Pardo. Os pacotes podem ser socados (+10 pontos).
+
+Objetivo: encontrar o **Renan Maia** na copa e tomar o café.
+
 ## Como rodar
 
 Requer Node.js 20+.
@@ -44,7 +57,7 @@ npm run build      # checagem de tipos + build de produção em dist/
 npm run preview    # serve o dist/ localmente
 ```
 
-Atalhos de teste: `http://localhost:5173/?fase=2`, `?fase=3` ou `?fase=4` na URL começam direto na Fase 2, Fase 3 ou Fase 4 (porta padrão do Vite).
+Atalhos de teste: `http://localhost:5173/?fase=2`, `?fase=3`, `?fase=4` ou `?fase=5` na URL começam direto na fase correspondente (porta padrão do Vite).
 
 Checagens de mapa:
 
@@ -53,6 +66,7 @@ node scripts/check-level.mjs    # valida o mapa da Fase 1
 node scripts/check-level2.mjs   # valida o mapa da Fase 2
 node scripts/check-level3.mjs   # valida o mapa da Fase 3 (dimensões, contagens, alcançabilidade a nado, fissuras)
 node scripts/check-level4.mjs   # valida o mapa da Fase 4 (dimensões, contagens, alcançabilidade)
+node scripts/check-level5.mjs   # valida o mapa da Fase 5 (dimensões, contagens, alcançabilidade)
 ```
 
 ## Deploy (Vercel)
@@ -65,7 +79,7 @@ O projeto usa o framework Vite com saída em `dist` (ver `vercel.json`).
 
 ## Estrutura
 
-Resumo; o detalhamento de módulos e donos está em `PLAN.md` (Fase 1), `PLAN-FASE2.md` (Fase 2), `PLAN-FASE3.md` (Fase 3) e `PLAN-FASE4.md` (Fase 4).
+Resumo; o detalhamento de módulos e donos está em `PLAN.md` (Fase 1), `PLAN-FASE2.md` (Fase 2), `PLAN-FASE3.md` (Fase 3), `PLAN-FASE4.md` (Fase 4) e `PLAN-FASE5.md` (Fase 5).
 
 ```
 index.html          contrato de DOM (#stage, #game, #touch, #btn-*)
@@ -81,22 +95,29 @@ src/
     level1.ts       Fase 1 "Trilha dos Monólitos"
     level2.ts       Fase 2 "Coração da Amazônia"
     level4.ts       Fase 4 "Favela do Rio"
+    level5.ts       Fase 5 "Transportadora de São Paulo"
     objects.ts      moedas, plataformas, cipó-d'água, alien, caneca
     objects4.ts     filtro de barro e Amaro (Fase 4)
+    objects5.ts     bebedouro, movers e Renan Maia (Fase 5)
     enemies.ts      inimigos
     enemies4.ts     inimigos cariocas (Fase 4)
+    enemies5.ts     inimigos da transportadora (Fase 5)
     hud.ts          HUD e telas
   gfx/              paleta, sprites em grade de caracteres, atlas, fontes
     background.ts   parallax do sertão (Fase 1)
     background2.ts  parallax da Amazônia (Fase 2)
     background4.ts  parallax do Rio de Janeiro (Fase 4)
+    background5.ts  parallax de São Paulo (Fase 5)
     art/enemies2.ts sprites dos inimigos da Fase 2 (onça, jacaré, cobra, tucano)
     art/amazon.ts   tiles e decoração da Amazônia (Fase 2)
     art/amaro.ts    sprites do Amaro, garrafa de água mineral e Pardo bebendo (Fase 4)
     art/enemies4.ts sprites dos inimigos da Fase 4
     art/rio.ts      tiles, objetos e decoração do Rio (Fase 4)
+    art/maia.ts     sprites do Renan Maia, xícara de café e Pardo bebendo (Fase 5)
+    art/enemies5.ts sprites dos inimigos da Fase 5
+    art/sampa.ts    tiles, objetos e decoração da transportadora (Fase 5)
   audio/audio.ts    SFX e música chiptune via Web Audio
-scripts/            check-art.mjs, check-level.mjs, check-level2.mjs, check-level3.mjs, check-level4.mjs
+scripts/            check-art.mjs, check-level.mjs, check-level2.mjs, check-level3.mjs, check-level4.mjs, check-level5.mjs
 ```
 
 ## Sobre os recursos

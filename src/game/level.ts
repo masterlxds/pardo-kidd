@@ -15,6 +15,9 @@ import { createSeaEnemy } from './enemies3';
 import { createAirVent, createGoldfishSchool, createJandira, createRibbon, createStaffGoal } from './objects3';
 import { createRioEnemy } from './enemies4';
 import { createAmaroGoal, createClayFilter } from './objects4';
+import { LEVEL5_MOVERS, LEVEL5_ROWS } from './level5';
+import { createSampaEnemy } from './enemies5';
+import { createBebedouro, createMaiaGoal } from './objects5';
 
 type SpriteName = keyof typeof SPRITE_SPEC;
 
@@ -52,6 +55,12 @@ export interface LevelDef {
   tileSprites: Partial<Record<TileId, SpriteName>>;
   /** tiles com 2 variações (frame escolhido por hash da posição) */
   tileVariants: TileId[];
+  /**
+   * Opcional: nº de frames do sprite de Rock escolhido por SEQUÊNCIA horizontal contígua de Rock
+   * (hash da coluna inicial da sequência naquela linha), em vez do hash por célula. Num retângulo de
+   * Rock (baú de caminhão) todas as linhas começam na mesma coluna → cor uniforme. Sem isso: comportamento antigo.
+   */
+  rockRunFrames?: number;
   /** linha (tile) do chão da fase: topo máximo da sombra de abismo (padrão 11) */
   groundRow?: number;
   /** borda desenhada no topo de Rock exposto (sem sólido acima): [linha clara, linha de musgo] */
@@ -117,6 +126,20 @@ export function buildLevel(def: LevelDef): Level {
   const waterCol = new Uint8Array(cols);
   for (let x = 0; x < cols; x++) {
     for (let y = 0; y < rows; y++) if (original[y * cols + x] === Tile.Water) { waterCol[x] = 1; break; }
+  }
+
+  // frame de Rock por sequência horizontal contígua (Rock é indestrutível: calcula uma vez do original)
+  const rockRunFrames = def.rockRunFrames ?? 0;
+  const rockFrame = rockRunFrames > 0 ? new Uint8Array(cols * rows) : null;
+  if (rockFrame) {
+    for (let y = 0; y < rows; y++) {
+      let start = -1;
+      for (let x = 0; x < cols; x++) {
+        if (original[y * cols + x] !== Tile.Rock) { start = -1; continue; }
+        if (start < 0) start = x;
+        rockFrame[y * cols + x] = hash(start, 0) % rockRunFrames;
+      }
+    }
   }
 
   const groundRow = def.groundRow ?? 11;
@@ -235,7 +258,9 @@ export function buildLevel(def: LevelDef): Level {
           }
           const name = def.tileSprites[t];
           if (!name) continue;
-          const f = def.tileVariants.includes(t) ? hash(tx, ty) & 1 : 0;
+          const f = t === Tile.Rock && rockFrame
+            ? rockFrame[ty * cols + tx] ?? 0
+            : def.tileVariants.includes(t) ? hash(tx, ty) & 1 : 0;
           sp.draw(ctx, name, f, px, py);
           if (t === Tile.Rock && def.rockEdge && ty > 0 && !isSolid(tx, ty - 1)) {
             ctx.fillStyle = def.rockEdge[0];
@@ -433,6 +458,55 @@ export function createLevel4(): Level {
         case 'M':
           return createMovingPlatform(left, top, ch === 'm' ? 'x' : 'y', mover.range * TILE, mover.speed, 'platform_scaffold');
         case 'A': return createAmaroGoal(cx, top + TILE);
+        default: return null;
+      }
+    },
+  });
+}
+
+// ── Fase 5 — Transportadora de São Paulo (Hora do Café) ─────────────────────
+export function createLevel5(): Level {
+  return buildLevel({
+    index: 4,
+    name: 'TRANSPORTADORA DE SÃO PAULO',
+    theme: 'sampa',
+    rows: LEVEL5_ROWS,
+    movers: LEVEL5_MOVERS,
+    tileChars: {
+      '=': Tile.GroundTop, '#': Tile.Ground, 'R': Tile.Rock, '^': Tile.Spike,
+      'B': Tile.Block, '?': Tile.BlockItem, 'W': Tile.BlockItem, '-': Tile.OneWay,
+    },
+    dropBlockChars: 'W',
+    decor: {
+      t: 'truck_cab', w: 'truck_wheels', n: 'cone', s: 'dock_sign', f: 'forklift_sign', h: 'hand_truck',
+      o: 'oil_drum', G: 'guarita', q: 'time_clock', C: 'coffee_machine',
+    },
+    decorCentered: 'n',
+    tileSprites: {
+      [Tile.GroundTop]: 'tile_sp_top', [Tile.Ground]: 'tile_sp_ground', [Tile.Rock]: 'tile_sp_rock',
+      [Tile.Spike]: 'tile_sp_spike', [Tile.Block]: 'tile_sp_block', [Tile.BlockItem]: 'tile_sp_block_item',
+      [Tile.OneWay]: 'tile_sp_oneway',
+    },
+    // GroundTop/Ground: 2 variações por hash; Rock: cor do baú (branco/azul/laranja) uniforme por caminhão
+    tileVariants: [Tile.GroundTop, Tile.Ground],
+    rockRunFrames: 3,
+    terrainOutline: '#14161f',
+    // fosso de doca: concreto frio de madrugada
+    pitColors: ['#3b4157', '#252a3b', '#12141d'],
+    flagColors: ['#c9c1a9', '#ff9f1c'],
+    marker(ch, { left, top, cx, mover }) {
+      switch (ch) {
+        case 'c': return createCoin(left + 4, top + 4);
+        case 'r': return createSampaEnemy('rato', cx, top + TILE);
+        case 'g': return createSampaEnemy('carregador', cx, top + TILE);
+        case 'e': return createSampaEnemy('empilhadeira', cx, top + TILE);
+        case 'a': return createSampaEnemy('arremessador', cx, top + TILE);
+        case 'V': return createBebedouro(left, top + TILE - 32);
+        case 'd': return createCrumblePlatform(left, top, 'platform_crates');
+        case 'm':
+        case 'M':
+          return createMovingPlatform(left, top, ch === 'm' ? 'x' : 'y', mover.range * TILE, mover.speed, 'platform_dock');
+        case 'A': return createMaiaGoal(cx, top + TILE);
         default: return null;
       }
     },
