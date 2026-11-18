@@ -8,8 +8,7 @@ Os CONTRATOS já estão escritos pelo orquestrador e o projeto compila com stubs
 - Fim da Fase 3 (`Bahia World`) → tela de conclusão passa a oferecer `"ENTER OU TOQUE PARA A FASE 4"` (antes era "jogar novamente").
 - Cartão de intro: `"FASE 4"` + `FAVELA DO RIO` e subtítulo `"DO MORRO AO TRIBUNAL"`.
 - Fase terrestre (`level.underwater === false`), mesmo envelope de pulo das Fases 1 e 2 (`PHYS` em `constants.ts`: altura máx ≈ 3 tiles, alcance ≈ 4 tiles).
-- No final da fase (Ato 4, pátio do Tribunal diante da fachada `tribunal_facade` e ao lado do balde `mop_bucket`), **Amaro** (o faxineiro do tribunal, usando uniforme azul-petróleo e vassoura de piaçava) varre o chão (`amaro_sweep`).
-- Ao chegar perto (≤ 7 tiles), Amaro solta uma fala na HUD (`world.say('AMARO', 'OPA DOUTOR! PISOU NO CHÃO LIMPO? TOMA UMA ÁGUA MINERAL AÍ!', 4.0)` com sfx `'talk'` e retrato `amaro_face`).
+- No final da fase (Ato 4, pátio do Tribunal diante da fachada `tribunal_facade` e ao lado do balde `mop_bucket`), **Amaro** (o faxineiro do tribunal, usando uniforme azul-petróleo e vassoura de piaçava) varre o chão (`amaro_sweep`) em silêncio (personagem silencioso, sem caixa de diálogo).
 - Ao tocar no Amaro (`onTouchPlayer` → `world.win()`):
   - `game.win()` identifica o objetivo (`e.kind === 'amaro'`), posiciona o Pardo com `this.player.startDrink(cx + side * GOAL_STAND_OFF, 'mineral', side === -1 ? 1 : -1)` e toca `'win'`.
   - Na cena `'winning'`, Amaro toca `'deliver'` uma vez, exibe `amaro_give` e estende a `mineral_bottle` até o Pardo entrar em `drinkStage === 'sip'`/`'done'`, quando o Pardo bebe (`pardo_drink_mineral`) e solta partículas `sparkle` / `splash`.
@@ -28,7 +27,7 @@ Os CONTRATOS já estão escritos pelo orquestrador e o projeto compila com stubs
 
 ## 3. Objetos e NPC (OBJECTS, `src/game/objects4.ts`)
 - `createClayFilter(x, y)`: filtro de barro `clay_filter` (16x32), solta até 3 gotas (`createDrop`) ao ser socado (`onPunch`), com `fx('splash')`, depois muda para frame 1 (vazio).
-- `createAmaroGoal(centerX, footY)`: entidade `kind: 'amaro'`, hitbox 16x22 centrada em `centerX` com base em `footY`. Na cena `'playing'`, varre um trecho curto (`±8px` a `12px/s`) desenhando `amaro_sweep` (4 frames) com `flipX = true` e soltando `fx('dust')` leve; fala na HUD ao aproximar; na cena `'winning'`/`'win'` desenha `amaro_give` + `mineral_bottle` até o Pardo beber (`drinkStage === 'sip' || 'done'`), soltando `fx('sparkle')` enquanto o Pardo bebe.
+- `createAmaroGoal(centerX, footY)`: entidade `kind: 'amaro'`, hitbox 16x22 centrada em `centerX` com base em `footY`. Personagem silencioso (sem `world.say` nem `'talk'`). Na cena `'playing'`, varre um trecho curto (`±6px` a `10px/s`) desenhando `amaro_sweep` (4 frames) com `flipX = true` e soltando `fx('dust')` leve; na cena `'winning'`/`'win'` desenha `amaro_give` + `mineral_bottle` até o Pardo beber (`drinkStage === 'sip' || 'done'`), quando passa a `amaro_cheer` e solta `fx('sparkle')` enquanto o Pardo bebe.
 
 ## 4. Donos dos arquivos e Alocação de Modelos (Famílias Argon, Carbon, Hydrogen)
 | Módulo | Arquivos | Família | Modelo |

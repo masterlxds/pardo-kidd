@@ -84,4 +84,9 @@ export const PALETTE: Record<string, string> = {
   '(': '#56568c', // tijolo ardósia: luz
   ')': '#3d3c6a', // tijolo ardósia: tom médio
   '[': '#2d2c52', // tijolo ardósia: sombra
+  // ── extensão Fase 4 — pele negra retinta (traficante)
+  '{': '#5c3820', // pele escura
+  '}': '#40250f', // pele escura sombra
+  '<': '#7a4c2c', // pele escura brilho
+  '>': '#2e1a0b', // pele escura sombra profunda
 };
