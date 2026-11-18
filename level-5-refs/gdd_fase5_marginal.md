@@ -1,110 +1,151 @@
 # Game Design Document (GDD): *Fase 5 — Marginal de São Paulo (De Uber até o Galpão)*
 
-> **Documento Oficial de Design — Fase 5 (Autoscroller no Carro Preto da Uber)**  
-> Referência de lore, mecânica de autoscroller em alta velocidade sobre o teto do carro preto da Uber, física no referencial do veículo, bestiário de 1 golpe, estrutura em 4 atos, arte, parallax e trilha sonora estilo *Mega Man*.  
-> Execução multiagente: [`../PLAN-FASE5.md`](../PLAN-FASE5.md) e [`gdd_bestiario_fase5.md`](gdd_bestiario_fase5.md).
+> **Documento oficial de design — Fase 5, versão 2 (reescrita completa em 18/11/2026).**
+> Substitui o GDD anterior. A primeira versão era uma fase de plataforma comum (ônibus para escalar, passarelas, plataformas móveis, rotas altas) com rolagem automática por cima; não tinha a leitura nem o ritmo de um autoscroller. Esta versão parte do zero.
+> Documentos irmãos: [`gdd_bestiario_fase5.md`](gdd_bestiario_fase5.md) (carro, inimigos, obstáculos), [`level_design_fase5.md`](level_design_fase5.md) (partitura compasso a compasso) e [`../PLAN-FASE5.md`](../PLAN-FASE5.md) (execução multiagente).
 
 ---
 
-## 1. Premissa, Lore & Reordenação das Fases
+## 1. Premissa e lore
 
-Após matar a sede com a água mineral do faxineiro **Amaro** no pátio do Tribunal do Rio de Janeiro (**Fase 4 — "Favela do Rio"**), o Pardo precisa chegar a São Paulo antes do amanhecer para o turno da manhã na transportadora. Desembarcando na entrada da capital paulista em plena madrugada chuvosa/neon, ele chama uma corrida pelo aplicativo: um **carro sedã preto com o letreiro "UBER" estampado na porta e o motorista visível ao volante**.
+Depois da água mineral do **Amaro** no Rio (Fase 4), o Pardo desembarca em São Paulo de madrugada e precisa bater o ponto na transportadora ao amanhecer. Ele chama um carro pelo aplicativo: um **sedã preto com "UBER" na porta e o motorista visível ao volante**. O trânsito está parado, o motorista resolve cortar caminho "por onde der", e o Pardo vai **em pé no teto do carro**, abrindo passagem no soco.
 
-O trânsito da **Marginal Tietê, Minhocão e Viadutos de São Paulo**, porém, está completamente insano: bloqueios de obra da CET, viadutos em manutenção com vãos abertos sobre o Rio Tietê, ônibus engarrafados, motoboys do grau, drones de delivery rasantes, Faria Limers de patinete elétrico e pichadores nos pórticos. Sem tempo a perder, **Pardo sobe no teto do carro preto da Uber** e vai surfando em alta velocidade pela metrópole, desviando, pulando de viaduto em viaduto e socando tudo no caminho até o desembarque VIP 5 estrelas na portaria da **Transportadora de São Paulo**!
+A corrida atravessa quatro cartões-postais, do escuro ao amanhecer: **Marginal Tietê → Minhocão → Túnel → Ponte Estaiada**, e termina no desembarque 5 estrelas na portaria da **Transportadora de São Paulo** (Fase 6).
 
-### Ordem Oficial da Campanha (6 Fases + 1 Fase Bônus)
-1. **Fase 1 (`levelIndex = 0`)**: *"Trilha dos Monólitos"* (`theme: 'sertao'`)
-2. **Fase 2 (`levelIndex = 1`)**: *"Coração da Amazônia"* (`theme: 'amazonia'`)
-3. **Fase 3 (`levelIndex = 2`)**: *"Bahia World"* (`theme: 'bahia'`, subaquática) → *Fase Bônus: "Tubo do Bonfim"* (com `3/3` fitinhas)
-4. **Fase 4 (`levelIndex = 3`)**: *"Favela do Rio"* (`theme: 'rio'`)
-5. **Fase 5 (`levelIndex = 4`) — NOVA**: *"Marginal de São Paulo"* (`theme: 'uber'`, autoscroller em cima do carro preto da Uber, subtítulo `"DE UBER ATÉ O GALPÃO"`)
-6. **Fase 6 (`levelIndex = 5`) — MOVIDA**: *"Transportadora de São Paulo"* (`theme: 'sampa'`, subtítulo `"HORA DO CAFÉ"`, objetivo Renan Maia)
+- Cartão de intro: `FASE 5` · `MARGINAL DE SÃO PAULO` · subtítulo `DE UBER ATÉ O GALPÃO`.
+- `theme: 'uber'`, `autoscroll: true`, `levelIndex = 4`. `?fase=5` abre direto.
 
----
+## 2. Pilares de design
 
-## 2. Mecânica Core: Autoscroller em Cima do Carro Preto da Uber
+1. **Linear de verdade.** Uma pista só, sem rota alternativa, sem plataformas, sem nada para escalar. Tudo vem da direita em direção ao Pardo.
+2. **Três respostas, sempre legíveis.** Cada ameaça pede **PULE**, **SOQUE** ou **NÃO PULE**. O jogador decide pela silhueta e pela altura em que a coisa vem, nunca por tentativa e erro.
+3. **Todo inimigo morre com 1 soco.** Sem exceção, sem blindado, sem atordoamento.
+4. **Ritmo de música.** A fase é escrita em compassos: obstáculos e encontros caem nos tempos da trilha (150 BPM). A dificuldade sobe pela densidade, não pela velocidade.
+5. **Fecha só com pulo e soco.** O direcional é expressão e conforto; a fase inteira é vencível sem tocar nele.
 
-### 2.1. Inspirações Diretas
-* **Mega Man X4 — *Jet Stingray Stage***: corrida contínua em alta velocidade cortando viadutos urbanos sobre a água, com partículas/faíscas sob o veículo, inimigos motorizados e drones que entram pela tela e **morrem com 1 único golpe**, além de barreiras que podem ser destruídas no reflexo sem perder o embalo.
-* **Donkey Kong Country — *Mine Cart Carnage***: leitura rápida de vãos nos viadutos, saltos cronometrados a partir de um veículo em movimento constante, trilhos/passarelas elevadas opcionais ou obrigatórias, e obstáculos baixos/pórticos que exigem pular e aterrissar de volta no veículo.
+## 3. Referências e o que tiramos de cada uma
 
-### 2.2. Física no Referencial do Autoscroll (`level.autoscroll === true`)
-* **Velocidade do Autoscroll (`UBER_SPEED = 80 px/s`)**:
-  * Enquanto `camera.x < level.widthPx - VIEW_W - 1`, a câmera avança continuamente para a direita a `UBER_SPEED` (`80 px/s`, equivalentes a `5 tiles/s`).
-  * Quando a câmera atinge o Ato 4 (`camera.x >= level.widthPx - VIEW_W - 1`, zona pacífica de desembarque na portaria da Transportadora), o carro da Uber estaciona suavemente e `baseVx` passa a ser `0`.
-* **Movimento do Pardo (`src/game/player.ts`)**:
-  * O Pardo move-se sob velocidade de referência `baseVx = scrolling ? UBER_SPEED : 0`:
-    * Sem apertar `←` ou `→` (`dirIn === 0`), `player.vx` converge para `baseVx` (`80 px/s`). Ou seja, o Pardo permanece **estacionário em relação à câmera e firme sobre o teto do carro da Uber**!
-    * Apertando `→` (`dirIn = +1`), o Pardo acelera até `baseVx + PHYS.runMax` (`80 + 110 = 190 px/s`), avançando para a frente do carro e da tela.
-    * Apertando `←` (`dirIn = -1`), o Pardo reduz para `baseVx - PHYS.runMax` (`80 - 110 = -30 px/s`), recuando para a traseira do carro e para a esquerda da tela.
-    * **Momento preservado no pulo**: ao pular (`↑` / `W`), o Pardo conserva `baseVx` no ar! Se pular sem tocar nas setas, ele sobe e pousa **exatamente no mesmo ponto do teto do Uber**. Se pular segurando `→` ou `←`, salta para frente ou para trás em relação ao carro/tela.
-    * **Olhar e Soco (`facing`)**: quando o jogador solta o direcional (`dirIn === 0`) durante o autoscroll no chão, `facing` volta automaticamente para `+1` (olhando para a frente da corrida), permitindo socar inimigos que vêm pela frente com 1 toque. Segurar `←` permite olhar e socar para trás.
-* **O Carro Preto da Uber (`uber_car`, `64×24 px`, `platform: true`)**:
-  * O asfalto da pista principal da Marginal fica na **linha 11** (`y = 176..192`).
-  * Nas colunas onde há asfalto (`=` na linha 11), o carro da Uber roda na **linha 10**, com o **teto pisável exatamente em `y = 160` (`10 * TILE`)** e as rodas apoiadas no asfalto da linha 11 (`y = 184`).
-  * Horizontalmente, o carro acompanha suavemente a posição X do Pardo dentro da janela da câmera (`[camera.x + 8, camera.x + VIEW_W - 72]`), com um leve lag visual (`±12 px`) para que os pés do Pardo caminhem do porta-malas até o capô quando o jogador se move para trás ou para frente, mas mantendo a plataforma de `64 px` do teto sempre sob o Pardo enquanto houver asfalto na linha 11!
-  * **Comportamento nos Vãos do Viaduto (Buracos na linha 11)**:
-    * Quando a coluna sob o Pardo não tem asfalto na linha 11 (vão aberto entre viadutos sobre o Rio Tietê `~` ou fosso `.`), o carro da Uber mergulha pelo desvio/rampa inferior (`y` desce suavemente para `184 px` e `platform` desativa naquela coluna).
-    * Isso obriga o Pardo a **pular do teto do Uber** antes do vão (ou subir pelas passarelas `-` / tetos de ônibus `R`) e **pousar de volta no teto do Uber** quando o asfalto `=` reaparece do outro lado!
-  * **Comportamento sob Pórticos, Caixas e Ônibus**:
-    * Como o carro da Uber ocupa `y = 160..184` (linha 10), ele passa livremente por baixo de estruturas que ocupam as linhas `0..9` (`y <= 160`).
-    * Já o **Pardo em pé no teto do Uber** ocupa `y = 140..160` (linhas 8 e 9)! Assim:
-      * Caixas quebráveis (`B`, `?`, `W`) ou inimigos na **linha 9** batem de frente com o Pardo no teto do Uber — o Pardo deve **socá-los** ou **pular por cima**!
-      * Pórticos/ônibus (`R`) nas **linhas 8–9** exigem que o Pardo **pule do teto do Uber para cima do ônibus/passarela** (linha 7 ou 6), corra por cima e desça de volta para o teto do Uber adiante!
-* **Proteção e Esmagamento nas Bordas da Câmera**:
-  * **Borda direita**: o Pardo não ultrapassa `camera.x + VIEW_W - 8`.
-  * **Borda esquerda**: se o Pardo recuar até `camera.x + 6` com caminho livre à frente, a traseira do carro o mantém em `camera.x + 6` sem dano. Caso o Pardo fique preso atrás de uma parede sólida (`R` ou `B`) e seja espremido pela borda esquerda (`player.x < camera.x - 2`), ele sofre `1` de dano (`player.hurt`) e é impulsionado para cima/frente (`x = camera.x + 12`, `vy = -180`) para escapar do bloqueio.
+| Referência | O que entra | O que fica de fora |
+|---|---|---|
+| **Mega Man X4 — Jet Stingray** | Velocidade constante, ondas de inimigos de 1 golpe vindo de frente, barreiras destrutíveis no reflexo, liberdade de avançar/recuar na tela, cenário que muda de trecho em trecho, clímax com um veículo maior à frente | Tiro à distância e dash (o Pardo só tem o soco, curto) |
+| **Donkey Kong Country — Mine Cart** | Leitura de "pule agora" com antecedência, obstáculos altos que punem o pulo por reflexo, arcos de moedas desenhando a trajetória do pulo, saltos espetaculares sobre vãos, fase curta e memorizável | Morte com 1 toque e queda no abismo (aqui há 3 gotas e checkpoints) |
 
----
+## 4. Mecânica central
 
-## 3. Legenda do Mapa ASCII (`src/game/level5.ts`, `240×14`)
+### 4.1. Pardo e Uber são uma unidade
 
-* **Dimensões**: `240 colunas × 14 linhas` (`TILE = 16`, `3840 × 224 px`).
-* **Tiles**:
-  * `.` : vazio
-  * `=` : asfalto da Marginal com faixa reflexiva (`Tile.GroundTop`) — na linha 11 sustenta a rodagem do Uber (teto do Uber em `y = 160`, linha 10)
-  * `#` : concreto estrutural do viaduto (`Tile.Ground`)
-  * `R` : carroceria de ônibus/furgão ou pilar de viaduto indestrutível (`Tile.Rock`, 3 cores por sequência contígua: vermelho-SPTrans, azul-metrô e prata)
-  * `^` : barreira eletrificada / ferro retorcido de obra (`Tile.Spike`, letal)
-  * `~` : água poluída do Rio Tietê sob os vãos do viaduto (`Tile.Water`, letal com splash)
-  * `B` : barreira laranja da CET / caixote de obra (`Tile.Block`, quebrável com 1 soco)
-  * `?` : caixa de suprimento com moeda (`Tile.BlockItem`)
-  * `W` : caixa de suprimento com gota d'água (`Tile.BlockItem` em `dropBlockChars`)
-  * `-` : passarela metálica / viga suspensa de pórtico (`Tile.OneWay`)
-* **Marcadores de Entidades**:
-  * `P` : spawn inicial do Pardo (no teto do Uber, linha 9) + instancia o `uber_car`
-  * `K` : checkpoint (placa luminosa da Marginal; ao morrer e renascer num checkpoint, a câmera e o Uber reposicionam-se junto ao checkpoint!)
-  * `c` : moeda
-  * `m` / `M` : drone-plataforma móvel horizontal / vertical (`LEVEL5_MOVERS`)
-  * `d` : viga enferrujada bamba (`platform_beam`, cede após pisar)
-  * `V` : cooler térmico 5 estrelas (`cooler_uber`, solta até 3 gotas ao ser socado)
-  * `y` : **Motoboy do Grau** (`motoboy`, 1 soco, 300 pts)
-  * `u` : **Drone de Delivery** (`drone`, aéreo, 1 soco, 250 pts)
-  * `p` : **Faria Limer de Patinete** (`patinete`, salta ao aproximar, 1 soco, 200 pts)
-  * `z` : **Pichador do Viaduto** (`pichador`, no alto, arremessa `lata` socável; 1 soco, 350 pts)
-  * `A` : **Desembarque VIP 5 Estrelas** na entrada da Transportadora (`uber_goal`, objetivo da Fase 5)
-* **Decoração**:
-  * `b` : frente de ônibus/furgão (`bus_front [40, 48, 1]`, na linha 10 à direita de um bloco `R` nas linhas 7..9)
-  * `w` : rodas de ônibus/furgão (`bus_wheels [48, 16, 1]`, na linha 10 sob o bloco `R`)
-  * `s` : placa verde da Marginal (`marginal_sign [24, 24, 1]`)
-  * `r` : radar de velocidade `"60 KM/H"` (`speed_radar [16, 32, 1]`)
-  * `l` : poste curvo de luz da Marginal (`street_light [16, 48, 1]`)
-  * `n` : cone de trânsito da CET (`traffic_cone [8, 12, 1]`, centralizado)
+- O Pardo fica em pé no **teto do carro** (`uber_car`, 64×24). Horizontalmente os dois andam **juntos**: o carro está sempre centrado sob o Pardo, inclusive no ar. Pular e cair de volta no teto é garantido; não existe "cair do carro".
+- O carro é **invulnerável** e é só o chão do Pardo. Nada do cenário colide com o carro. Não há tiles sólidos acima da pista em lugar nenhum da fase: tudo o que ameaça o Pardo é entidade que **fere e atravessa**, nunca parede. Isso elimina esmagamento contra a borda da tela.
+- O Pardo olha sempre para a frente (`facing = +1` travado). Nada vem por trás.
 
----
+### 4.2. Rolagem e controle
 
-## 4. Estrutura em 4 Atos (`240 colunas`)
+| Parâmetro | Valor | Observação |
+|---|---|---|
+| Velocidade da rolagem (`UBER.speed`) | **120 px/s** = 7,5 colunas/s | Constante do início ao fim (antes era 80) |
+| Andamento da trilha | 150 BPM → 1 tempo = 0,4 s = **3 colunas** | 1 compasso (4 tempos) = 1,6 s = **12 colunas** |
+| Acelerar / frear (`→` / `←`) | ±40 px/s em relação à rolagem | Velocidade de aproximação fica entre 80 e 160 px/s |
+| Faixa do Pardo na tela | centro entre x = 48 e x = 176 | Posição neutra x = 72; sobram ≥ 144 px de visão à frente |
+| Pulo | mesmo envelope das outras fases (`PHYS`) | Ápice 50 px, 0,67 s no ar = 5 colunas na posição neutra |
+| Soco | mesmo soco das outras fases | Alcance 18 px à frente, ativo por 0,10 s, total 0,22 s |
+| Câmera Y | travada | Mapa de 12 linhas (192 px), `camera.y = 12` |
 
-1. **Ato 1 — Entrada da Marginal Tietê (colunas `0–59`)**:
-   * Pista contínua para o jogador sentir o controle em cima do carro preto da Uber (mover para frente/trás, pular e socar mantendo a velocidade).
-   * Primeiras barreiras da CET (`B?B`) na linha 9 para quebrar no soco, 1º Faria Limer de patinete (`p`), 1º Drone de delivery (`u`), primeiro ônibus engarrafado (`R` com `w` e `b`) para pular do teto do Uber para o teto do ônibus, cooler térmico `V1` e checkpoint `K1`.
-2. **Ato 2 — Viadutos do Tietê & Obras da CET (colunas `60–124`)**:
-   * Primeiros **vãos abertos no viaduto** (2–3 tiles com água do Rio Tietê `~` nas linhas 12–13), exigindo saltar do teto do Uber por cima da água e pousar de volta no Uber do outro lado.
-   * Estreia do **Motoboy do Grau** (`y`) dando corte de giro e do **Pichador do Viaduto** (`z`) no alto das passarelas/ônibus atirando latas de spray.
-   * Rota alta por passarelas metálicas (`-`) e vigas bambas (`d`) com segredos `?W`, checkpoints `K2` e `K3`, e cooler `V2`.
-3. **Ato 3 — Minhocão & Hora do Rush (colunas `125–207`)**:
-   * Sequência intensa inspirada em *Jet Stingray* + *Mine Cart Carnage*: ônibus duplos, vãos cruzados por drones-plataforma (`m`/`M`), formação de drones (`u`) + motoboys (`y`) + patinetes (`p`) — todos caindo com 1 golpe certeiro!
-   * Paredes de barreiras `B` que o Pardo estoura no soco em alta velocidade, checkpoints `K4` e `K5`, e cooler `V3`.
-4. **Ato 4 — Desembarque na Transportadora (colunas `208–239`, 100% pacífico)**:
-   * O autoscroll desacelera e estaciona na rampa iluminada de entrada da Transportadora de São Paulo.
-   * Cooler `V4`, placas e cones da portaria, e o totem/recepção **`A` (Desembarque Uber 5 Estrelas)** onde o Pardo recebe a água de cortesia 5 estrelas antes de entrar na Transportadora (Fase 6)!
+Sem direcional, o Pardo fica parado na tela e o mundo passa a 120 px/s. `→` aproxima do perigo (mais pontos de moeda, menos tempo de reação), `←` compra tempo.
+
+### 4.3. As duas faixas de altura
+
+Com a pista na linha 10 e o teto do Uber em `y = 144`:
+
+| Faixa | Linha · y | Quem acerta | Resposta |
+|---|---|---|---|
+| **ALTA** | linha 5 · 80–96 | Só o Pardo que pulou (cabeça entra aqui com pulo > 28 px) | **NÃO PULE** (ou soco no ar, se for inimigo) |
+| livre | linha 6–7 · 96–128 | Ninguém | Arcos de moedas |
+| **BAIXA** | linha 8 · 128–144 | O Pardo em pé (hitbox 124–144) | **PULE** se for obstáculo, **SOQUE** se for inimigo ou barreira |
+
+Regras que derivam do envelope de pulo (contrato para o level design, verificadas pelo validador):
+
+- Obstáculo de pular tem **1 tile de altura** e no máximo **2 colunas** de largura. Na posição neutra, o de 1 coluna aceita decolagem numa janela de 0,33 s; o de 2 colunas, 0,20 s.
+- Nunca há obstáculo de pular e obstáculo alto na mesma coluna. O pulo mínimo (toque curto, ≈ 16 px) não passa com folga entre os dois.
+- Coisa na faixa baixa embaixo de coisa na faixa alta só pode ser algo que morre no soco. É o padrão **"soco obrigatório"**.
+
+### 4.4. Janela do soco
+
+O soco acerta se o alvo entrar nos 18 px à frente do Pardo durante os 0,10 s ativos. A janela para apertar o botão vale aproximadamente `18 / v + 0,10` s, onde `v` é a velocidade de aproximação:
+
+| Alvo | Aproximação (neutro) | Janela | No pior caso (acelerando) |
+|---|---|---|---|
+| Barreira, pichador (parados no mundo) | 120 px/s | 0,25 s | 0,21 s |
+| Patinete (anda no mesmo sentido, devagar) | 80 px/s | 0,33 s | 0,25 s |
+| Drone em rasante, motoboy | 180 px/s | 0,20 s | 0,18 s |
+| Motoboy rápido, caixa arremessada | 220 px/s | 0,18 s | 0,17 s |
+
+Piso de contrato: **nenhuma janela abaixo de 0,15 s (9 quadros)**.
+
+### 4.5. Dano, cura e morte
+
+- Tocar em obstáculo ou inimigo: **−1 gota** (de 3), sem empurrão horizontal, com um pequeno tranco vertical e **1,0 s** de invulnerabilidade (nas outras fases são 1,5 s; aqui 1,5 s deixaria atravessar um compasso e meio de graça).
+- **Isopor do ambulante** (`W`): socar dá **+1 gota** na hora. Não fere se errar.
+- 0 gotas: perde uma vida e volta ao último checkpoint.
+- **Checkpoints por passagem** (`K`): contam ao cruzar a coluna, sem precisar tocar em nada. O compasso do checkpoint é sempre vazio de ameaças, então o renascimento começa com 1,6 s de fôlego.
+- Não há abismo nem tile letal. A única forma de morrer é ficar sem gotas.
+
+### 4.6. Saltos de rampa
+
+Três vezes na fase a pista acaba numa rampa de obra e o Uber **voa um compasso inteiro** (12 colunas, 1,6 s) sobre o vão, num arco de 40 px de altura, com o Pardo no teto. É automático: é o momento de espetáculo e de respiro, com um grande arco de moedas para pegar pulando e nenhuma ameaça. Cada rampa marca a troca de cenário.
+
+### 4.7. Avaliação da corrida
+
+A corrida começa com **5 estrelas**; cada gota perdida tira uma (mínimo 1). Na tela de vitória aparece `AVALIAÇÃO DA CORRIDA ★★★★☆` e o bônus é `500 × estrelas`. Dá motivo para rejogar uma fase que dura menos de 2 minutos.
+
+## 5. Vocabulário da fase
+
+Detalhes de sprite, hitbox e comportamento em [`gdd_bestiario_fase5.md`](gdd_bestiario_fase5.md).
+
+| Resposta | Elemento | Estreia |
+|---|---|---|
+| **PULE** | Limitador de altura (barra zebrada "2,0 m", 1 coluna) | Intro |
+| **PULE** | Faixa de obra (2 colunas) | Ato 2 |
+| **NÃO PULE** | Placa de pórtico (3 colunas) | Ato 1 |
+| **NÃO PULE** | Luminária de túnel (1 coluna, em série) | Ato 3 |
+| **SOQUE** (ou pule) | Barreira laranja da CET | Ato 1 |
+| **SOQUE** (ou pule) | Motoboy do grau; depois o motoboy rápido | Ato 1 · Ato 3 |
+| **SOQUE** em sequência | Fila de Faria Limers de patinete | Ato 2 |
+| **SOQUE** (em pé no rasante, ou no ar antes dele) | Drone de delivery | Ato 1 |
+| **PULE + SOQUE** | Pichador de rapel | Ato 2 |
+| **SOQUE** / **NÃO PULE** | Caixas do caminhão-baú (baixas e altas) | Ato 4 |
+
+## 6. Estrutura
+
+74 compassos = 888 colunas = **1 min 58 s** de rolagem. Frases de 4 compassos: três de ação e um de respiro com moedas. A partitura completa está em [`level_design_fase5.md`](level_design_fase5.md).
+
+| Trecho | Compassos | Cenário | O que ensina / cobra | Densidade |
+|---|---|---|---|---|
+| Embarque | 1–4 | Acostamento da Marginal, noite | Andar, primeiro pulo com placa de tutorial | — |
+| **Ato 1 — Marginal Tietê** | 5–20 | Rio e marginais à noite, neon | Um verbo por vez: pular, socar, não pular. Estreia motoboy e drone | 1 decisão por compasso |
+| Rampa 1 + checkpoint 1 | 21–22 | Subida para o elevado | Respiro | — |
+| **Ato 2 — Minhocão** | 23–38 | Elevado entre prédios, janelas acesas | Combinações de dois verbos. Estreia patinete, pichador e soco obrigatório | 2 por compasso |
+| Rampa 2 + checkpoint 2 | 39–40 | Salto do fim do elevado para a boca do túnel | Respiro | — |
+| **Ato 3 — Túnel** | 41–56 | Túnel com luminárias em série | Trechos longos sem poder pular: soco no tempo da música. Estreia motoboy rápido | até 3 por compasso |
+| Checkpoint 3 | 57–58 | Saída do túnel, amanhecendo | Respiro + isopor | — |
+| **Ato 4 — Ponte Estaiada** | 59–70 | Ponte ao amanhecer, caminhão-baú da transportadora à frente | Tudo misturado, mais as caixas arremessadas | até 3 por compasso |
+| Rampa 3 + desembarque | 71–74 | Salto final e portaria da Transportadora | Pacífico; totem `UBER 5★` | — |
+
+O **caminhão-baú** do Ato 4 é o clímax no lugar de um chefe: fica preso à direita da tela por 8 compassos, com a porta traseira aberta, perdendo caixas no ritmo. Não tem vida nem é derrotado; no fim pega a saída `TRANSPORTADORA →`, que é para onde o Pardo vai na Fase 6.
+
+## 7. Direção de arte, cenário e som
+
+- **Parallax em quatro trechos** (`background5.ts`), trocando nas rampas: (1) Marginal à noite com o Tietê refletindo neon; (2) Minhocão com prédios colados e grafites; (3) túnel de azulejos com faixa de luz correndo; (4) Ponte Estaiada com o céu virando laranja. A passagem do escuro para o amanhecer é o relógio da fase.
+- **Leitura acima de tudo.** Obstáculo de pular é sempre **zebrado amarelo e preto**; coisa alta que pune pulo é sempre **verde de placa** ou **luz branca**; tudo o que morre no soco tem **contorno claro e algo laranja ou vermelho**. Três famílias de cor, uma por resposta.
+- **Sensação de velocidade:** faixas da pista e postes correndo, poeira e faísca nas rodas, cone de luz dos faróis, linhas de vento nas camadas de primeiro plano.
+- **Trilha `'uber'`:** chiptune rock a **150 BPM em 4/4**, frases de 4 compassos. O andamento é contrato do level design. Ao renascer num checkpoint a música recomeça do início de uma frase.
+- **SFX:** `rev` (motoboy entrando na tela), `beep` (drone travando a mira), `horn` (caminhão-baú e chegada), `crate` (caixa socada), `break` (barreira).
+
+## 8. Final da fase
+
+No compasso 72 a rolagem desacelera até parar na portaria. O Pardo toca o totem `UBER 5★` (`uber_goal`), buzina dupla, bebe a água de cortesia. Tela `FASE 5 CONCLUÍDA!`: carro, Pardo bebendo, contadores, **avaliação em estrelas**, frase `O PARDO CHEGOU DE UBER` e `ENTER OU TOQUE PARA A FASE 6`.
+
+## 9. Fora de escopo
+
+Chefe com barra de vida, troca de pista em profundidade, tiro, queda em abismo, rotas alternativas, plataformas móveis, coolers e blocos `?`. Tudo isso existia ou foi cogitado na versão anterior e sai de propósito.
+
+**Decisão registrada (18/11/2026): o carro fica preso à pista.** Foi avaliado o veículo livre no plano 2D, como o Tornado em *Sky Chase Zone* (Sonic 2), e descartado: com movimento vertical livre o soco de 18 px e o pulo perdem função, o Uber teria de voar e os encontros deixam de cair no tempo da música. Do Sky Chase fica só a ideia de personagem e veículo andarem como uma unidade (§4.1) e o espetáculo dos saltos de rampa (§4.6).

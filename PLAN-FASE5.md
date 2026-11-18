@@ -1,97 +1,96 @@
-# PLAN-FASE5.md — Fase 5 "Marginal de São Paulo" (Autoscroller no Uber) & Fase 6 "Transportadora"
+# PLAN-FASE5.md — Fase 5 "Marginal de São Paulo" (autoscroller no Uber), versão 2
 
-Leia também: [`level-5-refs/gdd_fase5_marginal.md`](level-5-refs/gdd_fase5_marginal.md) (GDD completo da fase e física do autoscroller), [`level-5-refs/gdd_bestiario_fase5.md`](level-5-refs/gdd_bestiario_fase5.md) (carro preto da Uber com motorista visível e bestiário de 1 golpe), `PLAN-FASE6.md` e `PLAN-BONUS.md`.
+Leia antes: [`level-5-refs/gdd_fase5_marginal.md`](level-5-refs/gdd_fase5_marginal.md) (GDD), [`level-5-refs/gdd_bestiario_fase5.md`](level-5-refs/gdd_bestiario_fase5.md) (carro, inimigos, obstáculos) e [`level-5-refs/level_design_fase5.md`](level-5-refs/level_design_fase5.md) (grade, regras e partitura). A Fase 6 segue em `PLAN-FASE6.md`.
 
-**Status: plano aprovado para execução autônoma pelo ORQUESTRADOR com subagentes.**
+**Status (18/11/2026): design escrito, aguardando aprovação; execução ainda não iniciada.** Branch `fase5-uber-rework`.
 
-## 0. Etapas de Execução
+## 0. Por que refazer
 
-1. **Etapa 0 (concluída):** Criação da branch `feat/fase-uber-autoscroller`, GDD (`level-5-refs/gdd_fase5_marginal.md`), bestiário (`level-5-refs/gdd_bestiario_fase5.md`) e este plano (`PLAN-FASE5.md`).
-2. **Etapa 1 — ORQUESTRADOR escreve os contratos e stubs** (sozinho, antes de paralelizar) até `npm run typecheck` passar sem erros.
-3. **Etapa 2 — 9 subagentes em paralelo**, cada um dono exclusivo dos seus arquivos (§6).
-4. **Etapa 3 — ORQUESTRADOR faz QA completo e abre o PR:** `npm run typecheck`, `node scripts/check-art.mjs` (+ inspeção dos PNGs de preview), `node scripts/check-level.mjs` … `check-level6.mjs`, `node scripts/check-bonus.mjs`, `npm run build`, commit e criação do Pull Request para a `main`.
+A primeira versão era uma fase de plataforma (ônibus para escalar, passarelas, plataformas móveis, rota alta, coolers, blocos `?`) com rolagem a 80 px/s por cima. A versão 2 é um autoscroller linear: pista única a 120 px/s, tudo vem de frente, três respostas (pule, soque, não pule), inimigos de 1 soco com posição em função da câmera e mapa escrito em compassos da trilha (150 BPM, 12 colunas por compasso).
 
-## 1. Contratos (Etapa 1 — ORQUESTRADOR)
+**O que se aproveita:** a infraestrutura de `Level.autoscroll`, o tema `'uber'`, os sprites `uber_car` e `uber_goal` (se passarem na revisão de arte), a faixa `'uber'` (ajustada para 150 BPM exatos) e os SFX `rev` e `horn`.
+**O que é reescrito por inteiro:** `level5.ts`, `check-level5.mjs`, `enemies5.ts`, `objects5.ts`, `art/enemies5.ts`, quase todo `art/uber.ts`, `background5.ts` e o trecho de autoscroll de `player.ts`/`game.ts`.
 
-- **`src/core/types.ts`**:
-  - `LevelTheme` += `'uber'`.
-  - `SfxName` += `'rev' | 'horn'`.
-  - `EnemyKind` += `'motoboy' | 'drone' | 'patinete' | 'pichador'`.
-  - `Level` += `readonly autoscroll?: boolean;`.
-- **`src/core/constants.ts`**:
-  - `export const UBER_SPEED = 80;` (velocidade horizontal do autoscroller da Fase 5 em px/s).
-- **`src/gfx/spec.ts`**, seção `FASE 5 — MARGINAL DE SÃO PAULO (AUTOSCROLLER NO UBER)`:
-  - Carro da Uber & Objetivo (`src/gfx/art/uber.ts`):
-    - `uber_car: [64, 24, 2]` — carro sedã preto com escrito `"UBER"` em branco na porta, motorista visível pela janela ao volante, rodas girando e faróis acesos.
-    - `uber_goal: [32, 40, 2]` — totem/placa luminosa `"UBER 5★"` de desembarque na portaria da Transportadora.
-  - Inimigos do Bestiário (`src/gfx/art/enemies5.ts`) — todos de 1 golpe:
-    - `motoboy: [28, 22, 2]`, `motoboy_wheelie: [28, 24, 1]`
-    - `drone: [20, 16, 2]`, `drone_dive: [20, 16, 1]`
-    - `patinete: [20, 24, 2]`, `patinete_jump: [20, 24, 1]`
-    - `pichador: [20, 24, 2]`, `pichador_throw: [22, 24, 2]`, `lata: [8, 8, 2]`
-  - Mundo & Decoração da Marginal (`src/gfx/art/uber.ts`):
-    - Tiles: `tile_ub_top: [16, 16, 2]`, `tile_ub_ground: [16, 16, 2]`, `tile_ub_rock: [16, 16, 3]`, `tile_ub_spike: [16, 16, 1]`, `tile_ub_block: [16, 16, 1]`, `tile_ub_block_item: [16, 16, 1]`, `tile_ub_oneway: [16, 16, 1]`.
-    - Objetos: `cooler_uber: [16, 32, 2]`, `platform_drone: [32, 10, 1]`, `platform_beam: [32, 10, 2]`.
-    - Decoração: `bus_front: [40, 48, 1]`, `bus_wheels: [48, 16, 1]`, `marginal_sign: [24, 24, 1]`, `speed_radar: [16, 32, 1]`, `street_light: [16, 48, 1]`, `traffic_cone: [8, 12, 1]`.
-- **`src/gfx/atlas.ts` e `scripts/check-art.mjs`**: importar e espalhar `UBER` (`src/gfx/art/uber.ts`) e `ENEMIES5` (`src/gfx/art/enemies5.ts`).
-- **Stubs compiláveis**: `src/gfx/art/uber.ts`, `src/gfx/art/enemies5.ts`, `src/gfx/background5.ts`, `src/game/enemies5.ts`, `src/game/objects5.ts`, e `src/game/level5.ts` com cabeçalho + legenda (contrato).
+## 1. Etapas
 
-## 2. Reordenação, Narrativa e Mecânica do Autoscroller (CORE + HUD)
-
-- **Ordem em `src/game/levels.ts`**:
-  - `LEVELS = [createLevel1, createLevel2, createLevel3, createLevel4, createLevel5, createLevel6]` (`LEVEL_COUNT = 6`).
-  - `createLevel5` (`index: 4`, Fase 5): `"MARGINAL DE SÃO PAULO"`, `theme: 'uber'`, `autoscroll: true`.
-  - `createLevel6` (`index: 5`, Fase 6): `"TRANSPORTADORA DE SÃO PAULO"`, `theme: 'sampa'`.
-- **Física do Autoscroller (`game.ts` + `player.ts` + `objects5.ts`)**:
-  - Em `level.autoscroll`:
-    - A câmera avança a `UBER_SPEED` (`80 px/s`) enquanto `camera.x < level.widthPx - VIEW_W - 1`. Ao morrer e renascer em um checkpoint `K`, `snapCamera()` posiciona `camera.x = clamp(player.x - 72, 0, level.widthPx - VIEW_W)`.
-    - O Pardo move-se em relação à velocidade-base `baseVx = scrolling ? UBER_SPEED : 0` (`target = baseVx + dirIn * PHYS.runMax`), preservando `baseVx` nos pulos para pousar perfeitamente de volta no teto do Uber, e limitando `player.x` às margens da câmera (`camera.x + 6` a `camera.x + VIEW_W - 8 - player.w`), com dano/ejeção anti-esmagamento se bloqueado por parede sólida contra a borda esquerda.
-    - O carro preto da Uber (`createUberCar`) acompanha o Pardo na linha 10 com teto pisável `platform: true` em `y = 10 * TILE` (`160 px`) onde há asfalto (`Tile.GroundTop`) na linha 11, e mergulha pela rampa inferior (`platform: false`) nos vãos de viaduto sem asfalto na linha 11.
-- **Telas de Intro e Vitória (`hud.ts`)**:
-  - `drawTitle`: atalho de modo teste aceita `?fase=2` a `?fase=6` (e `?fase=bonus`).
-  - `drawIntro`: tema `'uber'` (painel noturno azul-asfalto/neon com subtítulo `"DE UBER ATÉ O GALPÃO"`).
-  - `drawWin`:
-    - `idx === 4` (Fase 5 — Marginal de São Paulo): exibe o carro preto da Uber (`uber_car`), Pardo bebendo a água de cortesia (`pardo_drink_mineral`) e `mineral_bottle`, contadores, frase **"O PARDO CHEGOU DE UBER"** / **"5 ESTRELAS NA TRANSPORTADORA"** e `"ENTER OU TOQUE PARA A FASE 6"`.
-    - `idx === 5` (Fase 6 — Transportadora de São Paulo): exibe `FASE 6 CONCLUÍDA!`, Renan Maia (`maia_cheer`), Pardo bebendo café (`pardo_drink_coffee`), `"O PARDO TOMOU O CAFÉ NA TRANSPORTADORA"` e `"ENTER OU TOQUE PARA JOGAR NOVAMENTE"`.
-
-## 3. Inimigos (ENEMY-UBER, `src/game/enemies5.ts`) — Todos com 1 Golpe!
-
-| Inimigo | Hitbox · pts | IA | Soco |
+| Etapa | Quem | O quê | Pronto quando |
 |---|---|---|---|
-| `motoboy` | 22×18 · 300 | Patrulha ~36 px/s; a ≤ 8 tiles empina a moto por 0,32 s (`rev`, `motoboy_wheelie`) e arranca a ~95 px/s por 0,85 s. | **1** |
-| `drone` | 16×12 · 250 | Flutua em senoide ±5 px; a ≤ 6,5 tiles telegrafa 0,35 s (`drone_dive`) e faz rasante diagonal (~80 px/s) até a altura do Pardo. | **1** |
-| `patinete` | 14×20 · 200 | Desliza a ~45 px/s; a ≤ 5 tiles salta com o patinete (`vy = -215`, `boing`, `patinete_jump`). | **1** |
-| `pichador` | 12×20 · 350 | Parado no alto; a ≤ 8,5 tiles espera 1,4 s → aviso 0,4 s → atira `lata` 8×8 em arco (`vx = 95`, `vy = -170`, `g = 480`; `throw`). Lata: 1 de dano, socável (+10 pts). | **1** |
+| **0** (feita) | Agente Sonnet + orquestrador | Branch, renomeação Uber → 5 e Transportadora → 6 (commit `e5b6939`), GDD, bestiário, level design e este plano | Docs no repositório |
+| **1** | **Orquestrador, sozinho** | Contratos e stubs (§2) | `npm run typecheck` e `npm run check:art` passam com stubs |
+| **2** | **9 agentes em paralelo** | Um módulo cada, com arquivos exclusivos (§3) | Cada um entrega com o próprio critério de aceite |
+| **3** | Orquestrador + 1 agente revisor | Integração, QA e ajuste fino (§5) | Critérios da §6 |
 
-## 4. Objetos e Carro da Uber (OBJECTS-UBER, `src/game/objects5.ts`)
+A Etapa 2 só começa com a Etapa 1 commitada: os contratos são o que permite nove agentes trabalharem sem se pisar.
 
-- `createUberCar(spawnX, roadTopY)`: entidade `uber_car` (`64×24`, `platform: true`, `dx: 0, dy: 0`), farol projetado à frente, faíscas ocasionais e acompanhamento do Pardo no autoscroll.
-- `createCoolerUber(x, y)`: molde do `createBebedouro` (até 3 gotas a socos, frame 1 = vazio).
-- `createUberGoal(centerX, footY)`: objetivo `kind: 'uber_goal'` (`32×40`), toca `'horn'` ao vencer e brilha no desembarque.
+## 2. Contratos (Etapa 1 — orquestrador)
 
-## 5. Level Design (LEVEL-UBER, `src/game/level5.ts` + `scripts/check-level5.mjs`)
+- **`src/core/constants.ts`**: troca `UBER_SPEED` pelo bloco
+  `UBER = { speed: 120, steer: 40, screenMin: 48, screenMax: 176, screenNeutral: 72, roofY: 144, camY: 12, invuln: 1.0, bpm: 150, barCols: 12, rampCols: 12, rampHeight: 40 }`.
+- **`src/core/types.ts`**: `GameState += rideHits: number` (gotas perdidas na fase, para as estrelas); `SfxName` mantém `rev`/`horn` e reutiliza `beep`, `crate`, `break`, `water`; `EnemyKind` mantém `'motoboy' | 'drone' | 'patinete' | 'pichador'`. O dano continua em `onTouchPlayer`.
+- **`src/gfx/spec.ts`**, seção FASE 5: remove os sprites listados no §6 do bestiário e declara os novos: `motoboy`, `motoboy_fast`, `patinete`, `drone`, `drone_dive`, `pichador_rapel`, `spray_cloud`, `caixa`, `obst_limitador`, `obst_faixa`, `obst_placa`, `portico_post`, `obst_luminaria`, `barreira_cet`, `isopor_agua`, `rampa_obra`, `truck_bau`, `tutorial_sign`, mais `uber_car`, `uber_goal`, `tile_ub_top`, `tile_ub_ground` e a decoração que fica. Tamanhos no bestiário.
+- **`src/game/level5.ts`**: cabeçalho, `LEVEL5_LEGEND` (legenda do §2 do level design), `LEVEL5_BARS` com 74 compassos vazios válidos e `LEVEL5_ROWS` derivado. Sai `LEVEL5_MOVERS`.
+- **Assinaturas** (stubs compiláveis): `createUberEnemy(kind, encontroX, variante?)`, `createCaixa(encontroX, alta)`, `createObstaculo(tipo, x)`, `createBarreira(x)`, `createIsopor(x)`, `createRampa(x)`, `createTruckBau(x)`, `createUberCar(x)`, `createUberGoal(x, footY)`; função pura compartilhada `uberEnemyX(encontroX, vPropria, cameraX)` e `rampOffset(x, level)` em `objects5.ts`, usadas pelo jogo e portadas pelo validador.
 
-- Mapa ASCII `240×14` em 4 atos (Entrada da Marginal → Viadutos do Tietê → Minhocão & Hora do Rush → Desembarque na Transportadora).
-- Validador `scripts/check-level5.mjs` (e `scripts/check-level6.mjs` para a Fase 6): valida dimensões, legenda, contagens mínimas, ônibus/furgões (`R` + `w` + `b`), vãos com água do Tietê (`~`), distâncias seguras de spawn/checkpoints, zona pacífica de desembarque e simulação de alcançabilidade do Pardo com o teto do Uber em `y = 160` nas colunas com asfalto `=` na linha 11.
+## 3. Delegações (Etapa 2)
 
-## 6. Donos Exclusivos dos Arquivos (Etapa 2)
+Cada agente recebe: este plano, os três documentos de `level-5-refs/`, `AGENTS.md` e a lista dos seus arquivos. Ninguém edita arquivo de outro dono; o que faltar em contrato vai no relatório final, não no código alheio.
 
-| Módulo | Arquivos (dono exclusivo) | Responsabilidade |
-|---|---|---|
-| **ORQUESTRADOR** | `src/core/types.ts`, `src/core/constants.ts`, `src/gfx/spec.ts`, `src/gfx/atlas.ts`, `scripts/check-art.mjs`, QA final e PR | Contratos, stubs compiláveis, validação integrada, build e PR |
-| **ART-UBER** | `src/gfx/art/uber.ts` | Carro preto `uber_car` (escrito UBER + motorista visível), `uber_goal`, 7 tiles, 3 objetos e 6 decorações em 2× |
-| **ART-ENEMIES-UBER** | `src/gfx/art/enemies5.ts` | 9 sprites em 2× do bestiário (`motoboy*`, `drone*`, `patinete*`, `pichador*`, `lata`) |
-| **CORE** | `src/game/game.ts`, `src/game/player.ts`, `src/game/level.ts`, `src/game/levels.ts` | Física de `level.autoscroll`, câmera autoscroll, `createLevel5` (Fase 5) + `createLevel6` (Fase 6), vitória `'uber_goal'` |
-| **LEVEL-UBER** | `src/game/level5.ts`, `scripts/check-level5.mjs`, `scripts/check-level6.mjs` | Mapa 240×14 da Marginal + validadores de alcançabilidade |
-| **ENEMY-UBER** | `src/game/enemies5.ts` | 4 inimigos de 1 golpe (`motoboy`, `drone`, `patinete`, `pichador` + `lata`) |
-| **OBJECTS-UBER** | `src/game/objects5.ts` | `createUberCar`, `createCoolerUber`, `createUberGoal` |
-| **BG-UBER** | `src/gfx/background5.ts` | Parallax noturno de alta velocidade da Marginal Tietê / Ponte Estaiada / Minhocão |
-| **AUDIO** | `src/audio/audio.ts` | Faixa `'uber'` estilo *Mega Man / Mega Man X* (150 BPM, rock chiptune com baixo em galope e twin leads) + SFX `'rev'` e `'horn'` |
-| **HUD-DOCS** | `src/game/hud.ts`, `README.md`, `AGENTS.md` | Cartão de intro `'uber'`, `drawWin` para Fase 5 (Uber) e Fase 6 (Transportadora), docs atualizados |
+| Módulo | Arquivos (dono exclusivo) | Modelo | Por que esse modelo |
+|---|---|---|---|
+| **CORE** | `src/game/player.ts`, `src/game/game.ts`, `src/game/level.ts`, `src/game/levels.ts` | Opus 5.5 | Mexe em código compartilhado por todas as fases; precisa preservar as outras cinco |
+| **LEVEL** | `src/game/level5.ts`, `scripts/check-level5.mjs` | Fable 5.2 | É o coração do redesenho: ritmo, justiça e um validador novo com bot |
+| **ENEMY** | `src/game/enemies5.ts` | Opus 5.5 | Lógica pequena, mas os tempos são contrato |
+| **OBJECTS** | `src/game/objects5.ts` | Opus 5.5 | Carro, rampa e caminhão-baú interagem com o CORE |
+| **ART-ENEMIES** | `src/gfx/art/enemies5.ts` | Opus 5.5 | A arte anterior foi um dos pontos fracos |
+| **ART-UBER** | `src/gfx/art/uber.ts` | Opus 5.5 | Idem; define a leitura por cor dos obstáculos |
+| **BG** | `src/gfx/background5.ts` | Opus 5.5 | Quatro cenários e a sensação de velocidade |
+| **AUDIO** | `src/audio/audio.ts` | Sonnet 5.5 | Ajuste de andamento e pouco SFX |
+| **HUD-DOCS** | `src/game/hud.ts`, `README.md`, `AGENTS.md` | Sonnet 5.5 | Mudanças mecânicas e bem delimitadas |
 
-## 7. Critérios de Aceite
+### 3.1. Briefing por agente
 
-- `npm run typecheck` e `npm run build` sem erros.
-- `node scripts/check-art.mjs` → `"arte OK"`, sem sprites ausentes nem erros, e `uber_car` claramente preto, escrito `UBER` em branco e com o motorista visível na janela.
-- `node scripts/check-level.mjs`, `check-level2.mjs`, `check-level3.mjs`, `check-level4.mjs`, `check-level5.mjs`, `check-level6.mjs`, `check-level6.mjs` e `check-bonus.mjs` todos passando.
-- Todos os inimigos da Fase 5 morrem com apenas 1 golpe; trilha sonora inspirada em Mega Man tocando na Fase 5; Fase 5 precede a Fase 6 (Transportadora); Pull Request aberto para `main`.
+**CORE** — GDD §4. Em `level.autoscroll`:
+- Câmera X avança a `UBER.speed`; câmera Y travada em `UBER.camY`. Desacelera e para nos 3 últimos compassos.
+- Pardo: `facing = +1` travado; `vx = UBER.speed + dir × UBER.steer`; x limitado a `camera.x + [screenMin, screenMax]`; mesmo pulo e mesmo soco. Chão = teto do carro (`roofY − rampOffset`), grudando no teto enquanto `onGround` (sem quicar na descida da rampa).
+- `hurt` em autoscroll: sem empurrão horizontal, `invuln = UBER.invuln`, `state.rideHits++`. Remover o código de esmagamento na borda esquerda.
+- Checkpoint por passagem de coluna; renascer com `camera.x = Kx − screenNeutral` e reiniciar a música.
+- `level.ts`: tabela de marcadores do §2 do level design; `createLevel5` sem `movers`. Vitória: bônus `500 × estrelas`.
+- Aceite: `?fase=5` jogável do começo ao fim com stubs de arte; as outras fases sem diferença (todos os `check-level*.mjs` passam); typecheck limpo.
+
+**LEVEL** — level design inteiro. Escreve os 74 compassos de `LEVEL5_BARS` a partir da partitura e o validador novo (§5 do level design). Pode ajustar a partitura dentro da margem descrita no fim do §7. Aceite: `node scripts/check-level5.mjs` passa nas duas passadas, sem avisos de robustez no Ato 1, e `--print` mostra a janela em quadros de cada decisão.
+
+**ENEMY** — bestiário §1 e §3. Quatro inimigos e as caixas, todos com posição por `uberEnemyX`, sem IA reativa, 1 soco. Aceite: os tempos de aviso do drone e as velocidades batem com a tabela; nenhum inimigo guarda estado que mude entre duas passagens pelo mesmo checkpoint.
+
+**OBJECTS** — bestiário §2, §4 e §5. Carro (unidade com o Pardo, inclinação, faróis), quatro obstáculos, barreira, isopor, rampa, caminhão-baú, objetivo. Aceite: zonas que ferem exatamente como na tabela do bestiário; o caminhão fica 8 compassos e sai.
+
+**ART-ENEMIES** e **ART-UBER** — bestiário (colunas de sprite e parágrafos de visual) e GDD §7. Arte em 2×. Regra de cor: zebrado = pule, verde/luz branca = não pule, laranja/vermelho com contorno claro = soque. Aceite: `npm run check:art` diz "arte OK" e, no PNG de preview, cada sprite é reconhecível a 1× sem legenda; `UBER` legível na porta e motorista visível.
+
+**BG** — GDD §7. Quatro trechos com troca nas colunas das rampas (compassos 22, 40 e saída do túnel no 57), do escuro ao amanhecer; camada de primeiro plano com linhas de velocidade; teto do túnel alinhado à linha 4 para as luminárias fazerem sentido. Aceite: nenhuma camada tem contraste que dispute com a faixa baixa ou a faixa alta.
+
+**AUDIO** — faixa `'uber'` a 150 BPM exatos, 4/4, frases de 4 compassos, com início de laço em fronteira de frase; expõe reinício limpo para o renascimento. SFX: `rev`, `horn`, e confirmar `beep`, `crate`, `break`. Aceite: 16 compassos da faixa duram 25,6 s.
+
+**HUD-DOCS** — cartão de intro, tela de vitória com `AVALIAÇÃO DA CORRIDA` em estrelas e bônus, dica de controles da fase no README, e a seção de arquitetura do `AGENTS.md` descrevendo a Fase 5 nova (compassos, posição por câmera, validador com bot). Aceite: nenhuma menção a ônibus, coolers, plataformas móveis ou `UBER_SPEED` sobra nos docs.
+
+## 4. Dependências entre agentes
+
+Todos dependem só da Etapa 1. Três pontos de contato para o orquestrador vigiar na integração:
+
+1. **LEVEL ↔ ENEMY/OBJECTS:** o validador porta `uberEnemyX`, `rampOffset` e as zonas que ferem. Se ENEMY ou OBJECTS mudarem um número, o validador muda junto.
+2. **CORE ↔ OBJECTS:** quem move o Pardo na rampa é o CORE; quem informa a altura é `rampOffset`.
+3. **BG ↔ LEVEL:** as colunas de troca de cenário saem dos marcadores `J` e `K` do mapa, não de números fixos no parallax.
+
+## 5. Etapa 3 — integração e QA (orquestrador)
+
+1. `npm run typecheck`, `npm run build`, `npm run check:art`, todos os `check-level*.mjs` e `check-bonus.mjs`.
+2. Jogar `?fase=5` no navegador do início ao fim, três vezes: só com pulo e soco; usando o direcional; e errando de propósito para ver dano, estrelas e os três checkpoints.
+3. Um agente revisor independente (Opus 5.5) recebe o diff e os documentos, sem o resumo do orquestrador, e confere design contra implementação.
+4. Ajuste fino de densidade com o dono do mapa, se algum compasso parecer injusto jogando.
+5. Commit por módulo, PR para `main`.
+
+## 6. Critérios de aceite da fase
+
+- Nenhum tile sólido acima da pista, nenhuma plataforma, nenhuma rota alternativa.
+- Todo inimigo morre com 1 soco; a fase fecha no validador só com pulo e soco, sem dano, no envelope reduzido.
+- Rolagem a 120 px/s, 74 compassos, 3 checkpoints, 3 rampas, comboio do caminhão-baú no Ato 4.
+- Estreias na ordem do GDD §5, cada verbo com sua placa de tutorial.
+- Tela de vitória com estrelas; Fase 6 abre em seguida; demais fases intactas.

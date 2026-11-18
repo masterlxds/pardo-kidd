@@ -33,4 +33,4 @@ Não há framework de testes nem linter; a verificação é `typecheck` + os scr
 
 ## Documentos de planejamento
 
-`PLAN.md`, `PLAN-FASE2.md`, `PLAN-FASE3.md`, `PLAN-FASE4.md`, `PLAN-FASE5.md`, `PLAN-FASE6.md`, `PLAN-BONUS.md`, `level 3/gdd_*.md`, `level-4-refs/`, `level-5-refs/`, `level-6-refs/` e `bonus-refs/` (GDDs e bestiários) descrevem módulos, donos e design de cada fase e da Fase Bônus; `PLAN.md`, `prompt.md` e `lore.md` estão no `.gitignore` (`PLAN-FASE5.md`, `level-5-refs/`, `PLAN-BONUS.md` e `bonus-refs/` são versionados). Consulte-os para a intenção de design antes de mudar mecânicas.
+`PLAN.md`, `PLAN-FASE2.md`, `PLAN-FASE3.md`, `PLAN-FASE4.md`, `PLAN-FASE5.md`, `PLAN-FASE6.md`, `PLAN-BONUS.md`, `level 3/gdd_*.md`, `level-4-refs/`, `level-5-refs/` (GDD, bestiário e `level_design_fase5.md` com a partitura da Fase 5), `level-6-refs/` e `bonus-refs/` (GDDs e bestiários) descrevem módulos, donos e design de cada fase e da Fase Bônus; `PLAN.md`, `prompt.md` e `lore.md` estão no `.gitignore` (`PLAN-FASE5.md`, `level-5-refs/`, `PLAN-BONUS.md` e `bonus-refs/` são versionados). Consulte-os para a intenção de design antes de mudar mecânicas.

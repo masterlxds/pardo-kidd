@@ -1,82 +1,113 @@
-# Bestiário, Carro da Uber e Desembarque — *Fase 5: Marginal de São Paulo*
+# Bestiário, obstáculos e carro da Uber — *Fase 5: Marginal de São Paulo*
 
-> **Referência de Entidades e Sprites (`src/game/enemies5.ts`, `src/game/objects5.ts`, `src/gfx/art/enemies5.ts`, `src/gfx/art/uber.ts`)**  
-> Regra de ouro do autoscroller: **TODOS os inimigos do bestiário desta fase morrem com apenas 1 golpe (1 soco)**!
+> **Versão 2 (18/11/2026).** Referência de entidades para `src/game/enemies5.ts`, `src/game/objects5.ts`, `src/gfx/art/enemies5.ts` e `src/gfx/art/uber.ts`.
+> Regra de ouro: **todo inimigo morre com 1 soco.** Regra de leitura: **zebrado amarelo e preto = pule · verde de placa ou luz branca = não pule · contorno claro com laranja ou vermelho = soque.**
+> Mecânica geral em [`gdd_fase5_marginal.md`](gdd_fase5_marginal.md); posição de cada coisa em [`level_design_fase5.md`](level_design_fase5.md).
 
----
-
-## 1. O Carro Preto da Uber (`uber_car`)
-
-* **Sprite**: `uber_car: [64, 24, 2]` (em `RENDER_SCALE = 2` → **`128×48` pixels reais**, 2 quadros de animação).
-* **Direção de Arte**:
-  * **Corpo do veículo**: sedã executivo **preto** (`k` no contorno e sombras profundas, `M` e `K` na lataria principal, com linhas de reflexo especular `G`, `g` e `q` desenhando o capô, o teto plano e os para-lamas para destacar claramente contra o asfalto e a noite paulistana).
-  * **Inscrição `"UBER"`**: escrita em letras maiúsculas **brancas (`w`)** nítidas na lateral das portas (entre as rodas dianteira e traseira). Na grade 2× (`128×48`), cada letra de `U B E R` tem ~`7×11` pixels reais com traço duplo (`2px`), garantindo leitura imediata em movimento.
-  * **Motorista visível**: através da janela dianteira lateral (com fundo azul-petróleo/ciano do painel iluminado `D`, `B`, `0`), vê-se claramente o **motorista do Uber**: cabeça e rosto (`s`, `S`, cabelo `h`), camisa (`w`/`c`), mãos no volante (`K`, `g`) e o celular com GPS aceso (`8`, `c`) no suporte do painel.
-  * **Detalhes animados (frame 0 vs. frame 1)**:
-    * Rodas com aros prateados (`q`, `Q`, `g`) girando em alta velocidade;
-    * Leve vibração esportiva do escapamento/para-choque e brilho dos faróis dianteiros (`y`, `a`, `w`) à direita e lanternas traseiras (`r`, `R`) à esquerda.
-* **Mecânica (`createUberCar` em `src/game/objects5.ts`)**:
-  * Entidade com `kind: 'uber_car'`, `w: 64, h: 24`, `platform: true`, `dx: 0, dy: 0`.
-  * Segue suavemente o `player.centerX` dentro dos limites da câmera, com o teto em `y = 10 * TILE` (`160 px`) sempre que há asfalto (`Tile.GroundTop`) na linha 11 sob o Pardo.
-  * Nos vãos do viaduto (colunas sem piso sólido na linha 11), desativa `platform = false` e mergulha visualmente `20 px` pela rampa inferior até o asfalto retornar.
-  * Em `draw()`, projeta um cone de luz amarela translúcida dos faróis dianteiros para a direita e solta partículas ocasionais de faísca/poeira nas rodas.
+Coordenadas usadas abaixo: teto do Uber em `y = 144`; Pardo em pé ocupa `y = 124–144`; **faixa baixa** = `y 128–144`; **faixa alta** = `y 80–96`.
 
 ---
 
-## 2. Bestiário da Marginal (Todos com 1 HP / 1 Soco!)
+## 1. Posição em função da câmera
 
-Todos os inimigos são criados via `createUberEnemy(kind, centerX, footY)` em `src/game/enemies5.ts`. Causam `1` de dano de hidratação ao contato (`onTouchPlayer`) e **morrem imediatamente no 1º soco (`onPunch`)**, sendo arremessados girando para fora da tela com som e pontuação.
+Nesta fase nenhum inimigo tem IA reativa. A posição de cada um é uma **função pura de `camera.x`**, como num rail shooter:
 
-| Kind | Marcador | Nome | Sprite(s) (`spec.ts`) | Hitbox | Pontos | Golpes p/ Morrer |
-|---|---|---|---|---|---|---|
-| `'motoboy'` | `y` | Motoboy do Grau | `motoboy [28,22,2]`, `motoboy_wheelie [28,24,1]` | `22×18` | `300` | **1 soco** |
-| `'drone'` | `u` | Drone de Delivery | `drone [20,16,2]`, `drone_dive [20,16,1]` | `16×12` | `250` | **1 soco** |
-| `'patinete'` | `p` | Faria Limer de Patinete | `patinete [20,24,2]`, `patinete_jump [20,24,1]` | `14×20` | `200` | **1 soco** |
-| `'pichador'` | `z` | Pichador do Viaduto | `pichador [20,24,2]`, `pichador_throw [22,24,2]`, `lata [8,8,2]` | `12×20` | `350` (+`10` na lata) | **1 soco** |
+```
+x = encontroX + (vPropria / 120) × (encontroX − (camera.x + 72))
+```
 
-### 2.1. Motoboy do Grau (`'motoboy'`, marcador `y`)
-* **Visual**: Motoboy paulistano de jaqueta preta/vermelha e capacete fechado sobre moto CG vermelha com baú térmico quadrado nas costas e farol dianteiro aceso. Em `motoboy_wheelie`, a roda dianteira está empinada no ar ("dando grau") com faíscas na rabeta!
-* **IA**:
-  * Patrulha o trecho de asfalto ou teto de viaduto a `36 px/s` virado para a esquerda (contra o fluxo do Uber).
-  * Quando o Pardo entra a `≤ 8 tiles` (`128 px`) de distância horizontal:
-    1. **Aviso (`0.32s`)**: para, empina a moto (`motoboy_wheelie`) e toca `world.audio.play('rev')` + `world.fx('dust', ...)`.
-    2. **Investida (`0.85s`)**: arranca a `95 px/s` na direção do Pardo mantendo o grau (`motoboy_wheelie`), parando antes de abismos/paredes.
-    3. **Retorno**: volta à patrulha normal.
-* **Soco**: **1 soco** derrota na hora (`+300 pts`, `sfx: 'hit'`).
+- `encontroX` é a coluna do marcador no mapa: o ponto em que o inimigo cruza o Pardo **na posição neutra** (x de tela = 72).
+- `vPropria` é a velocidade do inimigo contra o fluxo (positiva = vem de frente; negativa = anda no mesmo sentido do Uber, mais devagar).
+- Consequências: o mapa ASCII mostra onde o encontro acontece, os encontros caem no tempo da música, renascer num checkpoint reproduz a fase idêntica e o validador simula tudo sem rodar IA.
+- Acelerar ou frear muda a hora do encontro, e isso é a utilidade tática do direcional.
 
-### 2.2. Drone de Delivery (`'drone'`, marcador `u`)
-* **Visual**: Quadricóptero amarelo/preto/turquesa com 4 rotores brilhantes, visor de LED vermelho frontal e caixinha de entrega pendurada nas garras inferiores. Em `drone_dive`, inclina o chassi a 30° com o visor piscando em alerta máximo.
-* **IA**:
-  * Nasce flutuando no ar (`footY` = base da célula; centro a `cy = top + TILE / 2 + 8`) e oscila suavemente na vertical (`y = homeY + sin(t * 4) * 5`) enquanto patrulha horizontalmente `±2.5 tiles` a `28 px/s`.
-  * Quando o Pardo chega a `≤ 6.5 tiles` (`104 px`) à esquerda do drone:
-    1. **Telegrafia (`0.35s`)**: trava no ar com `drone_dive`.
-    2. **Rasante (`0.65s`)**: mergulha diagonalmente na direção da posição do Pardo (`vx = -80 px/s`, `vy = 75 px/s`), estilo *Jet Stingray*, e depois retorna suavemente à altitude `homeY`.
-* **Soco**: **1 soco** derrota na hora (`+250 pts`, `sfx: 'hit'`, `fx('debris')`).
+Um inimigo socado é arremessado girando para cima e para a direita, com `hit`, pontos flutuantes e `fx('impact')`. Contato sem soco: `player.hurt` (−1 gota) e o inimigo **continua** o caminho.
 
-### 2.3. Faria Limer de Patinete (`'patinete'`, marcador `p`)
-* **Visual**: Executivo da Faria Lima de camisa social azul-clara, colete puffer preto sem mangas, calça bege e óculos escuros pilotando um patinete elétrico preto/verde-neon. Em `patinete_jump`, puxa o guidão do patinete no ar num bunny-hop radical!
-* **IA**:
-  * Desliza pelo trecho a `45 px/s` (respeitando bordas e paredes).
-  * Quando o Pardo se aproxima a `≤ 5 tiles` (`80 px`) e o patinete está no chão (com cooldown de `1.2s`):
-    * Salta com o patinete (`vy = -215 px/s`, `vx = dir * 65 px/s`, `sfx: 'boing'`, sprite `patinete_jump`) tentando interceptar o pulo do Pardo!
-* **Soco**: **1 soco** derrota na hora (`+200 pts`, `sfx: 'hit'`).
+## 2. O carro preto da Uber (`uber_car`, 64×24, 2 quadros)
 
-### 2.4. Pichador do Viaduto (`'pichador'`, marcador `z`) + Lata de Spray (`'lata'`)
-* **Visual**: Pichador urbano de moletom roxo/preto com capuz, boné virado e máscara/lenço, posicionado no alto de passarelas, ônibus e pórticos, segurando uma lata de tinta spray neon.
-* **IA**:
-  * Fica no seu poleiro elevado virado para o Pardo.
-  * Quando o Pardo está a `≤ 8.5 tiles` (`136 px`):
-    * Espera `1.4s` → Aviso de `0.4s` erguendo o braço (`pichador_throw` frame 0) → Arremessa uma **`lata`** (`8×8`, `vx = 95 * face`, `vy = -170`, `g = 480`, `sfx: 'throw'`, `pichador_throw` frame 1 por `0.25s`).
-  * A **`lata`** causa `1` de dano ao tocar o Pardo, quebra ao bater no cenário, e **pode ser destruída com 1 soco** (`+10 pts`).
-* **Soco**: **1 soco** derrota o pichador na hora (`+350 pts`, `sfx: 'hit'`).
+- **Arte:** sedã executivo **preto** com reflexos cinza no capô, teto e para-lamas; **`UBER` em branco** na porta, legível em movimento; **motorista visível** pela janela dianteira (rosto, mãos no volante, celular com GPS aceso no painel). Quadro 0/1: rodas girando, vibração do para-choque, brilho dos faróis.
+- **Mecânica:** plataforma com teto em `y = 144` (rodas afundam 8 px no tile da pista, como hoje). `x` travado ao centro do Pardo, inclusive no ar. Invulnerável, não colide com nada.
+- **Efeitos:** cone de luz dos faróis, lanterna traseira, poeira e faísca nas rodas, e uma **inclinação visual** de ±2 px ao acelerar ou frear. Nas rampas o carro segue o arco (§5) e as rodas param de soltar poeira.
+- A arte atual do carro pode ser reaproveitada se passar na revisão do preview; a mecânica é reescrita.
 
----
+## 3. Inimigos (1 soco cada)
 
-## 3. Objetos Interativos e Objetivo (`src/game/objects5.ts`)
+| Kind | Marcador | Nome | Sprite | Hitbox | Faixa | `vPropria` | Pontos |
+|---|---|---|---|---|---|---|---|
+| `motoboy` | `y` | Motoboy do Grau | `motoboy [28,22,2]` | 22×18 | baixa | +60 | 300 |
+| `motoboy` (rápido) | `Y` | Motoboy do Corredor | `motoboy_fast [28,22,2]` | 22×18 | baixa | +100 | 400 |
+| `patinete` | `p` | Faria Limer de Patinete | `patinete [20,24,2]` | 14×20 | baixa | −40 | 200 |
+| `drone` | `u` | Drone de Delivery | `drone [20,16,2]`, `drone_dive [20,16,1]` | 16×12 | alta → baixa | +30 / +80 | 250 |
+| `pichador` | `z` | Pichador de Rapel | `pichador_rapel [20,32,2]`, `spray_cloud [16,32,2]` | 12×20 | alta (corpo) + baixa (spray) | 0 | 350 |
 
-1. **`createCoolerUber(x, y)` (marcador `V`, sprite `cooler_uber [16, 32, 2]`)**:
-   * Cooler térmico azul/preto com adesivo `"5★ ÁGUA"` sobre cavalete na pista/passarela.
-   * Cada soco (até 3) solta uma gota de hidratação (`createDrop`), toca splash e alterna para o frame 1 (tampa aberta/vazio) após a 3ª gota.
-2. **`createUberGoal(centerX, footY)` (marcador `A`, sprite `uber_goal [32, 40, 2]`)**:
-   * Ponto de Desembarque VIP 5 Estrelas em frente ao portão da Transportadora de São Paulo (placa luminosa `"UBER 5★"` + totem com a água gelada de cortesia da corrida).
-   * Tocar o objetivo aciona `world.win()`, toca `'horn'` + `'deliver'`, e o Pardo bebe a água de cortesia (`'mineral'`) comemorando a chegada 5 estrelas!
+### 3.1. Motoboy do Grau (`y`) e Motoboy do Corredor (`Y`)
+
+- **Visual:** capacete fechado, jaqueta preta e vermelha, moto vermelha com baú térmico, **sempre empinando**, roda dianteira na altura do peito do Pardo, faísca na rabeta e farol aceso. O rápido tem jaqueta amarela, farol alto piscando e rastro de vento.
+- **Comportamento:** vem em linha reta pelo corredor, na faixa baixa. Toca `rev` ao entrar na tela (1,35 s antes do encontro; 1,1 s no rápido).
+- **Resposta:** soco (janela 0,20 s; 0,18 s no rápido) ou pulo por cima. Sob placa ou luminária, só o soco.
+- **Papel:** teste de reflexo. É o inimigo-base da fase.
+
+### 3.2. Faria Limer de Patinete (`p`)
+
+- **Visual:** camisa social azul-clara, colete puffer preto, calça bege, óculos escuros, patinete elétrico verde-neon, olhando para o celular.
+- **Comportamento:** anda no mesmo sentido do Uber, mais devagar; o Uber vai alcançando. Fica 3 s na tela, sempre visível com muita antecedência. Vem em **fila indiana de 2 a 4**, com 2 colunas entre cada um, o que dá um por tempo da música.
+- **Resposta:** um soco por tempo. A fila é longa demais para pular por cima (3 patinetes levam 1,1 s para passar; o pulo dura 0,67 s).
+- **Papel:** soco em ritmo. É o inimigo que faz o jogador sentir a trilha.
+
+### 3.3. Drone de Delivery (`u`)
+
+- **Visual:** quadricóptero amarelo e preto, quatro rotores, visor de LED vermelho, caixinha pendurada. Em `drone_dive` inclina 30° com o visor piscando.
+- **Comportamento em três tempos, todos em função da câmera:**
+  1. **Pairando** na faixa alta (centro `y = 88`) desde que entra na tela.
+  2. **Aviso:** a 2 tempos do encontro (0,8 s) trava no ar por 0,3 s, pisca e toca `beep`.
+  3. **Rasante:** desce em diagonal até a faixa baixa em 0,3 s e voa reto os 0,2 s finais. O encontro acontece na faixa baixa, em cima do tempo.
+- **Resposta:** esperar e socar em pé no rasante (janela 0,20 s), ou pular e **socar no ar** enquanto ele ainda paira. Pular sem socar enquanto ele paira dá dano.
+- **Papel:** ameaça que muda de faixa. Ensina a não pular por reflexo.
+
+### 3.4. Pichador de Rapel (`z`)
+
+- **Visual:** moletom roxo com capuz, boné para trás, lenço no rosto, **pendurado por uma corda** num pórtico, viaduto ou estai, com a lata de spray apontada para baixo. A corda sobe até sair da tela.
+- **Comportamento:** preso ao mundo. Corpo na faixa alta (`y = 88–108`). Solta uma **nuvem de spray contínua** logo abaixo (`spray_cloud`, 16×32, `y = 112–144`), que fere quem passa em pé.
+- **Resposta:** **pular e socar no ar** (janela 0,25 s; o Pardo passa 0,52 s na altura certa). Ficar em pé leva o spray; pular sem socar bate nele. Derrotado, a nuvem some na hora.
+- **Papel:** a prova do soco aéreo. É o único inimigo sem alternativa.
+
+### 3.5. Caixas do caminhão-baú (`x` baixa, `X` alta)
+
+- **Sprite:** `caixa [12,12,2]` (papelão com fita e etiqueta `FRÁGIL`, girando). Hitbox 10×10. `vPropria = +100`. +50 pontos, som `crate`.
+- **Origem:** saem da porta traseira do caminhão-baú (§5) no instante em que a posição calculada coincide com a porta, numa reta na faixa baixa (`x`) ou na faixa alta (`X`).
+- **Resposta:** `x` é soco ou pulo; `X` é não pular (ou soco no ar).
+
+## 4. Obstáculos (não morrem; ferem e atravessam)
+
+| Marcador | Nome | Sprite | Zona que fere | Resposta |
+|---|---|---|---|---|
+| `L` | Limitador de altura `2,0 m` | `obst_limitador [16,48,1]` | 12×12 na faixa baixa | **PULE** |
+| `F` | Faixa de obra | `obst_faixa [32,48,1]` | 28×12 na faixa baixa | **PULE** (mais cedo) |
+| `G` | Placa de pórtico (3 colunas) | `obst_placa [48,32,1]` + `portico_post [16,96,1]` | 44×16 na faixa alta | **NÃO PULE** |
+| `i` | Luminária de túnel | `obst_luminaria [16,16,2]` | 12×12 na faixa alta | **NÃO PULE** |
+
+- **Limitador:** barra **zebrada amarela e preta** entre dois postes nas laterais da pista, com a plaquinha `2,0 m`. O carro passa por baixo; o Pardo, não. Só a barra fere; os postes são decoração.
+- **Faixa de obra:** cavalete duplo com lona `OBRAS — CET`, também zebrado.
+- **Placa de pórtico:** placa **verde** de destino (`TIETÊ`, `CASTELO BRANCO`, `CENTRO`, `TRANSPORTADORA →`) pendurada num pórtico. O texto varia por posição.
+- **Luminária:** calha de **luz branca** pendurada do teto do túnel, pulsando. Aparece em série, marcando os tempos.
+
+As zonas que ferem são alguns pixels menores que o desenho, de propósito: na dúvida, o jogador passa.
+
+## 5. Objetos
+
+| Marcador | Objeto | Sprite | Comportamento |
+|---|---|---|---|
+| `B` | Barreira da CET | `barreira_cet [16,16,2]` | Na faixa baixa. Fere ao toque, **quebra com 1 soco** (+50, `break`, `fx('debris')`). Também dá para pular. Laranja com faixas brancas. |
+| `W` | Isopor do ambulante | `isopor_agua [16,24,2]` | Isopor `ÁGUA 2 REAL` num suporte na mureta, na faixa baixa. Não fere. Soco: **+1 gota**, `water`, `fx('splash')`, quadro 1 (aberto). |
+| `c` | Moeda | (existente) | Presa ao mundo. Linhas baixas e arcos na trajetória do pulo. |
+| `K` | Checkpoint | `marginal_sign` (placa de km acesa) | Conta ao cruzar a coluna. Decoração na mureta, não colide. |
+| `J` | Rampa | `rampa_obra [32,16,1]` | Início de um salto: o teto do carro sobe `40 × 4u(1−u)` px ao longo de 12 colunas (`u` de 0 a 1). O Pardo fica grudado no teto enquanto está no chão. Sem pista embaixo; o Tietê ou a cidade aparecem no vão. |
+| `T` | Caminhão-baú | `truck_bau [80,48,2]` | Entra pela direita com `horn`, fica preso em x de tela = 232 por 8 compassos, porta traseira aberta, balançando. Sem colisão, sem vida. Sai acelerando pela saída `TRANSPORTADORA →`. Baú com o logotipo da transportadora da Fase 6. |
+| `A` | Desembarque 5★ | `uber_goal [32,40,2]` | Totem luminoso `UBER 5★`. Toque → `world.win()`, `horn` + `deliver`, Pardo bebe a água de cortesia (`'mineral'`). |
+| `t` | Placa de tutorial | `tutorial_sign [24,24,3]` | Pictogramas `PULE`, `SOQUE`, `NÃO PULE` (quadros 0–2), 4 colunas antes da primeira ocorrência de cada verbo. Decoração. |
+
+Decoração da mureta (não colide): `street_light`, `speed_radar`, `traffic_cone`, grafites e janelas ficam com o parallax e com a linha 11 do mapa.
+
+## 6. Sprites que saem
+
+`motoboy_wheelie`, `patinete_jump`, `pichador`, `pichador_throw`, `lata`, `cooler_uber`, `platform_drone`, `platform_beam`, `bus_front`, `bus_wheels`, `tile_ub_rock`, `tile_ub_spike`, `tile_ub_block`, `tile_ub_block_item` e `tile_ub_oneway` deixam de existir junto com as mecânicas que serviam. Ficam `tile_ub_top` (asfalto) e `tile_ub_ground` (mureta e pilares).
