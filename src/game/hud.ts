@@ -106,7 +106,8 @@ function drawDialogue(ctx: CanvasRenderingContext2D, world: World): void {
   // retrato 2x
   ctx.fillStyle = P.B;
   ctx.fillRect(px + 3, py + 2, 32, 32);
-  spr(ctx, world, 'jandira_face', 0, px + 3, py + 2, 2);
+  const face = d.speaker === 'AMARO' ? 'amaro_face' : 'jandira_face';
+  spr(ctx, world, face, 0, px + 3, py + 2, 2);
   const tx = px + 40;
   drawText(ctx, d.speaker, tx, py + 3, { color: P.y, shadow: P.k });
   const shown = Math.min(d.text.length, Math.floor(d.t * 30));
@@ -185,9 +186,10 @@ export function drawTitle(ctx: CanvasRenderingContext2D, world: World): void {
   drawText(ctx, 'SETAS ESCOLHEM   ENTER OU TOQUE INICIA', 160, 169, { color: P.B, align: 'center' });
 
   // atalho de teste (discreto, canto inferior esquerdo)
-  if (new URLSearchParams(location.search).get('fase') === '2') {
+  const faseParam = new URLSearchParams(location.search).get('fase');
+  if (faseParam === '2' || faseParam === '3' || faseParam === '4') {
     drawText(ctx, 'MODO TESTE:', 5, 149, { color: P.G });
-    drawText(ctx, 'FASE 2', 5, 157, { color: P.G });
+    drawText(ctx, `FASE ${faseParam}`, 5, 157, { color: P.G });
   }
 }
 
@@ -238,17 +240,18 @@ export function drawIntro(ctx: CanvasRenderingContext2D, world: World): void {
   const t = st.sceneTime;
   const amazon = world.level.theme === 'amazonia';
   const bahia = world.level.theme === 'bahia';
+  const rio = world.level.theme === 'rio';
 
   // cores por tema
-  const veilRgb = bahia ? '4,18,40' : amazon ? '10,26,12' : '26,20,35';
-  const panelBg = bahia ? '#bfe9f5' : amazon ? '#d4efb8' : P.p;
-  const grid = bahia ? 'rgba(36,65,143,0.25)' : amazon ? 'rgba(47,107,30,0.3)' : 'rgba(201,120,46,0.35)';
-  const border = bahia ? P.B : amazon ? P.d : P.T;
-  const titleCol = bahia ? P.B : amazon ? P.d : P.t;
-  const titleSh = bahia ? P.c : amazon ? P.j : P.T;
-  const nameCol = bahia ? P.C : amazon ? P.E : P.r;
-  const nameSh = bahia ? P.B : amazon ? P.J : P.R;
-  const divider = bahia ? P.C : amazon ? P.I : P.O;
+  const veilRgb = rio ? '36,18,12' : bahia ? '4,18,40' : amazon ? '10,26,12' : '26,20,35';
+  const panelBg = rio ? '#fff3c4' : bahia ? '#bfe9f5' : amazon ? '#d4efb8' : P.p;
+  const grid = rio ? 'rgba(181,83,42,0.28)' : bahia ? 'rgba(36,65,143,0.25)' : amazon ? 'rgba(47,107,30,0.3)' : 'rgba(201,120,46,0.35)';
+  const border = rio ? P.t : bahia ? P.B : amazon ? P.d : P.T;
+  const titleCol = rio ? P.B : bahia ? P.B : amazon ? P.d : P.t;
+  const titleSh = rio ? P.c : bahia ? P.c : amazon ? P.j : P.T;
+  const nameCol = rio ? P.r : bahia ? P.C : amazon ? P.E : P.r;
+  const nameSh = rio ? P.k : bahia ? P.B : amazon ? P.J : P.R;
+  const divider = rio ? P.t : bahia ? P.C : amazon ? P.I : P.O;
 
   // entrada: desliza de cima nos primeiros 0.4s; véu surge junto
   const ease = Math.min(1, t / 0.4);
@@ -284,6 +287,8 @@ export function drawIntro(ctx: CanvasRenderingContext2D, world: World): void {
 
   if (bahia) {
     drawText(ctx, 'UM SONHO NO FUNDO DO MAR', cx, py + 58, { color: P.B, align: 'center' });
+  } else if (rio) {
+    drawText(ctx, 'DO MORRO AO TRIBUNAL', cx, py + 58, { color: P.T, align: 'center' });
   }
 
   // divisor
@@ -308,18 +313,19 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
   const t = st.sceneTime;
   const idx = world.level.index;
   const phase2 = idx === 1;
-  const sea = idx >= 2;
-  const last = idx >= 2;
-  veil(ctx, Math.min(0.55, t * 1.5), sea ? '4,18,40' : '26,20,35');
+  const sea = idx === 2;
+  const rio = idx === 3;
+  const last = idx >= 3;
+  veil(ctx, Math.min(0.55, t * 1.5), rio ? '36,18,12' : sea ? '4,18,40' : '26,20,35');
   const ease = Math.min(1, t / 0.5);
   const slide = Math.round((1 - ease * (2 - ease)) * -170);
   ctx.save();
   ctx.translate(0, slide);
   // Fase 3: painel mais alto para caber a Jandira (48x56 em 2x)
   const px = 28, py = sea ? 5 : 12, pw = 264, ph = sea ? 170 : 156;
-  const bg = sea ? '#bfe9f5' : phase2 ? '#d4efb8' : P.W;
-  const grid = sea ? 'rgba(36,65,143,0.25)' : phase2 ? 'rgba(47,107,30,0.3)' : 'rgba(159,224,255,0.75)';
-  const edge = sea ? P.B : phase2 ? P.d : P.B;
+  const bg = rio ? '#fff3c4' : sea ? '#bfe9f5' : phase2 ? '#d4efb8' : P.W;
+  const grid = rio ? 'rgba(181,83,42,0.25)' : sea ? 'rgba(36,65,143,0.25)' : phase2 ? 'rgba(47,107,30,0.3)' : 'rgba(159,224,255,0.75)';
+  const edge = rio ? P.t : sea ? P.B : phase2 ? P.d : P.B;
   const ink = edge;
   ctx.fillStyle = P.k;
   ctx.fillRect(px - 1, py - 1, pw + 2, ph + 2);
@@ -332,12 +338,17 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
   ctx.lineWidth = 2;
   ctx.strokeRect(px + 1, py + 1, pw - 2, ph - 2);
 
-  if (sea) drawText(ctx, `FASE ${idx + 1}`, 160, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
+  if (rio) drawText(ctx, 'FASE 4', 160, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
+  else if (sea) drawText(ctx, `FASE ${idx + 1}`, 160, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
   else if (phase2) drawText(ctx, 'FASE 2', 160, py + 8, { scale: 2, color: P.d, align: 'center', shadow: P.j });
   else drawText(ctx, 'FASE 1', 160, py + 8, { scale: 2, color: P.B, align: 'center', shadow: P.c });
   drawText(ctx, 'CONCLUÍDA!', 160, py + 27, { scale: 3, color: P.r, align: 'center', shadow: P.R });
 
-  if (sea) {
+  if (rio) {
+    spr(ctx, world, 'pardo_drink_mineral', Math.floor(t * 3) % 2, px + 6, py + 48, 2);
+    spr(ctx, world, 'mineral_bottle', Math.floor(t * 4) % 2, px + 50, py + 60, 2);
+    spr(ctx, world, 'amaro_cheer', Math.floor(t * 2) % 2, px + 66, py + 44, 2, true);
+  } else if (sea) {
     // coluna esquerda: Jandira (2x) e o Pardo lambendo o cajado; contadores e frase na coluna direita
     spr(ctx, world, 'jandira_laugh', Math.floor(t * 3) % 2, px + 2, py + 44, 2, true);
     spr(ctx, world, 'pardo_lick', Math.floor(t * 3) % 2, px + 96, py + 92, 2);
@@ -352,7 +363,7 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
 
   const k = Math.max(0, Math.min(1, (t - 0.6) / 1.2));
   const cnt = (v: number): number => Math.floor(v * k);
-  const lx = sea ? px + 150 : phase2 ? px + 128 : px + 100, rx = px + pw - 12;
+  const lx = sea ? px + 150 : (phase2 || rio) ? px + 128 : px + 100, rx = px + pw - 12;
   const row = (label: string, value: string, y: number, col: string): void => {
     drawText(ctx, label, lx, y, { color: ink });
     drawText(ctx, value, rx, y, { color: col, align: 'right', shadow: P.W });
@@ -364,7 +375,10 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
   row(sea ? 'BÔNUS' : 'BÔNUS DE TEMPO', `+${cnt(st.timeBonus)}`, y0 + dy * 2, P.R);
   if (sea) row('FITINHAS', `${cnt(st.ribbons)}/${st.ribbonsTotal}`, y0 + dy * 3, P.C);
 
-  if (sea) {
+  if (rio) {
+    drawText(ctx, 'PARDO SE HIDRATOU', 160, py + 104, { color: P.B, align: 'center' });
+    drawText(ctx, 'COM A ÁGUA DO AMARO', 160, py + 114, { color: P.B, align: 'center' });
+  } else if (sea) {
     drawText(ctx, 'PARDO LAMBEU O', px + 202, py + 106, { color: P.B, align: 'center' });
     drawText(ctx, 'CAJADO JAILNESCO', px + 202, py + 116, { color: P.B, align: 'center' });
   } else if (phase2) {

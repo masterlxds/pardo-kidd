@@ -15,10 +15,13 @@ import { PARDO_SWIM } from '../src/gfx/art/pardoSwim.ts';
 import { JANDIRA } from '../src/gfx/art/jandira.ts';
 import { SEA } from '../src/gfx/art/sea.ts';
 import { BAHIA } from '../src/gfx/art/bahia.ts';
+import { AMARO } from '../src/gfx/art/amaro.ts';
+import { ENEMIES4 } from '../src/gfx/art/enemies4.ts';
+import { RIO } from '../src/gfx/art/rio.ts';
 
 const out = process.argv[2] ?? 'art-preview.png';
 const filter = process.argv[3] ?? '';
-const art = { ...PARDO, ...ENEMIES, ...WORLD, ...DECOR, ...ENEMIES2, ...AMAZON, ...PARDO_SWIM, ...JANDIRA, ...SEA, ...BAHIA };
+const art = { ...PARDO, ...ENEMIES, ...WORLD, ...DECOR, ...ENEMIES2, ...AMAZON, ...PARDO_SWIM, ...JANDIRA, ...SEA, ...BAHIA, ...AMARO, ...ENEMIES4, ...RIO };
 const D = 2; // arte em alta resolução = D× o tamanho lógico do spec
 const lowres = [];
 const errors = [];

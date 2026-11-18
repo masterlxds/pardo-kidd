@@ -22,6 +22,7 @@ import { drawGameOver, drawHud, drawIntro, drawPaused, drawTitle, drawWin } from
 import { createBackground } from '../gfx/background';
 import { createAmazonBackground } from '../gfx/background2';
 import { createBahiaBackground } from '../gfx/background3';
+import { createRioBackground } from '../gfx/background4';
 import { createAtlas } from '../gfx/atlas';
 import { createAudio } from '../audio/audio';
 import { drawText } from '../gfx/font';
@@ -263,7 +264,7 @@ export class GameWorld implements World {
     let goal: Entity | null = null;
     let best = Infinity;
     for (const e of this.entities) {
-      if (e.dead || (e.kind !== 'mug' && e.kind !== 'goal' && e.kind !== 'staff')) continue;
+      if (e.dead || (e.kind !== 'mug' && e.kind !== 'goal' && e.kind !== 'staff' && e.kind !== 'amaro')) continue;
       const d = Math.abs(e.x + e.w / 2 - px);
       if (d < best) {
         best = d;
@@ -279,7 +280,11 @@ export class GameWorld implements World {
       this.setScene('winning');
       return;
     }
-    if (goal && goal.kind === 'goal') {
+    if (goal && goal.kind === 'amaro') {
+      const cx = goal.x + goal.w / 2;
+      const side: 1 | -1 = px <= cx ? -1 : 1;
+      this.player.startDrink(cx + side * GOAL_STAND_OFF, 'mineral', side === -1 ? 1 : -1);
+    } else if (goal && goal.kind === 'goal') {
       // alien: o Pardo para um pouco antes, do lado de onde veio, e olha para ele
       const cx = goal.x + goal.w / 2;
       const side: 1 | -1 = px <= cx ? -1 : 1;
@@ -356,7 +361,14 @@ export class GameWorld implements World {
   private backgroundFor(theme: LevelTheme): Background {
     let bg = this.backgrounds.get(theme);
     if (!bg) {
-      bg = theme === 'bahia' ? createBahiaBackground() : theme === 'amazonia' ? createAmazonBackground() : createBackground();
+      bg =
+        theme === 'rio'
+          ? createRioBackground()
+          : theme === 'bahia'
+            ? createBahiaBackground()
+            : theme === 'amazonia'
+              ? createAmazonBackground()
+              : createBackground();
       this.backgrounds.set(theme, bg);
     }
     return bg;

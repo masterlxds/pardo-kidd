@@ -86,7 +86,7 @@ export interface Dialogue {
 }
 
 /** Tema visual/sonoro de uma fase. */
-export type LevelTheme = 'sertao' | 'amazonia' | 'bahia';
+export type LevelTheme = 'sertao' | 'amazonia' | 'bahia' | 'rio';
 export type MusicTrack = LevelTheme;
 
 export type SfxName =
@@ -105,7 +105,10 @@ export type SfxName =
   /** fanfarra 16-bit com berimbau e percussão baiana (pegou o Cajado; ~3-4s) */ | 'fanfare'
   /** lambida no cajado */ | 'lick'
   /** blip curto de fala (diálogo da Jandira) */ | 'talk'
-  /** vida extra (100 moedas) */ | 'oneup';
+  /** vida extra (100 moedas) */ | 'oneup'
+  // Fase 4
+  /** latido curto do vira-lata caramelo */ | 'bark'
+  /** disparo da arma do traficante */ | 'shoot';
 
 export interface AudioApi {
   /** Chamar no primeiro gesto do usuário (cria/resume o AudioContext). Idempotente. */
@@ -176,7 +179,9 @@ export type EnemyKind = 'calango' | 'carcara' | 'palma' | 'tatu'
   // Fase 2 — Amazônia
   | 'onca' | 'jacare' | 'cobra' | 'tucano'
   // Fase 3 — Bahia World (src/game/enemies3.ts)
-  | 'agua_viva' | 'peixe_agulha' | 'baiacu' | 'dentao' | 'siri' | 'tartaruga' | 'moreia';
+  | 'agua_viva' | 'peixe_agulha' | 'baiacu' | 'dentao' | 'siri' | 'tartaruga' | 'moreia'
+  // Fase 4 — Favela do Rio (src/game/enemies4.ts)
+  | 'caramelo' | 'pombo' | 'gato' | 'capivara' | 'traficante';
 
 export interface Level {
   /** índice (0-based) em LEVELS */

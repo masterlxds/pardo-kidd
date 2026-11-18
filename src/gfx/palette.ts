@@ -80,4 +80,13 @@ export const PALETTE: Record<string, string> = {
   '~': '#454a1c', // oliva escuro
   '^': '#b3246f', // magenta escuro (sombra da cobra)
   ':': '#ffa8d6', // rosa claro (brilho da cobra / do fruto)
+  // ── extensão Fase 4 — alvenaria do primeiro plano (fria e escura, contraste contra o casario do fundo)
+  '(': '#56568c', // tijolo ardósia: luz
+  ')': '#3d3c6a', // tijolo ardósia: tom médio
+  '[': '#2d2c52', // tijolo ardósia: sombra
+  // ── extensão Fase 4 — pele negra retinta (traficante)
+  '{': '#5c3820', // pele escura
+  '}': '#40250f', // pele escura sombra
+  '<': '#7a4c2c', // pele escura brilho
+  '>': '#2e1a0b', // pele escura sombra profunda
 };
