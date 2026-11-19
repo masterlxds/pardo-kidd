@@ -372,6 +372,23 @@ export class PardoPlayer implements Player {
     world.state.air = world.state.maxAir;
   }
 
+  shove(world: World, vx: number, vy: number, dt: number): void {
+    if (this.dead) return;
+    // mesmas regras da física do Pardo: tiles sólidos + topo dos one-way (padrão do moveBody, como em physics())
+    const b = { x: this.x, y: this.y, w: this.w, h: this.h, vx, vy };
+    moveBody(b, world.level, dt);
+    this.x = b.x;
+    this.y = b.y;
+    // teto do nado (linha d'água), como em updateSwim()
+    if (world.level.underwater && this.y < SWIM_CEILING) {
+      this.y = SWIM_CEILING;
+      if (this.vy < 0) this.vy = 0;
+    }
+    // empurrado para dentro de um perigo (ouriço): mesmo tratamento do update (morte imediata)
+    const hz = this.touchedHazard(world);
+    if (hz !== null) this.kill(world, hz >= 0 ? hz : undefined);
+  }
+
   // ── Extras usados por game.ts ──────────────────────────────────────────────
   /**
    * Inicia a sequência de vitória: anda até targetX (centro) e bebe.

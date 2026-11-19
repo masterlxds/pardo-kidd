@@ -192,6 +192,12 @@ export interface Player extends Body {
   heal(world: World, n: number): number;
   /** Oxigênio de volta a 100% (silencioso: quem chama toca som/fx). */
   refillAir(world: World): void;
+  /**
+   * Deslocamento forçado por contato (ex.: tartaruga): integra (vx, vy)·dt com as mesmas colisões
+   * da física do Pardo (sólidos + one-way), respeita o teto do nado e trata perigos tocados.
+   * Não altera a velocidade do Pardo (exceto zerar a subida contra o teto).
+   */
+  shove(world: World, vx: number, vy: number, dt: number): void;
 }
 
 /** 'bubble' = bolhinhas que sobem (sprite `bubble`); 'sparkle' = brilho dourado/turquesa (sprite `sparkle`). */

@@ -651,7 +651,10 @@ export class GameWorld implements World {
         break;
 
       case 'paused':
-        if (input.pressed('pause') || input.pressed('start')) {
+        // 'confirm' cobre o toque na tela e os botões touch (PULO/SOCO), senão a pausa
+        // automática por onHidden trava o jogo em mobile (sem teclado para retomar).
+        // A borda é consumida no fim do passo, então o toque que retoma não vira pulo/soco.
+        if (input.pressed('pause') || input.pressed('start') || input.pressed('confirm')) {
           if (this.pausedFrom === 'bonus') {
             this.setScene('bonus');
             this.audio.startMusic('bonus');
