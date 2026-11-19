@@ -1,7 +1,7 @@
 import type { Entity, Rect, World } from '../core/types';
 import { Tile } from '../core/types';
 import { TILE } from '../core/constants';
-import { moveBody } from '../core/physics';
+import { moveBody, overlaps } from '../core/physics';
 
 export type RioEnemyKind = 'caramelo' | 'pombo' | 'gato' | 'capivara' | 'traficante';
 
@@ -660,7 +660,8 @@ function createBullet(muzzleX: number, centerY: number, dir: Dir): Entity {
       for (let ty = ty0; ty <= ty1; ty++) {
         for (let tx = tx0; tx <= tx1; tx++) {
           if (world.level.isSolid(tx, ty)) {
-            world.fx('dust', dir > 0 ? b.x + b.w : b.x, b.y + b.h / 2, (dir * -1) as Dir);
+            // poeira na face da parede (não dentro do tile)
+            world.fx('dust', dir > 0 ? tx * TILE : (tx + 1) * TILE, b.y + b.h / 2, (dir * -1) as Dir);
             b.dead = true;
             return;
           }
@@ -681,6 +682,21 @@ function createBullet(muzzleX: number, centerY: number, dir: Dir): Entity {
     },
   };
   return b;
+}
+
+/** Face (x) da 1ª parede sólida entre a borda do corpo e `frontX` na altura do tiro, ou `null`. */
+function muzzleWallX(e: Entity, facing: Dir, frontX: number, muzzleY: number, world: World): number | null {
+  const bodyEdge = facing > 0 ? e.x + e.w : e.x;
+  const txFrom = Math.floor((facing > 0 ? bodyEdge : bodyEdge - 0.001) / TILE);
+  const txTo = Math.floor((facing > 0 ? frontX - 0.001 : frontX) / TILE);
+  const ty0 = Math.floor((muzzleY - 2) / TILE);
+  const ty1 = Math.floor((muzzleY + 2 - 0.001) / TILE);
+  for (let tx = txFrom; facing > 0 ? tx <= txTo : tx >= txTo; tx += facing) {
+    for (let ty = ty0; ty <= ty1; ty++) {
+      if (world.level.isSolid(tx, ty)) return facing > 0 ? tx * TILE : (tx + 1) * TILE;
+    }
+  }
+  return null;
 }
 
 // ── 5. Traficante Rubro-Negro: vigia laje + ciclo justo cooldown/mira/disparo ────────
@@ -753,8 +769,26 @@ function traficanteAi(e: Entity, homeX: number): EnemyAi {
             const muzzleX = cx(e) + facing * 12;
             const muzzleY = footY - 14;
             world.audio.play('shoot');
-            world.fx('dust', muzzleX, muzzleY, facing);
-            world.spawn(createBullet(muzzleX, muzzleY, facing));
+            // Trecho do cano: do centro do corpo até a frente da bala no nascimento (cx ± 15).
+            // Parede nesse trecho: o tiro estoura na face dela, sem projétil (não nasce dentro do tile).
+            const wallX = muzzleWallX(e, facing, cx(e) + facing * 15, muzzleY, world);
+            const reachX = wallX ?? cx(e) + facing * 15;
+            const barrel: Rect = {
+              x: Math.min(cx(e), reachX),
+              y: muzzleY - 2,
+              w: Math.abs(reachX - cx(e)),
+              h: 4,
+            };
+            if (overlaps(barrel, p)) {
+              // À queima-roupa: o Pardo está no cano (entre o traficante e a bala) → acerta na hora
+              world.fx('dust', facing > 0 ? Math.max(p.x, barrel.x) : Math.min(p.x + p.w, barrel.x + barrel.w), muzzleY, facing);
+              p.hurt(world, cx(e), 1);
+            } else if (wallX !== null) {
+              world.fx('dust', wallX, muzzleY, (facing * -1) as Dir);
+            } else {
+              world.fx('dust', muzzleX, muzzleY, facing);
+              world.spawn(createBullet(muzzleX, muzzleY, facing));
+            }
           }
         }
       } else {
