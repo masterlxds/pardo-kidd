@@ -497,6 +497,9 @@ export function createBonusStage(): BonusStage {
   let banner: BannerState | null = null;
 
   let localTime = 0;
+  /** `world.time` no último `update()`: em `bonus_intro`/`bonus_end` o update não roda, e o
+   *  relógio visual segue a partir daqui para o fundo 3D não congelar nem saltar. */
+  let lastUpdateWorldTime = 0;
   let runAnim = 0;
   let playerS = 0;
   let speedMul = 1.0;
@@ -581,11 +584,36 @@ export function createBonusStage(): BonusStage {
     }
   }
 
+  /** Coleta a Esmeralda do Bonfim (captura normal ou rede de segurança): marca o item como
+   *  pego, concede +5000/+1UP e dispara os mesmos efeitos visuais e o respiro triunfal. */
+  function collectEmerald(world: World, it: RuntimeTrackItem | undefined): void {
+    if (it) it.taken = true;
+    world.state.bonus.cleared = true;
+    world.state.bonus.endedByCheckpoint = false;
+    world.addScore(5000, 160, 64);
+    world.state.lives = Math.min(EASY_LIVES, world.state.lives + 1);
+    world.audio.play('emerald');
+    world.audio.play('oneup');
+
+    const eTheta = it ? it.curTheta : theta;
+    const eH = it ? it.curH : h + 4;
+    const ePt = projectPoint(eTheta, BONUS_CONSTANTS.PLAYER_Z, eH + 8, curveX, curveY);
+    for (let k = 0; k < 6; k++) {
+      const ang = (k / 6) * Math.PI * 2;
+      world.fx('sparkle', ePt.x + Math.cos(ang) * 14, ePt.y + Math.sin(ang) * 10);
+    }
+    emitSparks(ePt.x, ePt.y, 18, [COL_TURQ_LIGHT, COL_GOLD_LIGHT, COL_RIM_GLOW, COL_WHITE]);
+    showBanner('ESMERALDA DO BONFIM!', '+5000 PTS  +1UP', COL_TURQ_LIGHT, 0.9);
+    endPhase = 'clearing';
+    endTimer = 0.6;
+  }
+
   initInternalState();
 
   return {
     reset(world) {
       initInternalState();
+      lastUpdateWorldTime = world.time;
       world.state.bonus = {
         active: true,
         coins: 0,
@@ -598,6 +626,7 @@ export function createBonusStage(): BonusStage {
 
     update(dt, world, input) {
       localTime += dt;
+      lastUpdateWorldTime = world.time;
 
       // Atualiza partículas de tela e banner
       if (banner) {
@@ -710,7 +739,11 @@ export function createBonusStage(): BonusStage {
       const delayed = history[histHead]!; // exatamente 11 passos atrás
       const angDiff = Math.abs(delayed.theta - theta);
       const overlap = Math.max(0, 1 - angDiff / 0.24);
-      const sideSign = theta > 1.28 ? -1 : 1;
+      // Perto da parede direita o parceiro troca de lado para não ficar preso no limite do
+      // tubo; a troca é suavizada (smoothstep entre 1,18 e 1,38 rad) em vez de um corte seco
+      // em 1,28, que fazia o Caramelo-Tails saltar 0,16 rad num único frame.
+      const sideT = clamp((theta - 1.18) / 0.2, 0, 1);
+      const sideSign = 1 - 2 * sideT * sideT * (3 - 2 * sideT);
       buddyTheta = clamp(
         delayed.theta + sideSign * 0.08 * overlap,
         -BONUS_CONSTANTS.THETA_MAX,
@@ -798,23 +831,7 @@ export function createBonusStage(): BonusStage {
           }
           const generous = passedFinalGate ? 0.65 : 0.28;
           if (z <= BONUS_CONSTANTS.PLAYER_Z + 0.04 && Math.abs(it.curTheta - theta) <= generous) {
-            it.taken = true;
-            world.state.bonus.cleared = true;
-            world.state.bonus.endedByCheckpoint = false;
-            world.addScore(5000, 160, 64);
-            world.state.lives = Math.min(EASY_LIVES, world.state.lives + 1);
-            world.audio.play('emerald');
-            world.audio.play('oneup');
-
-            const ePt = projectPoint(it.curTheta, BONUS_CONSTANTS.PLAYER_Z, it.curH + 8, curveX, curveY);
-            for (let k = 0; k < 6; k++) {
-              const ang = (k / 6) * Math.PI * 2;
-              world.fx('sparkle', ePt.x + Math.cos(ang) * 14, ePt.y + Math.sin(ang) * 10);
-            }
-            emitSparks(ePt.x, ePt.y, 18, [COL_TURQ_LIGHT, COL_GOLD_LIGHT, COL_RIM_GLOW, COL_WHITE]);
-            showBanner('ESMERALDA DO BONFIM!', '+5000 PTS  +1UP', COL_TURQ_LIGHT, 0.9);
-            endPhase = 'clearing';
-            endTimer = 0.6;
+            collectEmerald(world, it);
             return 'running';
           }
         }
@@ -857,22 +874,19 @@ export function createBonusStage(): BonusStage {
       }
 
       // Rede de segurança caso passe muito além da Esmeralda após bater a Meta 3
+      // (a Esmeralda é marcada como pega para não seguir visível no tubo durante o 'clearing')
       if (passedFinalGate && playerS > BONUS_CONSTANTS.EMERALD_S + 20 && endPhase === 'none') {
-        world.state.bonus.cleared = true;
-        world.state.bonus.endedByCheckpoint = false;
-        world.addScore(5000, 160, 64);
-        world.state.lives = Math.min(EASY_LIVES, world.state.lives + 1);
-        world.audio.play('emerald');
-        world.audio.play('oneup');
-        endPhase = 'clearing';
-        endTimer = 0.6;
+        const emerald = items.find((it) => it.kind === 'emerald' && !it.taken);
+        collectEmerald(world, emerald);
       }
 
       return 'running';
     },
 
     render(ctx, world) {
-      const animClock = localTime > 0 ? localTime : world.time;
+      // Relógio visual contínuo: igual a `localTime` durante a corrida e, fora dela (intro,
+      // resultado em `bonus_end`), avança junto com `world.time` sem descontinuidade.
+      const animClock = localTime + Math.max(0, world.time - lastUpdateWorldTime);
 
       // ── 1. Céu noturno profundo da Baía de Todos-os-Santos ─────────────────
       ctx.fillStyle = COL_SKY_TOP;
