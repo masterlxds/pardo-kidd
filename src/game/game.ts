@@ -152,7 +152,8 @@ export class GameWorld implements World {
   private collectedRibbons = new Set<number>();
   private lastPunchId = -1;
   private punchedEntities = new Set<Entity>();
-  private punchedTiles = new Set<number>();
+  /** o soco atual (punchId) já acertou um tile: no máximo um tile por soco, mesmo com a caixa ativa por vários quadros */
+  private punchTileDone = false;
   /** último número da contagem regressiva de oxigênio tocado (0 = nenhum) */
   private lastCountdown = 0;
   /**
@@ -505,7 +506,7 @@ export class GameWorld implements World {
     this.shakeT = 0;
     this.lastPunchId = -1;
     this.punchedEntities.clear();
-    this.punchedTiles.clear();
+    this.punchTileDone = false;
     this.lookAhead = CAM_LOOKAHEAD;
     this.snapCamera();
   }
@@ -874,7 +875,7 @@ export class GameWorld implements World {
     if (p.punchId !== this.lastPunchId) {
       this.lastPunchId = p.punchId;
       this.punchedEntities.clear();
-      this.punchedTiles.clear();
+      this.punchTileDone = false;
     }
     const box = p.punchBox();
     if (!box) return;
@@ -896,38 +897,67 @@ export class GameWorld implements World {
       }
     }
 
-    // tiles: só a primeira coluna (a partir do Pardo) que contém algo sólido — não atravessa paredes
+    // tiles: no máximo UMA coluna por soco (punchId). A caixa fica ativa por vários quadros e o Pardo
+    // anda nesse meio-tempo; sem a trava, a coluna recém-quebrada abria caminho para a seguinte.
+    // Coluna-alvo: a do tile sólido mais próximo na linha da mira (centro vertical da caixa) — não
+    // atravessa paredes; só se a linha da mira estiver livre vale o tile mais próximo que a caixa raspa
+    // nas outras linhas (quina). Na coluna-alvo quebram todos os tiles quebráveis cobertos pela caixa.
     const lv = this.level;
-    const ty0 = Math.floor(box.y / TILE);
-    const ty1 = Math.floor((box.y + box.h - 0.001) / TILE);
-    const txNear = Math.floor((dir === 1 ? box.x : box.x + box.w - 0.001) / TILE);
-    const txFar = Math.floor((dir === 1 ? box.x + box.w - 0.001 : box.x) / TILE);
-    let solidHit = false;
-    for (let tx = txNear; dir === 1 ? tx <= txFar : tx >= txFar; tx += dir) {
-      let any = false;
-      for (let ty = ty0; ty <= ty1; ty++) {
-        if (!lv.isSolid(tx, ty)) continue;
-        any = true;
-        if (tx < 0 || tx >= lv.cols || ty < 0 || ty >= lv.rows) continue;
-        const key = ty * lv.cols + tx;
-        if (this.punchedTiles.has(key)) continue;
-        this.punchedTiles.add(key);
-        const cx = tx * TILE + TILE / 2;
-        const cy = Math.min(Math.max(box.y + box.h / 2, ty * TILE + 2), ty * TILE + TILE - 2);
-        const edgeX = dir === 1 ? tx * TILE : tx * TILE + TILE;
-        if (lv.punchTile(tx, ty, this)) {
+    if (!this.punchTileDone) {
+      const ty0 = Math.floor(box.y / TILE);
+      const ty1 = Math.floor((box.y + box.h - 0.001) / TILE);
+      const tyAim = Math.floor((box.y + box.h / 2) / TILE);
+      const txNear = Math.floor((dir === 1 ? box.x : box.x + box.w - 0.001) / TILE);
+      const txFar = Math.floor((dir === 1 ? box.x + box.w - 0.001 : box.x) / TILE);
+      let tTx = 0;
+      let tTy = -1;
+      let grazeTx = 0;
+      let grazeTy = -1;
+      let grazeOv = 0;
+      for (let tx = txNear; dir === 1 ? tx <= txFar : tx >= txFar; tx += dir) {
+        if (lv.isSolid(tx, tyAim)) {
+          tTx = tx;
+          tTy = tyAim;
+          break;
+        }
+        if (grazeTy >= 0) continue;
+        for (let ty = ty0; ty <= ty1; ty++) {
+          if (ty === tyAim || !lv.isSolid(tx, ty)) continue;
+          const ov = Math.min(box.y + box.h, ty * TILE + TILE) - Math.max(box.y, ty * TILE);
+          if (ov > grazeOv) {
+            grazeOv = ov;
+            grazeTx = tx;
+            grazeTy = ty;
+          }
+        }
+      }
+      if (tTy < 0 && grazeTy >= 0) {
+        tTx = grazeTx;
+        tTy = grazeTy;
+      }
+      if (tTy >= 0) {
+        this.punchTileDone = true;
+        const cy = Math.min(Math.max(box.y + box.h / 2, tTy * TILE + 2), tTy * TILE + TILE - 2);
+        const inMap = tTx >= 0 && tTx < lv.cols;
+        let broke = inMap && tTy < lv.rows && lv.punchTile(tTx, tTy, this);
+        // a coluna-alvo cai inteira (pilha vertical de blocos num soco só), exceto quando a mira
+        // bateu em rocha: aí a parede segura o golpe e nada mais quebra
+        if (inMap && (broke || tTy !== tyAim)) {
+          for (let ty = Math.max(0, ty0); ty <= Math.min(lv.rows - 1, ty1); ty++) {
+            if (ty !== tTy && lv.punchTile(tTx, ty, this)) broke = true;
+          }
+        }
+        if (broke) {
           connected = true;
-          hx = cx;
+          hx = tTx * TILE + TILE / 2;
           hy = cy;
           this.shake(2, 0.12);
-        } else if (!solidHit) {
-          // rocha indestrutível: só um "tok"
-          solidHit = true;
-          this.fx('impact', edgeX, cy);
+        } else {
+          // rocha indestrutível (ou borda do mapa): só um "tok"
+          this.fx('impact', dir === 1 ? tTx * TILE : tTx * TILE + TILE, cy);
           this.audio.play('hit');
         }
       }
-      if (any) break;
     }
 
     if (connected) {

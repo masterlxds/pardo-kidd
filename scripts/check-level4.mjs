@@ -8,6 +8,8 @@
 //      têm de ser alcançáveis — prova que o caminho obrigatório tem folga;
 //   2) envelope REAL: toda moeda tem de ser tocável e todo bloco-estrela socável.
 // LEVEL4_FILE=<caminho> permite validar uma cópia modificada.
+import { validarGotas } from './lib/drops.mjs';
+
 const { LEVEL4_ROWS: rows, LEVEL4_LEGEND: legend, LEVEL4_MOVERS: movers } = await import(process.env.LEVEL4_FILE ?? '../src/game/level4.ts');
 
 const VERBOSE = process.argv.includes('--verbose');
@@ -473,4 +475,5 @@ console.log('parede alta em colunas:', wallCols.join(','));
 console.log(notes.join('\n'));
 if (warns.length) console.log(warns.join('\n'));
 if (errors.length) { console.error('\nERROS:\n' + errors.join('\n')); process.exit(1); }
+await validarGotas('createLevel4', 'Fase 4');
 console.log('\nlevel4 OK');

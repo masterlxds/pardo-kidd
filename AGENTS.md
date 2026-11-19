@@ -18,7 +18,7 @@ node scripts/check-level.mjs | check-level2.mjs | check-level3.mjs | check-level
 node scripts/check-bonus.mjs   # valida a Fase Bônus (3 trechos, metas 20/45/70, ondas e simulação com bot)
 ```
 
-Não há framework de testes nem linter; a verificação é `typecheck` + os scripts `check-*` + jogar no navegador. Os scripts `.mjs` importam `.ts` direto (`../src/...ts`), então rodam com Node moderno (type stripping), sem build. Deploy: `vercel --prod`.
+Não há framework de testes nem linter; a verificação é `typecheck` + os scripts `check-*` + jogar no navegador. Os scripts `.mjs` importam `.ts` direto (`../src/...ts`), então rodam com Node moderno (type stripping; `scripts/lib/drops.mjs` usa `module.registerHooks`, Node ≥ 22.15), sem build. Os `check-level` das Fases 1, 2, 3, 4 e 6 também simulam toda fonte de gota (blocos W, cacto, vinha, filtro, bebedouro) nos dois sentidos de soco via `scripts/lib/drops.mjs` e falham se a gota nascer em sólido, tocar perigo, cair do mapa ou não pousar. Deploy: `vercel --prod`.
 
 ## Arquitetura
 

@@ -1,4 +1,6 @@
 // Valida o mapa da Fase 3 (subaquática). Uso: node scripts/check-level3.mjs [--print]
+import { validarGotas } from './lib/drops.mjs';
+
 import { LEVEL3_ROWS as rows, LEVEL3_LEGEND as legend } from '../src/game/level3.ts';
 
 const errors = [], warns = [];
@@ -178,4 +180,5 @@ console.log('fissuras x:', vs.join(','), '| K x:', (count.K ?? []).map(([x]) => 
 console.log(warns.join('\n'));
 console.log(`células alcançadas: ${seen.size} (livres ${free})`);
 if (errors.length) { console.error('\nERROS:\n' + errors.join('\n')); process.exit(1); }
+await validarGotas('createLevel3', 'Fase 3');
 console.log('\nlevel3 OK');
