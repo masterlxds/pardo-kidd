@@ -93,8 +93,6 @@ export interface GameState {
   /** fitinhas do Bonfim coletadas na fase atual / total existente na fase (0 se a fase não tem) */
   ribbons: number;
   ribbonsTotal: number;
-  /** fala em exibição (caixa de diálogo da HUD) ou null. game.ts avança `t` e zera ao passar de `duration`. */
-  dialogue: Dialogue | null;
   /** dificuldade escolhida no título: 'normal' = START_LIVES vidas; 'amaro' (fácil) = EASY_LIVES vidas */
   difficulty: Difficulty;
   /** estado da Fase Bônus ("Tubo do Bonfim") */
@@ -104,16 +102,6 @@ export interface GameState {
 }
 
 export type Difficulty = 'normal' | 'amaro';
-
-export interface Dialogue {
-  /** nome de quem fala, ex.: 'JANDIRA' */
-  speaker: string;
-  /** texto em MAIÚSCULAS (a fonte bitmap só tem maiúsculas/acentos); a HUD quebra em linhas */
-  text: string;
-  /** segundos desde que apareceu (para efeito de digitação) */
-  t: number;
-  duration: number;
-}
 
 /** Tema visual/sonoro de uma fase. */
 export type LevelTheme = 'sertao' | 'amazonia' | 'bahia' | 'rio' | 'uber' | 'sampa';
@@ -134,7 +122,6 @@ export type SfxName =
   /** fitinha do Bonfim coletada */ | 'ribbon'
   /** fanfarra 16-bit com berimbau e percussão baiana (pegou o Cajado; ~3-4s) */ | 'fanfare'
   /** lambida no cajado */ | 'lick'
-  /** blip curto de fala (diálogo da Jandira) */ | 'talk'
   /** vida extra (100 moedas) */ | 'oneup'
   // Fase 4
   /** latido curto do vira-lata caramelo */ | 'bark'
@@ -150,7 +137,7 @@ export type SfxName =
   /** arremesso do pacote (arremessador) */ | 'throw'
   // Fase Bônus — Tubo do Bonfim
   /** explosão da mina/bomba no meio-tubo */ | 'bomb'
-  /** captura do Amuleto / Esmeralda do Bonfim */ | 'emerald';
+  /** captura da Esmeralda do Bonfim */ | 'emerald';
 
 export interface AudioApi {
   /** Chamar no primeiro gesto do usuário (cria/resume o AudioContext). Idempotente. */
@@ -297,8 +284,6 @@ export interface World {
   shake(intensity: number, duration?: number): void;
   /** Pardo tocou o objetivo (Caneca Esmaltada / alien com a mamadeira / Cajado Jailnesco) → inicia sequência de vitória. */
   win(): void;
-  /** Mostra uma fala na caixa de diálogo (substitui a atual). duration padrão ≈ 3.5s. */
-  say(speaker: string, text: string, duration?: number): void;
   /** +1 fitinha do Bonfim (state.ribbons). */
   addRibbon(): void;
 }

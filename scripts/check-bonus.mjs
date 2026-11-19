@@ -192,7 +192,6 @@ function makeMockWorld(initialLives = 3) {
       maxAir: 5,
       ribbons: 3,
       ribbonsTotal: 3,
-      dialogue: null,
       difficulty: 'normal',
       bonus: {
         active: false,
@@ -236,7 +235,6 @@ function makeMockWorld(initialLives = 3) {
     },
     spawn() {},
     win() {},
-    say() {},
     addRibbon() {},
     sfxCounts,
     get fxCount() {

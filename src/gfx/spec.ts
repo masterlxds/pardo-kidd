@@ -358,8 +358,6 @@ export const SPRITE_SPEC = {
   maia_give: [34, 36, 2],
   /** Maia comemorando: joia erguido, sorriso largo, sem xícara (2 frames) */
   maia_cheer: [34, 36, 2],
-  /** retrato do Maia (reserva para HUD) */
-  maia_face: [16, 16, 1],
   /** xícara branca com pires e fumaça (frame 1 = fumaça alternada) */
   coffee_cup: [12, 12, 2],
   /** Pardo de máscara abaixada bebendo da xícara (2 frames) */
@@ -450,7 +448,7 @@ export const SPRITE_SPEC = {
   bonus_coin: [12, 12, 4],
   /** mina/bomba estrelada pulsante em 2 quadros */
   bonus_bomb: [14, 14, 2],
-  /** Amuleto / Esmeralda do Bonfim em turquesa e dourado (2 quadros) */
+  /** Esmeralda do Bonfim em turquesa e dourado (2 quadros) */
   bonus_emerald: [16, 16, 2],
   /** baliza luminosa de checkpoint com fitinha do Bonfim (2 quadros) */
   bonus_gate: [16, 16, 2],

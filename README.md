@@ -39,7 +39,7 @@ Ao vencer a Fase 3 com **`3/3` Fitinhas do Bonfim** (ou acessando diretamente vi
 
 - **Corrida no meio-tubo:** visto de costas em perspectiva pseudo-3D, `←`/`→` (`A`/`D`) fazem o Pardo correr pelas paredes laterais do tubo (soltar o direcional devolve suavemente ao centro), enquanto `↑`/`W` ou `Espaço`/`Z`/`J` saltam em direção ao centro do tubo para desviar de bombas de espinhos e alcançar arcos altos de moedas.
 - **Parceiro Caramelo-Tails:** um vira-lata caramelo de cauda dupla giratória segue o rastro do Pardo logo atrás dele no túnel e ajuda a coletar moedas cooperativamente, **sem** fazer o jogador perder moedas caso encoste em bombas.
-- **3 trechos e recompensa máxima:** o percurso tem 3 checkpoints com metas acumuladas progressivas (**20 → 45 → 70 moedas**) e **zero perda de vidas** (bombas descontam até 5 moedas da meta do bônus, mas nunca tiram vida). Bater as três metas e capturar o **Amuleto / Esmeralda do Bonfim** rende **+5000 pontos** e **+1 vida (`1UP`)**; em qualquer desfecho, todas as moedas e pontos conquistados seguem para a Fase 4.
+- **3 trechos e recompensa máxima:** o percurso tem 3 checkpoints com metas acumuladas progressivas (**20 → 45 → 70 moedas**) e **zero perda de vidas** (bombas descontam até 5 moedas da meta do bônus, mas nunca tiram vida). Bater as três metas e capturar o **Esmeralda do Bonfim** rende **+5000 pontos** e **+1 vida (`1UP`)**; em qualquer desfecho, todas as moedas e pontos conquistados seguem para a Fase 4.
 
 ## Fase 5 — "Marginal de São Paulo" (De Uber até o Galpão)
 

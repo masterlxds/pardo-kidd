@@ -524,12 +524,6 @@ const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
     noise(g, g.sfx, t, 0.22, 0.1, 'bandpass', 1500, 700, 2);
     bubbles(g, g.sfx, t + 0.18, 2, 0.08);
   },
-  // fala: blip curtíssimo com altura aleatória
-  talk: (g, t) => {
-    const f = 300 + Math.random() * 140;
-    osc(g, g.sfx, 'square', f, t, 0.045, 0.1, f * 1.05);
-  },
-
   // pulo: sweep ascendente curto
   jump: (g, t) => osc(g, g.sfx, 'square', 220, t, 0.14, 0.2, 660),
   // soco: whoosh de ruído + thump grave
