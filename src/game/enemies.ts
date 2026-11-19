@@ -100,6 +100,17 @@ function groundAhead(e: Entity, dir: 1 | -1, world: World): boolean {
   return world.level.isSolid(tx, ty) || world.level.isOneWay(tx, ty);
 }
 
+/** Como `groundAhead`, mas exige chão sem perigo (`isHazard`: água/espinhos) e nada perigoso à frente na altura do corpo. */
+function safeGroundAhead(e: Entity, dir: 1 | -1, world: World): boolean {
+  if (!groundAhead(e, dir, world)) return false;
+  const ax = dir > 0 ? e.x + e.w + 1 : e.x - 1;
+  const tx = Math.floor(ax / TILE);
+  const r0 = Math.floor(e.y / TILE);
+  const r1 = Math.floor((e.y + e.h + 1) / TILE);
+  for (let ty = r0; ty <= r1; ty++) if (world.level.isHazard(tx, ty)) return false;
+  return true;
+}
+
 function fall(e: Entity, dt: number, world: World) {
   e.vy = Math.min(e.vy + GRAV * dt, MAX_FALL);
   return moveBody(e, world.level, dt);
@@ -310,6 +321,31 @@ function tatuAi(e: Entity): Ai {
 }
 
 // ── Onça: patrulha, agacha e dá bote em arco; 2 socos ───────────────────────────────
+const ONCA_POUNCE_VX = 150, ONCA_POUNCE_VY = -220;
+
+/** Alcance horizontal do bote (px) no mesmo nível, integrando como `fall` em passo de 1/60 s. */
+const ONCA_POUNCE_DX = (() => {
+  const dt = 1 / 60;
+  let y = -1, vy = ONCA_POUNCE_VY, x = 0;
+  while (y < 0) { vy = Math.min(vy + GRAV * dt, MAX_FALL); y += vy * dt; x += ONCA_POUNCE_VX * dt; }
+  return x;
+})();
+
+/** O bote termina em chão firme e sem água/espinhos no mesmo nível? (senão não pula: evita cair no rio/abismo) */
+function pounceLandingSafe(e: Entity, dir: 1 | -1, world: World): boolean {
+  const lx = e.x + dir * ONCA_POUNCE_DX;
+  const feet = Math.floor((e.y + e.h + 1) / TILE);
+  const r0 = Math.floor(e.y / TILE);
+  const r1 = Math.floor((e.y + e.h - 0.001) / TILE);
+  let ground = false;
+  for (let tx = Math.floor(lx / TILE); tx <= Math.floor((lx + e.w - 0.001) / TILE); tx++) {
+    if (world.level.isHazard(tx, feet)) return false;
+    for (let ty = r0; ty <= r1; ty++) if (world.level.isHazard(tx, ty)) return false;
+    if (world.level.isSolid(tx, feet) || world.level.isOneWay(tx, feet)) ground = true;
+  }
+  return ground;
+}
+
 function oncaAi(e: Entity): Ai {
   type S = 'patrol' | 'crouch' | 'pounce' | 'rest' | 'stun';
   let state: S = 'patrol';
@@ -325,10 +361,11 @@ function oncaAi(e: Entity): Ai {
         e.vx = dir * 30;
         const c = fall(e, dt, world);
         if (c.left || c.right) dir = c.left ? 1 : -1;
-        else if (c.bottom && !groundAhead(e, dir, world)) dir = (dir * -1) as 1 | -1;
+        else if (c.bottom && !safeGroundAhead(e, dir, world)) dir = (dir * -1) as 1 | -1;
         const dx = p.x + p.w / 2 - cx(e);
         const dy = (p.y + p.h) - (e.y + e.h);
-        if (c.bottom && !p.dead && dx * dir > 0 && Math.abs(dx) <= 7 * TILE && Math.abs(dy) <= TILE) {
+        if (c.bottom && !p.dead && dx * dir > 0 && Math.abs(dx) <= 7 * TILE && Math.abs(dy) <= TILE
+          && pounceLandingSafe(e, dir, world)) {
           state = 'crouch';
           timer = 0.4;
           e.vx = 0;
@@ -340,8 +377,8 @@ function oncaAi(e: Entity): Ai {
         if (timer <= 0) {
           state = 'pounce';
           timer = 0.1;
-          e.vx = dir * 150;
-          e.vy = -220;
+          e.vx = dir * ONCA_POUNCE_VX;
+          e.vy = ONCA_POUNCE_VY;
           e.y -= 1;
           world.audio.play('roar');
         }
@@ -420,6 +457,26 @@ function cobraAi(e: Entity): Ai {
     if (face > 0) e.w = w;
     else { const r = e.x + e.w; e.w = w; e.x = r - w; }
   };
+  /** Largura do bote limitada pela parede à frente: a hitbox estendida nunca entra em tile sólido. */
+  const strikeW = (world: World): number => {
+    const r0 = Math.floor(e.y / TILE);
+    const r1 = Math.floor((e.y + e.h - 0.001) / TILE);
+    let ext = W_STRIKE - W;
+    for (let ty = r0; ty <= r1; ty++) {
+      if (face > 0) {
+        const front = e.x + e.w;
+        for (let tx = Math.floor(front / TILE); tx * TILE < front + ext; tx++) {
+          if (world.level.isSolid(tx, ty)) { ext = Math.min(ext, Math.max(0, tx * TILE - front)); break; }
+        }
+      } else {
+        const front = e.x;
+        for (let tx = Math.floor((front - 0.001) / TILE); (tx + 1) * TILE > front - ext; tx--) {
+          if (world.level.isSolid(tx, ty)) { ext = Math.min(ext, Math.max(0, front - (tx + 1) * TILE)); break; }
+        }
+      }
+    }
+    return W + ext;
+  };
   return {
     update(_e, dt, world) {
       t += dt;
@@ -438,7 +495,7 @@ function cobraAi(e: Entity): Ai {
           world.audio.play('hiss');
         }
       } else if (state === 'tele') {
-        if (timer <= 0) { state = 'strike'; timer = 0.3; setW(W_STRIKE); }
+        if (timer <= 0) { state = 'strike'; timer = 0.3; setW(strikeW(world)); }
       } else if (state === 'strike') {
         if (timer <= 0) { setW(W); state = 'recoil'; timer = 0.6; }
       } else if (state === 'recoil') {
