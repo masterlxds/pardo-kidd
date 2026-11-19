@@ -12,6 +12,8 @@
 // afundam, e inimigos não existem. Blocos B/?/W só "somem" quando há um ponto de apoio já
 // alcançado de onde um soco em pé ou com pulinho os acerta.
 // LEVEL2_FILE=<caminho> permite validar uma cópia modificada (testes de mutação do próprio validador)
+import { validarGotas } from './lib/drops.mjs';
+
 const { LEVEL2_ROWS: rows, LEVEL2_LEGEND: legend, LEVEL2_MOVERS: movers } = await import(process.env.LEVEL2_FILE ?? '../src/game/level2.ts');
 
 const VERBOSE = process.argv.includes('--verbose');
@@ -452,4 +454,5 @@ console.log('parede alta em colunas:', wallCols.join(','));
 console.log(notes.join('\n'));
 if (warns.length) console.log(warns.join('\n'));
 if (errors.length) { console.error('\nERROS:\n' + errors.join('\n')); process.exit(1); }
+await validarGotas('createLevel2', 'Fase 2');
 console.log('\nlevel2 OK');

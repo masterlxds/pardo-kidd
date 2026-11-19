@@ -9,6 +9,8 @@
 //   2) envelope REAL: toda moeda tem de ser tocável e toda caixa ?/W socável.
 // Não há água: os abismos são fossos de doca (colunas vazias nas linhas 11..13, ou com '^' no fundo).
 // LEVEL6_FILE=<caminho> permite validar uma cópia modificada.
+import { validarGotas } from './lib/drops.mjs';
+
 const { LEVEL6_ROWS: rows, LEVEL6_LEGEND: legend, LEVEL6_MOVERS: movers, LEVEL6_INDOOR_FROM_COL: indoor } =
   await import(process.env.LEVEL6_FILE ?? '../src/game/level6.ts');
 
@@ -509,4 +511,5 @@ console.log('parede de caixas em colunas:', wallCols.join(','));
 console.log(notes.join('\n'));
 if (warns.length) console.log(warns.join('\n'));
 if (errors.length) { console.error('\nERROS:\n' + errors.join('\n')); process.exit(1); }
+await validarGotas('createLevel6', 'Fase 6');
 console.log('\nlevel6 OK');

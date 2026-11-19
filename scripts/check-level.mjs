@@ -1,5 +1,6 @@
 // Valida o mapa da Fase 1. Uso: node scripts/check-level.mjs
 import { LEVEL1_ROWS as rows, LEVEL1_LEGEND as legend, LEVEL1_MOVERS as movers } from '../src/game/level1.ts';
+import { validarGotas } from './lib/drops.mjs';
 
 const errors = [], warns = [];
 const err = (m) => errors.push(m);
@@ -30,7 +31,7 @@ const surface = (x, y) => solid(at(x, y)) || at(x, y) === '-';
 // ancoragem em chão
 const onGround = 'PKlptCDfskbToHj'; // base na célula, precisa de apoio sólido abaixo
 for (const c of 'PKlptC' + 'G') for (const [x, y] of count[c] ?? []) {
-  const below = c === 'G' ? at(x, y + 1) === 'D' : (surface(x, y + 1) || (c === 'C' && false));
+  const below = c === 'G' ? at(x, y + 1) === 'D' : surface(x, y + 1);
   if (!below) err(`'${c}' em ${x},${y} sem apoio abaixo`);
   if (c !== 'G' && c !== 'P' && c !== 'K' && solid(at(x, y))) err(`'${c}' dentro de tile`);
 }
@@ -66,7 +67,6 @@ while (q.length) {
     if (seen.has(key(nx, ny))) continue;
     const dx = Math.abs(nx - x), rise = y - ny;
     if (dx >= 1 && dx <= 4 && rise <= 2) { seen.add(key(nx, ny)); q.push([nx, ny]); }
-    else if (dx === 0 && rise <= 0 && -rise <= 6 && false) {}
   }
 }
 const goal = [mug[0], mug[1] + 2]; // topo do chão sob o pedestal
@@ -97,6 +97,8 @@ console.log(`mapa ${W}x${H}`);
 console.log('contagens:', Object.fromEntries(Object.keys(count).filter((c) => 'PKGcCmMdlvptBW?^-'.includes(c)).map((c) => [c, n(c)])));
 console.log('parede alta em colunas:', wallCols.join(','));
 console.log(warns.join('\n'));
-console.log(`nós alcançados: ${seen.size}/${list.length + 1}`);
+console.log(`nós alcançados: ${seen.size}/${list.length}`);
+if (seen.size !== list.length) err(`${list.length - seen.size} nó(s) de pouso inalcançável(is)`);
 if (errors.length) { console.error('\nERROS:\n' + errors.join('\n')); process.exit(1); }
+await validarGotas('createLevel1', 'Fase 1');
 console.log('\nlevel OK');
