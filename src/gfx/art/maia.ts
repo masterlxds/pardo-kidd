@@ -11,7 +11,6 @@ import type { SpriteArt } from '../artTypes';
  * - maia_idle:          [34, 36, 2] -> 68x72 (joia + xícara fumegante; frame 1 = respiração/fumaça)
  * - maia_give:          [34, 36, 2] -> 68x72 (braço da xícara estendido)
  * - maia_cheer:         [34, 36, 2] -> 68x72 (joia erguido, sorriso largo, sem xícara)
- * - maia_face:          [16, 16, 1] -> 32x32 (retrato)
  * - coffee_cup:         [12, 12, 2] -> 24x24 (xícara com pires; frame 1 = fumaça alternada)
  * - pardo_drink_coffee: [20, 24, 2] -> 40x48 (Pardo de máscara abaixada; frame 1 = gole)
  */
@@ -469,42 +468,6 @@ export const MAIA: SpriteArt = {
     ],
   ],
 
-  maia_face: [
-    [
-      '................................',
-      '............kkkkkkkkk...........',
-      '..........kkxhxxxxxhxkk.........',
-      '.........kxhxxxxxhxxxxxk........',
-      '........khxxxxxhxxxxxhxxk.......',
-      '.......kxxxxxhxxxxxhxxxxxk......',
-      '......kxxxxhiiiiissssssssxk.....',
-      '.....kxiiiiiiiiiissssssssssk....',
-      '....kiiiiiiiiiiiissssssssssSk...',
-      '....kssssssxxxxxssssxxxxxssSk...',
-      '....kssssssssssssssssssssssSk...',
-      '...kssssssskkkkkssssskkkkksSSk..',
-      '..kkssssssswwkksssssswwkkssSSk..',
-      '.kSksssssssSSSSsssssSSSSSssSSk..',
-      '.kSkusssssssssssssssSssssssSSk..',
-      '.kSkusssssssssssssisSssssssSSk..',
-      '.kSkhhhsssssssssssuuussssssShk..',
-      '.kSkhhhsssssssssssssssssssshhk..',
-      '..kkkhhhssssssshhhhhhhhhssshk...',
-      '....khhhsssssshusssssssuhshhk...',
-      '....khhhhssssshsuuVVVuushhhhk...',
-      '.....khhhhsssshssssssssshhhk....',
-      '......khhhhhsshsssssssshhhk.....',
-      '.......khhhhhhhhssssshhhhk......',
-      '........khhhhhhhhhhhhhhhk.......',
-      '.......kkkhhhhhhhhhhhhhk........',
-      '...kkkkrrrkkhhhhhhhhhkkMkkkk....',
-      '..kKKKwrrrrkkkkkkkkkkkMMMMwrk...',
-      'k.kKKKwrrrrwkkSsssSkkwMMMMwrk.kk',
-      'MkwKKKwrrrrwMMkSSSkrrwMMMMwrrkMM',
-      'MMkKKKwrrrrwMMMMkrrrrwMMMMwrrRkM',
-      'kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk',
-    ],
-  ],
 
   coffee_cup: [
     [

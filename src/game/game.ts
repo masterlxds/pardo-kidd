@@ -197,7 +197,6 @@ export class GameWorld implements World {
       maxAir: MAX_AIR,
       ribbons: 0,
       ribbonsTotal: 0,
-      dialogue: null,
       difficulty: 'normal',
       bonus: {
         active: false,
@@ -370,10 +369,6 @@ export class GameWorld implements World {
     this.setScene('winning');
   }
 
-  say(speaker: string, text: string, duration = 3.5): void {
-    this.state.dialogue = { speaker, text, t: 0, duration };
-  }
-
   addRibbon(): void {
     // identifica QUAL fitinha foi pega (a mais próxima do Pardo) para ela não voltar após morrer
     const px = this.player.centerX, py = this.player.y + this.player.h / 2;
@@ -411,7 +406,6 @@ export class GameWorld implements World {
 
   /** Inicia a Fase Bônus ("Tubo do Bonfim"), preservando pontos, moedas e vidas. */
   startBonus(): void {
-    this.state.dialogue = null;
     this.particles.length = 0;
     this.popups.length = 0;
     this.shakeT = 0;
@@ -499,7 +493,6 @@ export class GameWorld implements World {
     if (this.level.autoscroll) this.prepareRide();
     this.state.hydration = this.state.maxHydration;
     this.state.air = this.state.maxAir;
-    this.state.dialogue = null;
     this.lastCountdown = 0;
     this.particles.length = 0;
     this.popups.length = 0;
@@ -645,7 +638,6 @@ export class GameWorld implements World {
         st.elapsed += dt;
         this.stepPlaying(dt);
         this.updateAir(dt);
-        this.updateDialogue(dt);
         if (this.player.dead && st.scene === 'playing') {
           st.lives = Math.max(0, st.lives - 1);
           this.audio.stopMusic();
@@ -671,7 +663,6 @@ export class GameWorld implements World {
 
       case 'dying':
         this.time += dt;
-        this.updateDialogue(dt);
         this.player.update(dt, this, input);
         this.updateParticles(dt);
         this.updatePopups(dt);
@@ -691,7 +682,6 @@ export class GameWorld implements World {
 
       case 'winning':
         this.time += dt;
-        this.updateDialogue(dt);
         this.updateEntities(dt);
         this.player.update(dt, this, input);
         this.updateParticles(dt);
@@ -831,13 +821,6 @@ export class GameWorld implements World {
     } else {
       this.lastCountdown = 0;
     }
-  }
-
-  private updateDialogue(dt: number): void {
-    const d = this.state.dialogue;
-    if (!d) return;
-    d.t += dt;
-    if (d.t >= d.duration) this.state.dialogue = null;
   }
 
   private updateEntities(dt: number): void {

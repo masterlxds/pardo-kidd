@@ -20,7 +20,7 @@ Dentro desse túnel em meio-tubo que serpenteia pelo céu estrelado da Baía de 
      Ao confirmar, o jogo transita para a cena `'bonus_intro'` (em vez de pular direto para a Fase 4).
    * **Se coletou menos de 3 fitinhas (`0/3`, `1/3` ou `2/3`):** segue o fluxo normal para a **Fase 4 ("Favela do Rio")** com `"ENTER OU TOQUE PARA A FASE 4"`.
 2. **Retorno para a Campanha:**
-   * Ao concluir ou encerrar a Fase Bônus (seja vencendo todos os 3 checkpoints e pegando o Amuleto do Bonfim, seja falhando uma meta de moedas), exibe-se a tela de resumo `'bonus_end'`.
+   * Ao concluir ou encerrar a Fase Bônus (seja vencendo todos os 3 checkpoints e pegando a Esmeralda do Bonfim, seja falhando uma meta de moedas), exibe-se a tela de resumo `'bonus_end'`.
    * Ao confirmar na tela `'bonus_end'`, o jogo avança para a **Fase 4 ("Favela do Rio", `levelIndex = 3`)** (`loadLevel(3)` → `'intro'`), **preservando todas as moedas (`st.coins`), vidas (`st.lives`, incluindo eventual `1UP`) e pontuação (`st.score`)** conquistadas no bônus.
    * **Exceção do Modo Teste:** quando iniciado diretamente via atalho de URL (`?fase=bonus` ou `?bonus=1`), após `'bonus_end'` o jogador pode reiniciar o bônus ou seguir para a Fase 4 (`loadLevel(3)` — padrão: seguir para a Fase 4 se veio da campanha; no modo teste `?fase=bonus`, `ENTER` na `'bonus_end'` segue para a Fase 4 ou volta ao título/reinicia conforme especificado no fluxo unificado: seguir para `loadLevel(3)` mantém o fluxo 100% consistente e testável!).
 3. **Zero Penalidade de Vidas:**
@@ -52,7 +52,7 @@ flowchart LR
      * Total acumulado de moedas normais (`st.coins`) e pontuação (`st.score`).
    * Pausa (`P` ou `Esc`) funciona normalmente como nas demais fases (`Scene = 'paused'`, guardando que a cena anterior era `'bonus'` para retornar corretamente a `'bonus'` ao despausar e reiniciar a música `'bonus'`).
 3. **Tela de Resultado (`Scene = 'bonus_end'`):**
-   * **Vitória Completa (3/3 trechos vencidos):** exibe o sprite animado `bonus_emerald` (2×), Pardo e Caramelo-Tails comemorando, total de moedas coletadas no tubo, bônus de **+5000 PONTOS** e **+1 VIDA (`1UP`)**, com o título `"AMULETO DO BONFIM!"` e `"ESPECIAL CONCLUÍDO!"`.
+   * **Vitória Completa (3/3 trechos vencidos):** exibe o sprite animado `bonus_emerald` (2×), Pardo e Caramelo-Tails comemorando, total de moedas coletadas no tubo, bônus de **+5000 PONTOS** e **+1 VIDA (`1UP`)**, com o título `"ESMERALDA DO BONFIM!"` e `"ESPECIAL CONCLUÍDO!"`.
    * **Fim Parcial (falhou em um checkpoint):** exibe quantos trechos foram concluídos, total de moedas preservadas e mensagem `"FIM DO BÔNUS — MOEDAS MANTIDAS!"`.
    * Rodapé piscante: `"ENTER OU TOQUE PARA A FASE 4"`.
 
@@ -182,7 +182,7 @@ Todos os sprites da Fase Bônus são autorados em **alta resolução 2×** (`REN
 | `buddy_bonus_jump` | `[18, 22, 2]` | **Caramelo-Tails pulando**: caudas girando como hélice acima/atrás do corpo. |
 | `bonus_coin` | `[12, 12, 4]` | Moeda/argola dourada brilhante em 4 ângulos de rotação (`y`, `Y`, `f`, `a`, contorno `k`). |
 | `bonus_bomb` | `[14, 14, 2]` | Mina estrelada com pontas metálicas (`K`, `q`, `Q`), centro vermelho pulsante (`r`, `R`, `m` entre frame 0 e 1). |
-| `bonus_emerald` | `[16, 16, 2]` | **Amuleto / Esmeralda do Bonfim**: gema lapidada em turquesa brilhante e dourado (`8`, `&`, `9`, `y`, `w`) com brilho pulsante entre frames 0 e 1. |
+| `bonus_emerald` | `[16, 16, 2]` | **Esmeralda do Bonfim**: gema lapidada em turquesa brilhante e dourado (`8`, `&`, `9`, `y`, `w`) com brilho pulsante entre frames 0 e 1. |
 | `bonus_gate` | `[16, 16, 2]` | Pilar/baliza luminosa de checkpoint com fitinha do Bonfim colorida tremulando (`c`, `y`, `r`, `w`). |
 
 ---

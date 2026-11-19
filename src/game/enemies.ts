@@ -67,12 +67,12 @@ function build(kind: EnemyKind, centerX: number, bottom: number, w: number, h: n
       if (ai.onHit) {
         const r = ai.onHit(e, dir, world);
         if (r === 'miss') return false;
-        if (r === 'absorb') { world.audio.play('hit'); return true; }
+        if (r === 'absorb') return true; // 'hit' toca no motor (resolvePunch)
       } else if (!ai.vulnerable()) return false;
       thrown = { rot: 0, spin: dir * 12, dir };
       e.vx = dir * 150;
       e.vy = -210;
-      world.audio.play('hit');
+      // 'hit' toca no motor (resolvePunch) quando retorna true
       world.addScore(points, cx(e), e.y);
       return true;
     },
@@ -564,7 +564,7 @@ function createFruit(x: number, y: number): Entity {
     onPunch(world) {
       if (e.dead) return false;
       e.dead = true;
-      world.audio.play('hit');
+      // 'hit' toca no motor (resolvePunch)
       world.addScore(10, e.x, e.y);
       return true;
     },

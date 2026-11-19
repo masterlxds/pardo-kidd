@@ -70,7 +70,6 @@ export function drawHud(ctx: CanvasRenderingContext2D, world: World): void {
     const stars = uberStars(st.rideHits);
     for (let i = 0; i < UBER.maxStars; i++) drawStar(ctx, 150 + i * 11, 6, 4, i < stars);
   }
-  if (st.dialogue) drawDialogue(ctx, world);
 }
 
 /** Estrela de 5 pontas (centro cx,cy; raio r) preenchida ou só contorno; sem depender de glifo da fonte. */
@@ -114,38 +113,6 @@ function drawAirAlert(ctx: CanvasRenderingContext2D, world: World): void {
   drawText(ctx, String(n), sx, y, { scale, color: P.r, align: 'center', shadow: P.k });
 }
 
-/** Caixa de diálogo inferior com retrato, nome e texto digitado. */
-function drawDialogue(ctx: CanvasRenderingContext2D, world: World): void {
-  const d = world.state.dialogue;
-  if (!d) return;
-  const px = 6, ph = 36, py = VIEW_H - ph - 3, pw = VIEW_W - 12;
-  ctx.fillStyle = P.k;
-  ctx.fillRect(px - 1, py - 1, pw + 2, ph + 2);
-  ctx.fillStyle = 'rgba(14,40,80,0.94)';
-  ctx.fillRect(px, py, pw, ph);
-  ctx.strokeStyle = P.c;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
-  // retrato 2x
-  ctx.fillStyle = P.B;
-  ctx.fillRect(px + 3, py + 2, 32, 32);
-  const face = d.speaker === 'AMARO' ? 'amaro_face' : 'jandira_face';
-  spr(ctx, world, face, 0, px + 3, py + 2, 2);
-  const tx = px + 40;
-  drawText(ctx, d.speaker, tx, py + 3, { color: P.y, shadow: P.k });
-  const shown = Math.min(d.text.length, Math.floor(d.t * 30));
-  const lines = wrapWords(d.text, 1, pw - 46, 99);
-  let left = shown;
-  lines.slice(0, 3).forEach((line, i) => {
-    if (left <= 0) return;
-    drawText(ctx, line.slice(0, left), tx, py + 12 + i * 8, { color: P.w, shadow: P.k });
-    left -= line.length + 1;
-  });
-  if (shown >= d.text.length && blink(d.t, 0.4)) {
-    drawText(ctx, '♥', px + pw - 9, py + ph - 10, { color: P.c });
-  }
-}
-
 /** Tela de título (capa de cartucho 8-bit sobre papel quadriculado). */
 export function drawTitle(ctx: CanvasRenderingContext2D, world: World): void {
   const t = world.state.sceneTime;
@@ -165,9 +132,9 @@ export function drawTitle(ctx: CanvasRenderingContext2D, world: World): void {
   ctx.fillRect(4, 177, 312, 1);
 
   // título
-  drawText(ctx, 'PARDO KIDD', 160, 9, { scale: 4, color: P.B, align: 'center', shadow: P.c });
-  drawText(ctx, 'IN', 160, 40, { scale: 2, color: P.r, align: 'center', shadow: P.R });
-  drawText(ctx, 'QUIXADÁ WORLD', 160, 57, { scale: 3, color: P.r, align: 'center', shadow: P.R });
+  drawText(ctx, 'PARDO KIDD', 160, 6, { scale: 4, color: P.B, align: 'center', shadow: P.c });
+  drawText(ctx, 'IN', 160, 41, { scale: 1, color: P.r, align: 'center', shadow: P.R });
+  drawText(ctx, 'QUIXADÁ WORLD', 160, 54, { scale: 3, color: P.r, align: 'center', shadow: P.R });
 
   // chão
   ctx.fillStyle = P.o;
@@ -574,7 +541,7 @@ export function drawBonusHud(ctx: CanvasRenderingContext2D, world: World): void 
   drawText(ctx, lifeTxt, lifeTextX, 3, { ...o, color: P.w });
 }
 
-/** Painel de resultado da Fase Bônus (vitória com Amuleto do Bonfim ou fim parcial em checkpoint). */
+/** Painel de resultado da Fase Bônus (vitória com a Esmeralda do Bonfim ou fim parcial em checkpoint). */
 export function drawBonusEnd(ctx: CanvasRenderingContext2D, world: World): void {
   const st = world.state;
   const t = st.sceneTime;
@@ -614,7 +581,7 @@ export function drawBonusEnd(ctx: CanvasRenderingContext2D, world: World): void 
     ctx.fillStyle = P.D;
     ctx.fillRect(px + 5, py + 5, pw - 10, 42);
     drawText(ctx, 'ESPECIAL CONCLUÍDO!', 160, py + 9, { scale: 2, color: P.y, align: 'center', shadow: P.k });
-    drawText(ctx, 'AMULETO DO BONFIM!', 160, py + 28, { scale: 2, color: P['8'], align: 'center', shadow: P.k });
+    drawText(ctx, 'ESMERALDA DO BONFIM!', 160, py + 28, { scale: 2, color: P['8'], align: 'center', shadow: P.k });
     drawBonfimRibbon(ctx, px + 5, py + 48, pw - 10);
 
     // Ilustração esquerda: Esmeralda do Bonfim brilhando + Pardo e Caramelo-Tails comemorando de frente

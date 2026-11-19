@@ -147,7 +147,8 @@ function buildSampaEnemy(
       thrown = { rot: 0, spin: dir * 12, dir };
       e.vx = dir * 150;
       e.vy = -210;
-      world.audio.play(deathSfx);
+      // 'hit' toca no motor (resolvePunch); só o efeito específico (ex.: 'squeak') toca aqui
+      if (deathSfx !== 'hit') world.audio.play(deathSfx);
       world.addScore(points, cx(e), e.y);
       return true;
     },
@@ -402,7 +403,7 @@ function createPacote(spawnX: number, spawnY: number, dir: Dir): Entity {
     onPunch(world) {
       if (d.dead) return false;
       d.dead = true;
-      world.audio.play('hit');
+      // 'hit' toca no motor (resolvePunch)
       world.fx('debris', d.x + d.w / 2, d.y + d.h / 2);
       world.addScore(10, d.x + d.w / 2, d.y);
       return true;

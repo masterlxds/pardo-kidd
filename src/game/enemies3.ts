@@ -173,7 +173,7 @@ function build(kind: SeaEnemyKind, centerX: number, centerY: number, w: number, 
       }
       // derrota
       core.defeated = true;
-      world.audio.play('hit');
+      // 'hit' toca no motor (resolvePunch)
       world.addScore(points, cx(e), e.y);
       world.fx('bubble', cx(e), cy(e));
       sinking = true;

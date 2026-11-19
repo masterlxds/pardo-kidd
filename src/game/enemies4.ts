@@ -179,7 +179,7 @@ function buildRioEnemy(
       thrown = { rot: 0, spin: dir * 12, dir };
       e.vx = dir * 150;
       e.vy = -210;
-      world.audio.play('hit');
+      // 'hit' toca no motor (resolvePunch) quando retorna true
       world.addScore(points, cx(e), e.y);
       return true;
     },
@@ -299,7 +299,7 @@ function createDropping(spawnCx: number, spawnY: number): Entity {
     onPunch(world) {
       if (d.dead) return false;
       d.dead = true;
-      world.audio.play('hit');
+      // 'hit' toca no motor (resolvePunch)
       world.addScore(10, d.x + d.w / 2, d.y);
       return true;
     },
