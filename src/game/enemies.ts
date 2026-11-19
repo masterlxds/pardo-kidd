@@ -92,6 +92,19 @@ function resize(e: Entity, w: number, h: number): void {
   e.w = w; e.h = h; e.x = c - w / 2; e.y = b - h;
 }
 
+/** Como `resize`, mas se a hitbox mais larga encostar numa parede sólida, empurra-a para o lado livre (não entra no tile). */
+function resizeFit(e: Entity, w: number, h: number, world: World): void {
+  resize(e, w, h);
+  const r0 = Math.floor(e.y / TILE);
+  const r1 = Math.floor((e.y + e.h - 0.001) / TILE);
+  const lx = Math.floor(e.x / TILE);
+  const rx = Math.floor((e.x + e.w - 0.001) / TILE);
+  for (let ty = r0; ty <= r1; ty++) {
+    if (world.level.isSolid(lx, ty)) { e.x = (lx + 1) * TILE; break; }
+    if (world.level.isSolid(rx, ty)) { e.x = rx * TILE - e.w; break; }
+  }
+}
+
 /** Há chão (sólido ou one-way) à frente-abaixo? */
 function groundAhead(e: Entity, dir: 1 | -1, world: World): boolean {
   const ax = dir > 0 ? e.x + e.w + 1 : e.x - 1;
@@ -140,35 +153,48 @@ function calangoAi(e: Entity): Ai {
 }
 
 // ── Carcará: senoide + rasante ───────────────────────────────────────────────────────
+// Voa com `moveBody` (sem one-way): patrulha, rasante e retorno nunca atravessam tile sólido.
+// Se o rasante bate num sólido (teto/plataforma/parede entre ele e o Pardo), aborta e volta.
 function carcaraAi(e: Entity): Ai {
   const homeX = cx(e);
   const homeY = e.y;
   const RANGE = 48; // ±48 => vai-e-vem de 96px
   const OMEGA = 1.0;
   const AMP_Y = 12;
-  let t = 0;
+  let t = 0; // relógio da animação
+  let pt = 0; // relógio da senoide de patrulha (pausa durante rasante e retorno)
   let state: 'patrol' | 'dive' | 'recover' = 'patrol';
   let cooldown = 1.5;
   let diveT = 0;
   let targetY = 0;
   let face: 1 | -1 = 1;
-  const patrolX = () => homeX + RANGE * Math.sin(t * OMEGA) - e.w / 2;
-  const patrolY = () => homeY + AMP_Y * Math.sin(t * 2.4);
+  /** ponto (e relógio da senoide) onde o rasante começou: o retorno refaz o mesmo caminho livre */
+  let startX = 0, startY = 0, startT = 0;
+  let recoverT = 0;
+  const patrolX = () => homeX + RANGE * Math.sin(pt * OMEGA) - e.w / 2;
+  const patrolY = () => homeY + AMP_Y * Math.sin(pt * 2.4);
+  /** Desloca até (x, y) neste quadro resolvendo colisão com tiles sólidos. */
+  const flyTo = (x: number, y: number, dt: number, world: World) => {
+    e.vx = (x - e.x) / dt;
+    e.vy = (y - e.y) / dt;
+    return moveBody(e, world.level, dt, { oneWay: false });
+  };
   return {
     update(_e, dt, world) {
       t += dt;
       cooldown -= dt;
       const p = world.player;
       if (state === 'patrol') {
-        e.x = patrolX();
-        e.y = patrolY();
-        face = Math.cos(t * OMEGA) >= 0 ? 1 : -1;
+        pt += dt;
+        flyTo(patrolX(), patrolY(), dt, world);
+        face = Math.cos(pt * OMEGA) >= 0 ? 1 : -1;
         const dx = p.x + p.w / 2 - cx(e);
         const dy = p.y + p.h / 2 - (e.y + e.h / 2);
         if (cooldown <= 0 && !p.dead && Math.abs(dx) < 70 && dy > 10 && dy < 90) {
           state = 'dive';
           diveT = 0;
           targetY = p.y + p.h / 2;
+          startX = e.x; startY = e.y; startT = pt;
           const len = Math.hypot(dx, dy) || 1;
           e.vx = (dx / len) * 200;
           e.vy = (dy / len) * 200;
@@ -177,22 +203,24 @@ function carcaraAi(e: Entity): Ai {
         }
       } else if (state === 'dive') {
         diveT += dt;
-        e.x += e.vx * dt;
-        e.y += e.vy * dt;
-        if (e.y + e.h / 2 >= targetY || diveT > 0.8) state = 'recover';
+        const c = moveBody(e, world.level, dt, { oneWay: false });
+        const hit = c.left || c.right || c.top || c.bottom;
+        if (hit || e.y + e.h / 2 >= targetY || diveT > 0.8) { state = 'recover'; recoverT = 0; }
       } else {
-        const tx = patrolX();
-        const ty = patrolY();
-        const dx = tx - e.x;
-        const dy = ty - e.y;
+        // volta ao ponto de partida do rasante (caminho já percorrido, livre) e retoma a senoide de lá
+        recoverT += dt;
+        const dx = startX - e.x;
+        const dy = startY - e.y;
         const d = Math.hypot(dx, dy);
         const step = 100 * dt;
-        if (d <= step + 2) {
+        if (d <= step + 2 || recoverT > 3) {
+          // perto o bastante (ou preso numa quina por tempo demais): encaixa no ponto de partida, que é livre
+          e.x = startX; e.y = startY; e.vx = 0; e.vy = 0;
+          pt = startT;
           state = 'patrol';
           cooldown = 2.5;
         } else {
-          e.x += (dx / d) * step;
-          e.y += (dy / d) * step;
+          flyTo(e.x + (dx / d) * step, e.y + (dy / d) * step, dt, world);
           face = dx >= 0 ? 1 : -1;
         }
       }
@@ -299,7 +327,7 @@ function tatuAi(e: Entity): Ai {
         if (timer <= 0 && c.bottom) {
           state = 'rest';
           timer = 1.0;
-          resize(e, WALK_W, WALK_H);
+          resizeFit(e, WALK_W, WALK_H, world);
           e.vx = 0;
         }
       } else {
