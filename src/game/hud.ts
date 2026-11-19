@@ -230,7 +230,7 @@ export function drawTitle(ctx: CanvasRenderingContext2D, world: World): void {
 export function drawPaused(ctx: CanvasRenderingContext2D, _world: World): void {
   veil(ctx, 0.6);
   drawText(ctx, 'PAUSA', 160, 74, { scale: 3, color: P.y, align: 'center', shadow: P.k });
-  drawText(ctx, 'P OU ESC PARA CONTINUAR', 160, 104, { color: P.w, align: 'center', shadow: P.k });
+  drawText(ctx, 'P, ESC OU TOQUE PARA CONTINUAR', 160, 104, { color: P.w, align: 'center', shadow: P.k });
 }
 
 export function drawGameOver(ctx: CanvasRenderingContext2D, world: World): void {
