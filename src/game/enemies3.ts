@@ -442,11 +442,8 @@ function tartarugaAi(e: Entity, core: Core): Ai {
         p.vx = nx * 90 + e.vx;
         px = nx * 60;
       }
-      // empurrão na posição respeitando os tiles (corpo auxiliar para não zerar a velocidade do Pardo)
-      const b = { x: p.x, y: p.y, w: p.w, h: p.h, vx: px + e.vx, vy: py + e.vy };
-      moveBody(b, world.level, STEP, { oneWay: false });
-      p.x = b.x;
-      p.y = b.y;
+      // empurrão na posição pelas mesmas regras da física do Pardo (tiles/one-way, teto do nado, ouriços)
+      p.shove(world, px + e.vx, py + e.vy, STEP);
     },
     onStun(pdir) {
       e.vx = pdir * 60;
