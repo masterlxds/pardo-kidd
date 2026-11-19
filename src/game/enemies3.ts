@@ -212,17 +212,30 @@ function aguaVivaAi(e: Entity, core: Core): Ai {
 
 // ── Peixe-agulha: espera, pisca 0.5s e dispara na horizontal ────────────────────────
 function peixeAgulhaAi(e: Entity, core: Core): Ai {
-  let state: 'idle' | 'warn' | 'dash' = 'idle';
+  // 'rest': sumiu (bateu na parede ou saiu da tela) e aguarda, invisível e inofensivo no posto, até o posto sair da tela
+  let state: 'idle' | 'warn' | 'dash' | 'rest' = 'idle';
   let face: Dir = -1;
   let timer = 0;
+  const homeX = e.x;
   const homeY = e.y;
   const ph = phaseOf(e.x, e.y);
+  /** volta ao posto sem morrer (o peixe só some de vez se o Pardo o derrotar) */
+  const recolher = () => {
+    state = 'rest';
+    e.x = homeX;
+    e.y = homeY;
+    e.vx = 0;
+    e.vy = 0;
+  };
   return {
     update(dt, world) {
       const p = world.player;
       const dx = cx(p) - cx(e);
       const dy = cy(p) - cy(e);
-      if (state === 'idle') {
+      if (state === 'rest') {
+        // só rearma quando o posto está fora da tela: o peixe nunca reaparece à vista nem ataca de fora dela
+        if (!onScreen({ x: homeX, y: homeY, w: e.w, h: e.h }, world, 32)) state = 'idle';
+      } else if (state === 'idle') {
         if (Math.abs(dx) > 2) face = dx >= 0 ? 1 : -1;
         e.y = homeY + 1.5 * Math.sin(core.t * 3 + ph);
         if (!p.dead && Math.abs(dx) <= 11 * TILE && Math.abs(dy) <= 3 * TILE && onScreen(e, world)) {
@@ -241,11 +254,14 @@ function peixeAgulhaAi(e: Entity, core: Core): Ai {
         const c = moveBody(e, world.level, dt, { oneWay: false });
         if (c.left || c.right) {
           world.fx('bubble', face > 0 ? e.x + e.w : e.x, cy(e), face);
-          e.dead = true;
-        } else if (!onScreen(e, world, 64)) e.dead = true;
+          recolher();
+        } else if (!onScreen(e, world, 64)) recolher();
       }
     },
+    harmless: () => state === 'rest',
+    hit: () => (state === 'rest' ? 'miss' : 'ok'),
     sprite() {
+      if (state === 'rest') return { name: 'peixe_agulha', frame: 0, flip: face < 0, hide: true };
       if (state === 'warn') return { name: 'peixe_agulha', frame: 0, flip: face < 0, hide: Math.floor(core.t / 0.06) % 2 === 0 };
       const per = state === 'dash' ? 0.06 : 0.25;
       return { name: 'peixe_agulha', frame: Math.floor(core.t / per) % 2, flip: face < 0 };
