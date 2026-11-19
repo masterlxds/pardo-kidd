@@ -137,6 +137,19 @@ function createWaterSource(sprite: string, x: number, y: number, w: number, h: n
   return e;
 }
 
+/** true se o Pardo está em pé sobre `plat` (pés no topo, sobreposição horizontal) e subir `dy` (< 0) faria
+ *  a hitbox dele entrar num tile sólido. */
+function carriesIntoCeiling(plat: Entity, world: World, dy: number): boolean {
+  const p = world.player;
+  if (!p || p.dead || p.x + p.w <= plat.x || p.x >= plat.x + plat.w) return false;
+  if (Math.abs(p.y + p.h - plat.y) > 2) return false;
+  const top = p.y + dy;
+  const c0 = Math.floor(p.x / TILE), c1 = Math.floor((p.x + p.w - 0.001) / TILE);
+  const r0 = Math.floor(top / TILE), r1 = Math.floor((top + p.h - 0.001) / TILE);
+  for (let ty = r0; ty <= r1; ty++) for (let tx = c0; tx <= c1; tx++) if (world.level.isSolid(tx, ty)) return true;
+  return false;
+}
+
 /** Plataforma móvel 32x10. Vai-e-vem senoidal de (x,y) até +range px no eixo dado. */
 export function createMovingPlatform(
   x: number, y: number, axis: 'x' | 'y', range: number, speed: number, sprite = 'platform_rock',
@@ -148,11 +161,18 @@ export function createMovingPlatform(
     platform: true,
     dx: 0,
     dy: 0,
-    update(dt) {
+    update(dt, world) {
       phase += dt * omega;
       const off = (range * (1 - Math.cos(phase))) / 2;
       const nx = axis === 'x' ? x + off : x;
-      const ny = axis === 'y' ? y + off : y;
+      let ny = axis === 'y' ? y + off : y;
+      // Elevador com sensor (#24): subindo com o Pardo em cima, se o passo empurraria a cabeça dele para dentro
+      // de um tile sólido, a plataforma não sobe neste passo e inverte o sentido (fase espelhada: mesma altura,
+      // agora descendo). Assim o passageiro nunca é esmagado contra o teto nem fica abaixo do topo dela.
+      if (ny < e.y && carriesIntoCeiling(e, world, ny - e.y)) {
+        phase = -(phase - dt * omega);
+        ny = e.y;
+      }
       e.dx = nx - e.x;
       e.dy = ny - e.y;
       e.vx = dt > 0 ? e.dx / dt : 0;
