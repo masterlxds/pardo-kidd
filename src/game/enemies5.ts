@@ -228,7 +228,8 @@ function createDrone(encontroX: number): Entity {
       phase = p.phase;
       placeX(e, p.cx, world);
       e.y = p.cy - D.h / 2;
-      if (phase === 'warn' && !beeped) {
+      // só apita quando o drone já está visível (ele estaciona fora da tela à direita)
+      if (phase === 'warn' && !beeped && onScreen(e, world)) {
         beeped = true;
         world.audio.play('beep');
       }
