@@ -135,6 +135,10 @@ export function createInput(canvas: HTMLCanvasElement): Input {
 
   window.addEventListener('touchstart', markTouch, { passive: true, capture: true });
 
+  const DIR_ACTIONS: Record<string, readonly Action[]> = { 'btn-left': ['left'], 'btn-right': ['right'] };
+  /** Direcional (◀/▶) ativo por pointerId. */
+  const activeDir = new Map<number, string>();
+
   for (const [id, acts] of BUTTONS) {
     const el = document.getElementById(id);
     if (!el) continue;
@@ -143,30 +147,50 @@ export function createInput(canvas: HTMLCanvasElement): Input {
       e.preventDefault();
       if (e.pointerType === 'touch') markTouch();
       gesture();
-      // libera a captura implícita do touch para permitir deslizar entre botões
-      if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
-      for (const a of acts) press(a, src(e));
-    });
-    el.addEventListener('pointerenter', (e) => {
-      const held = e.pointerType === 'touch' ? e.pressure > 0 || e.buttons > 0 : (e.buttons & 1) === 1;
-      if (!held) return;
-      for (const a of acts) {
-        if (a === 'confirm') continue; // confirmar só no toque inicial
-        press(a, src(e));
+      // mantém a captura do ponteiro: um deslize leve para fora do botão não o solta;
+      // pointerup/pointercancel/lostpointercapture continuam soltando sempre
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        /* ponteiro já inativo: segue sem captura */
       }
+      for (const a of acts) press(a, src(e));
+      if (DIR_ACTIONS[id]) activeDir.set(e.pointerId, id);
     });
+    // deslize entre ◀ e ▶ (o ponteiro fica capturado no botão inicial): troca de direcional
+    // pelo elemento sob o dedo; fora de ambos, mantém o último (histerese)
+    if (id === 'btn-left' || id === 'btn-right') {
+      el.addEventListener('pointermove', (e) => {
+        if (!activeDir.has(e.pointerId)) return; // só ponteiros que estão segurando um direcional
+        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest('#btn-left,#btn-right');
+        const cur = activeDir.get(e.pointerId) as string;
+        if (!under || under.id === cur) return;
+        const next = DIR_ACTIONS[under.id];
+        if (!next) return;
+        for (const a of DIR_ACTIONS[cur] ?? []) release(a, src(e));
+        for (const a of next) press(a, src(e));
+        activeDir.set(e.pointerId, under.id);
+      });
+    }
+    // solta TODAS as ações do ponteiro (inclusive a do direcional trocado)
     const up = (e: PointerEvent): void => {
-      for (const a of acts) release(a, src(e));
+      releasePointer(e.pointerId);
+      activeDir.delete(e.pointerId);
     };
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', up);
-    el.addEventListener('pointerleave', up);
     el.addEventListener('lostpointercapture', up);
     el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
   // rede de segurança: qualquer dedo que sai da tela solta tudo que segurava
-  window.addEventListener('pointerup', (e) => releasePointer(e.pointerId));
-  window.addEventListener('pointercancel', (e) => releasePointer(e.pointerId));
+  window.addEventListener('pointerup', (e) => {
+    releasePointer(e.pointerId);
+    activeDir.delete(e.pointerId);
+  });
+  window.addEventListener('pointercancel', (e) => {
+    releasePointer(e.pointerId);
+    activeDir.delete(e.pointerId);
+  });
 
   canvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();

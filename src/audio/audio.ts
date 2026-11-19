@@ -2214,9 +2214,13 @@ export function createAudio(): AudioApi {
   /** Posição (s) na faixa em que a próxima partida do sequenciador começa (ver startMusic(track, atSeconds)). */
   let startAt = 0;
 
+  /** Verdadeiro quando o agendador foi congelado por a aba ter sido escondida (retoma sem reiniciar a faixa). */
+  let held = false;
+
   function startScheduler(): void {
     const g = graph;
     if (!g || timer !== null) return;
+    held = false;
     // começa no passo que contém `startAt` (módulo o laço); a fração restante do passo vira atraso,
     // para que o passo 0 caia exatamente em startAt = 0, laço, 2·laço...
     const tr = TRACKS[current];
@@ -2239,6 +2243,7 @@ export function createAudio(): AudioApi {
   }
 
   function silenceMusic(): void {
+    held = false;
     stopScheduler();
     const g = graph;
     if (g) {
@@ -2248,14 +2253,42 @@ export function createAudio(): AudioApi {
     }
   }
 
+  /** Retoma o AudioContext (idempotente). No iOS o estado pode ser 'interrupted', além de 'suspended'. */
+  function resumeCtx(): void {
+    const g = graph;
+    if (!g) return;
+    if ((g.ctx.state as string) !== 'running') {
+      g.ctx.resume().catch(() => undefined);
+    }
+  }
+
+  // Aba escondida (em qualquer cena): congela o relógio do AudioContext e o agendador, de modo que a
+  // música cala e, ao voltar, continua do mesmo ponto. Sem isso o setInterval segue agendando em segundo plano.
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      const g = graph;
+      if (!g) return;
+      if (document.hidden) {
+        if (timer !== null) {
+          stopScheduler();
+          held = true;
+        }
+        if (g.ctx.state === 'running') g.ctx.suspend().catch(() => undefined);
+      } else {
+        resumeCtx();
+        // só retoma se a música ainda é desejada (a cena 'paused' chama stopMusic e zera musicWanted)
+        if (held && musicWanted && timer === null) timer = window.setInterval(tick, TICK_MS);
+        held = false;
+      }
+    });
+  }
+
   return {
     unlock(): void {
       const g = ensureGraph();
       if (!g) return;
-      if (g.ctx.state === 'suspended') {
-        g.ctx.resume().catch(() => undefined);
-      }
-      if (musicWanted) startScheduler();
+      resumeCtx();
+      if (musicWanted && !document.hidden) startScheduler();
     },
 
     play(name: SfxName): void {

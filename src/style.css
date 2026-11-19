@@ -83,13 +83,19 @@ body {
 }
 
 /* Botão de mudo: canto superior direito, discreto. */
+/* Fica ancorado ao canvas (16:9), logo ABAIXO da faixa da HUD (12 px lógicos + filete),
+ * para nunca cobrir a pontuação; usa a mesma conta de tamanho do #game. */
 #btn-mute {
+  --cw: min(100vw, calc(100dvh * 16 / 9));
+  --ch: calc(var(--cw) * 9 / 16);
+  --canvas-top: calc((100dvh - var(--ch)) / 2);
+  --size: clamp(28px, calc(var(--ch) * 0.1), 40px);
   position: fixed;
-  top: max(var(--safe-top), 8px);
-  right: max(var(--safe-right), 8px);
+  top: calc(var(--canvas-top) + var(--ch) * 14 / 180 + 4px);
+  right: max(calc((100vw - var(--cw)) / 2 + 4px), calc(var(--safe-right) + 4px));
   z-index: 10;
-  width: 40px;
-  height: 40px;
+  width: var(--size);
+  height: var(--size);
   padding: 0;
   display: grid;
   place-items: center;
@@ -100,6 +106,13 @@ body {
   font: 700 18px/1 ui-monospace, Menlo, Consolas, monospace;
   opacity: 0.7;
   cursor: pointer;
+}
+
+/* Retrato: o canvas fica no topo, com o mesmo padding do #stage. */
+@media (orientation: portrait) {
+  #btn-mute {
+    --canvas-top: max(var(--safe-top), 10px);
+  }
 }
 
 #btn-mute:hover,

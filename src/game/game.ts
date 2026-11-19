@@ -52,6 +52,8 @@ const CAM_FOLLOW_Y = 6;
 const CAM_ANCHOR_Y = 0.58;
 /** Entidades além desta distância da câmera não são atualizadas. */
 const ACTIVE_MARGIN = VIEW_W * 1.5;
+/** Objetivos da fase: continuam animando (entrega/bebida) durante a cena 'winning'. */
+const GOAL_KINDS: ReadonlySet<string> = new Set(['mug', 'goal', 'staff', 'amaro', 'uber_goal', 'maia']);
 /**
  * Entidades presas ao Pardo ou à tela no autoscroller (Fase 5): SEMPRE atualizadas e desenhadas, sem
  * culling por distância (issue #10: o carro recriado longe da câmera congelava e sumia).
@@ -325,7 +327,7 @@ export class GameWorld implements World {
     let goal: Entity | null = null;
     let best = Infinity;
     for (const e of this.entities) {
-      if (e.dead || (e.kind !== 'mug' && e.kind !== 'goal' && e.kind !== 'staff' && e.kind !== 'amaro' && e.kind !== 'uber_goal' && e.kind !== 'maia')) continue;
+      if (e.dead || !GOAL_KINDS.has(e.kind)) continue;
       const d = Math.abs(e.x + e.w / 2 - px);
       if (d < best) {
         best = d;
@@ -842,8 +844,12 @@ export class GameWorld implements World {
     const maxX = this.camera.x + VIEW_W + ACTIVE_MARGIN;
     // Fase 5: depois que o Pardo desce do teto na chegada, o carro (que se centraliza sob ele) fica estacionado
     const carParked = this.player.carParked;
+    // Vitória: inimigos, projéteis e perigos (tudo que tem onTouchPlayer e não é objetivo) congelam;
+    // cenário, objetivo, plataformas e o uber_car (cutscene de chegada da Fase 5) seguem atualizando
+    const winning = this.state.scene === 'winning';
     for (const e of this.entities) {
       if (e.dead) continue;
+      if (winning && e.onTouchPlayer && !GOAL_KINDS.has(e.kind)) continue;
       if ((e.x + e.w < minX || e.x > maxX) && !NO_CULL_KINDS.has(e.kind)) continue;
       if (carParked && e.kind === 'uber_car') continue;
       e.update(dt, this);
