@@ -3,6 +3,7 @@ import { AIR_COUNTDOWN, VIEW_H, VIEW_W } from '../core/constants';
 import { PALETTE as P } from '../gfx/palette';
 import { drawText, textWidth } from '../gfx/font';
 import { UBER, uberStars } from './uberRules';
+import { SPACE, spaceStars } from './spaceRules';
 
 const pad6 = (n: number): string => String(Math.max(0, Math.floor(n))).padStart(6, '0');
 const blink = (t: number, period = 0.5): boolean => Math.floor(t / period) % 2 === 0;
@@ -69,6 +70,10 @@ export function drawHud(ctx: CanvasRenderingContext2D, world: World): void {
     // nota atual da corrida: 5 − gotas perdidas (mín. 1), discreta no centro da barra
     const stars = uberStars(st.rideHits);
     for (let i = 0; i < UBER.maxStars; i++) drawStar(ctx, 150 + i * 11, 6, 4, i < stars);
+  } else if (world.level.space && st.scene === 'playing') {
+    // estrelas atuais na Fase 7 (espaço)
+    const stars = spaceStars(st.rideHits, st.gravDeaths);
+    for (let i = 0; i < SPACE.maxStars; i++) drawStar(ctx, 150 + i * 11, 6, 4, i < stars);
   }
 }
 
@@ -187,7 +192,8 @@ export function drawTitle(ctx: CanvasRenderingContext2D, world: World): void {
     faseParam === '3' ||
     faseParam === '4' ||
     faseParam === '5' ||
-    faseParam === '6'
+    faseParam === '6' ||
+    faseParam === '7'
   ) {
     drawText(ctx, 'MODO TESTE:', 5, 149, { color: P.G });
     drawText(ctx, `FASE ${faseParam}`, 5, 157, { color: P.G });

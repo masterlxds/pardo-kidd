@@ -56,6 +56,8 @@ const SWALLOW = new Set(['PageUp', 'PageDown']);
 const BUTTONS: ReadonlyArray<readonly [string, readonly Action[]]> = [
   ['btn-left', ['left']],
   ['btn-right', ['right']],
+  ['btn-up', ['up']],
+  ['btn-down', ['down']],
   ['btn-jump', ['jump', 'confirm', 'boost']],
   ['btn-punch', ['punch', 'confirm']],
 ];
@@ -141,9 +143,57 @@ export function createInput(canvas: HTMLCanvasElement): Input {
 
   window.addEventListener('touchstart', markTouch, { passive: true, capture: true });
 
-  const DIR_ACTIONS: Record<string, readonly Action[]> = { 'btn-left': ['left'], 'btn-right': ['right'] };
-  /** Direcional (◀/▶) ativo por pointerId. */
-  const activeDir = new Map<number, string>();
+  const DIR_ACTIONS: Record<string, readonly Action[]> = {
+    'btn-left': ['left'],
+    'btn-right': ['right'],
+    'btn-up': ['up'],
+    'btn-down': ['down'],
+  };
+  /** Direcional (◀/▶/▲/▼ ou diagonal na Fase 7) ativo por pointerId. */
+  const activeDir = new Map<number, readonly Action[]>();
+  const btnUpEl = document.getElementById('btn-up');
+  const padLeftEl = document.querySelector<HTMLElement>('.pad-left');
+
+  const isSpaceDpad = (): boolean => Boolean(btnUpEl && btnUpEl.getClientRects().length > 0);
+
+  const cornerDiagonalAt = (x: number, y: number): readonly Action[] | null => {
+    if (!padLeftEl || !isSpaceDpad()) return null;
+    const r = padLeftEl.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0 || x < r.left || x > r.right || y < r.top || y > r.bottom) return null;
+    const nx = (x - (r.left + r.width / 2)) / (r.width / 2);
+    const ny = (y - (r.top + r.height / 2)) / (r.height / 2);
+    if (Math.abs(nx) <= 0.3 || Math.abs(ny) <= 0.3) return null;
+    return [nx < 0 ? 'left' : 'right', ny < 0 ? 'up' : 'down'];
+  };
+
+  const resolveDirActions = (x: number, y: number): readonly Action[] | null => {
+    const selector = isSpaceDpad() ? '#btn-left,#btn-right,#btn-up,#btn-down' : '#btn-left,#btn-right';
+    const under = document.elementFromPoint(x, y)?.closest(selector);
+    if (under && DIR_ACTIONS[under.id]) return DIR_ACTIONS[under.id];
+    return cornerDiagonalAt(x, y);
+  };
+
+  const applyDirActions = (id: number, next: readonly Action[]): void => {
+    const cur = activeDir.get(id);
+    if (cur && cur.length === next.length && cur.every((a, i) => a === next[i])) return;
+    const src = `p:${id}`;
+    if (cur) {
+      for (const a of cur) {
+        if (!next.includes(a)) release(a, src);
+      }
+    }
+    for (const a of next) {
+      if (!cur || !cur.includes(a)) press(a, src);
+    }
+    activeDir.set(id, next);
+  };
+
+  const moveDirPointer = (e: PointerEvent): void => {
+    if (!activeDir.has(e.pointerId)) return; // só ponteiros que estão segurando um direcional
+    const next = resolveDirActions(e.clientX, e.clientY);
+    if (!next) return; // fora dos botões/cantos, mantém o último (histerese)
+    applyDirActions(e.pointerId, next);
+  };
 
   for (const [id, acts] of BUTTONS) {
     const el = document.getElementById(id);
@@ -160,23 +210,16 @@ export function createInput(canvas: HTMLCanvasElement): Input {
       } catch {
         /* ponteiro já inativo: segue sem captura */
       }
-      for (const a of acts) press(a, src(e));
-      if (DIR_ACTIONS[id]) activeDir.set(e.pointerId, id);
+      if (DIR_ACTIONS[id]) {
+        applyDirActions(e.pointerId, acts);
+      } else {
+        for (const a of acts) press(a, src(e));
+      }
     });
-    // deslize entre ◀ e ▶ (o ponteiro fica capturado no botão inicial): troca de direcional
-    // pelo elemento sob o dedo; fora de ambos, mantém o último (histerese)
-    if (id === 'btn-left' || id === 'btn-right') {
-      el.addEventListener('pointermove', (e) => {
-        if (!activeDir.has(e.pointerId)) return; // só ponteiros que estão segurando um direcional
-        const under = document.elementFromPoint(e.clientX, e.clientY)?.closest('#btn-left,#btn-right');
-        const cur = activeDir.get(e.pointerId) as string;
-        if (!under || under.id === cur) return;
-        const next = DIR_ACTIONS[under.id];
-        if (!next) return;
-        for (const a of DIR_ACTIONS[cur] ?? []) release(a, src(e));
-        for (const a of next) press(a, src(e));
-        activeDir.set(e.pointerId, under.id);
-      });
+    // deslize contínuo no D-pad (o ponteiro fica capturado no botão inicial): troca direções
+    // pelo elemento sob o dedo (e cantos diagonais na Fase 7); fora, mantém histerese
+    if (DIR_ACTIONS[id]) {
+      el.addEventListener('pointermove', moveDirPointer);
     }
     // solta TODAS as ações do ponteiro (inclusive a do direcional trocado)
     const up = (e: PointerEvent): void => {
@@ -188,6 +231,35 @@ export function createInput(canvas: HTMLCanvasElement): Input {
     el.addEventListener('lostpointercapture', up);
     el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
+
+  // Suporte a toque direto nos cantos diagonais do D-pad 3x3 na Fase 7
+  if (padLeftEl) {
+    padLeftEl.addEventListener('pointerdown', (e) => {
+      if (e.target !== padLeftEl) return;
+      const diag = cornerDiagonalAt(e.clientX, e.clientY);
+      if (!diag) return;
+      e.preventDefault();
+      if (e.pointerType === 'touch') markTouch();
+      gesture();
+      try {
+        padLeftEl.setPointerCapture(e.pointerId);
+      } catch {
+        /* ponteiro já inativo: segue sem captura */
+      }
+      applyDirActions(e.pointerId, diag);
+    });
+    padLeftEl.addEventListener('pointermove', moveDirPointer);
+    const padUp = (e: PointerEvent): void => {
+      if (!activeDir.has(e.pointerId)) return;
+      releasePointer(e.pointerId);
+      activeDir.delete(e.pointerId);
+    };
+    padLeftEl.addEventListener('pointerup', padUp);
+    padLeftEl.addEventListener('pointercancel', padUp);
+    padLeftEl.addEventListener('lostpointercapture', padUp);
+    padLeftEl.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
   // rede de segurança: qualquer dedo que sai da tela solta tudo que segurava
   window.addEventListener('pointerup', (e) => {
     releasePointer(e.pointerId);

@@ -201,9 +201,17 @@ body.touch #touch {
 }
 
 #btn-left,
-#btn-right {
+#btn-right,
+#btn-up,
+#btn-down {
   --c: var(--sun);
   font-size: 22px;
+}
+
+/* Cima/baixo ficam 100% ocultos nas Fases 1–6 e Bônus (sem body.space). */
+#touch #btn-up,
+#touch #btn-down {
+  display: none;
 }
 
 #btn-punch {
@@ -216,6 +224,56 @@ body.touch #touch {
   --c: var(--creme);
   background: rgba(59, 111, 214, 0.65);
   border-color: var(--azul);
+}
+
+/* Fase 7 (Espaço Sideral): D-pad em cruz 3x3 compacto e destaque ciano no Impulso. */
+body.space #touch .pad-left {
+  --dpad-size: clamp(42px, min(13vw, 13dvh), 54px);
+  display: grid;
+  grid-template-columns: repeat(3, var(--dpad-size));
+  grid-template-rows: repeat(3, var(--dpad-size));
+  gap: 3px;
+  align-items: center;
+  justify-items: center;
+}
+
+body.space #touch .pad-left button {
+  width: var(--dpad-size);
+  height: var(--dpad-size);
+  min-width: 0;
+  min-height: 0;
+  font-size: 18px;
+}
+
+body.space #touch #btn-up {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1;
+}
+
+body.space #touch #btn-left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+body.space #touch #btn-right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+body.space #touch #btn-down {
+  display: grid;
+  grid-column: 2;
+  grid-row: 3;
+}
+
+body.space #btn-jump {
+  border-color: #5ee6ff;
+  background: rgba(24, 108, 168, 0.72);
+  box-shadow:
+    inset 0 -5px 0 rgba(0, 0, 0, 0.3),
+    0 0 10px rgba(94, 230, 255, 0.35),
+    0 3px 0 rgba(0, 0, 0, 0.35);
 }
 
 #touch button:active {

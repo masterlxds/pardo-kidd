@@ -835,16 +835,103 @@ const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
       osc(g, g.sfx, 'sine', midiToHz(m), chordAt + 0.05 + i * 0.07, 0.12, 0.06);
     });
   },
-  // Fase 7 — Espaço Sideral (stubs no-op da Etapa 1; AUDIO implementa na Etapa 2)
-  jet_burst: () => {},
-  grav_warn: () => {},
-  grav_hum: () => {},
-  grav_kill: () => {},
-  meteor_break: () => {},
-  laser_charge: () => {},
-  laser_fire: () => {},
-  ufo_zap: () => {},
-  clang: () => {},
+  // Fase 7 — Espaço Sideral (Órbita de Quixadá)
+  // jato propulsor agudo com ruído filtrado + pulso curto ao usar o Impulso de Escape
+  jet_burst: (g, t) => {
+    noise(g, g.sfx, t, 0.2, 0.32, 'bandpass', 3800, 950, 1.3);
+    noise(g, g.sfx, t, 0.11, 0.22, 'highpass', 5200, 2400);
+    osc(g, g.sfx, 'square', 520, t, 0.08, 0.15, 1320);
+    osc(g, g.sfx, 'triangle', 260, t, 0.13, 0.2, 95);
+  },
+  // alerta de radar orbital na entrada de Yuri/Yumi (bipe duplo grave/médio)
+  grav_warn: (g, t) => {
+    for (const dt of [0, 0.17]) {
+      const at = t + dt;
+      osc(g, g.sfx, 'sine', 330, at, 0.11, 0.28, 305);
+      osc(g, g.sfx, 'triangle', 660, at, 0.09, 0.14, 620);
+    }
+  },
+  // pulso grave curto de ressonância (fallback caso chamado via play)
+  grav_hum: (g, t) => {
+    osc(g, g.sfx, 'triangle', 72, t, 0.24, 0.24, 62);
+    osc(g, g.sfx, 'sine', 108, t, 0.22, 0.12, 92);
+  },
+  // implosão grave descendente dramática + estática retrô na morte gravitacional
+  grav_kill: (g, t) => {
+    const { ctx } = g;
+    const dur = 0.58;
+    const saw = ctx.createOscillator();
+    saw.type = 'sawtooth';
+    saw.frequency.setValueAtTime(340, t);
+    saw.frequency.exponentialRampToValueAtTime(38, t + dur);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = 2.4;
+    lp.frequency.setValueAtTime(1400, t);
+    lp.frequency.exponentialRampToValueAtTime(110, t + dur);
+    const amp = ctx.createGain();
+    envelope(amp, t, 0.34, dur);
+    saw.connect(lp);
+    lp.connect(amp);
+    amp.connect(g.sfx);
+    saw.start(t);
+    saw.stop(t + dur + 0.02);
+
+    osc(g, g.sfx, 'triangle', 160, t, dur * 0.9, 0.38, 36);
+    noise(g, g.sfx, t, 0.54, 0.32, 'bandpass', 2400, 180, 1.2);
+    noise(g, g.sfx, t + 0.04, 0.42, 0.2, 'highpass', 3600, 700);
+  },
+  // estalo rochoso grave + ruído crocante ao socar meteoro/cometa
+  meteor_break: (g, t) => {
+    osc(g, g.sfx, 'triangle', 190, t, 0.14, 0.42, 48);
+    osc(g, g.sfx, 'square', 240, t, 0.09, 0.16, 65);
+    noise(g, g.sfx, t, 0.18, 0.36, 'bandpass', 1700, 260, 1.1);
+    noise(g, g.sfx, t, 0.08, 0.25, 'highpass', 3400, 1200);
+  },
+  // varredura ascendente tensa do satélite de varredura (~0.72 s)
+  laser_charge: (g, t) => {
+    const dur = 0.72;
+    const { ctx } = g;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(180, t);
+    o.frequency.exponentialRampToValueAtTime(1320, t + dur);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 2.0;
+    bp.frequency.setValueAtTime(360, t);
+    bp.frequency.exponentialRampToValueAtTime(2400, t + dur);
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(FLOOR, t);
+    amp.gain.exponentialRampToValueAtTime(0.2, t + dur * 0.85);
+    amp.gain.exponentialRampToValueAtTime(FLOOR, t + dur);
+    o.connect(bp);
+    bp.connect(amp);
+    amp.connect(g.sfx);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+
+    osc(g, g.sfx, 'sine', 240, t, dur, 0.13, 1760);
+    noise(g, g.sfx, t + 0.18, dur - 0.18, 0.09, 'bandpass', 900, 4200, 2.4);
+  },
+  // disparo seco e cortante de feixe laser
+  laser_fire: (g, t) => {
+    osc(g, g.sfx, 'sawtooth', 2400, t, 0.18, 0.26, 220);
+    osc(g, g.sfx, 'square', 1600, t, 0.16, 0.18, 160);
+    noise(g, g.sfx, t, 0.22, 0.28, 'bandpass', 4200, 600, 1.0);
+  },
+  // disparo clássico 8-bit de plasma alienígena (sweep rápido descendente)
+  ufo_zap: (g, t) => {
+    osc(g, g.sfx, 'square', 1380, t, 0.15, 0.2, 210);
+    osc(g, g.sfx, 'sine', 1840, t, 0.14, 0.14, 280);
+  },
+  // ricochete metálico agudo curto (soco em satélite/lixo indestrutível)
+  clang: (g, t) => {
+    osc(g, g.sfx, 'square', 920, t, 0.14, 0.18, 890);
+    osc(g, g.sfx, 'triangle', 1480, t, 0.18, 0.22, 1450);
+    osc(g, g.sfx, 'sine', 2310, t, 0.12, 0.12);
+    noise(g, g.sfx, t, 0.04, 0.2, 'highpass', 4200);
+  },
 };
 
 /* ----------------------------------------------------------------------------
@@ -2115,6 +2202,219 @@ function scheduleUber(g: Graph, step: number, t: number): void {
   }
 }
 
+/* ----------------------------------------------------------------------------
+ * Faixa "Órbita de Quixadá" — Fá# menor (F# G# A B C# D E / E# no C#7), 120 BPM, 16 compassos.
+ * Chiptune synthwave / 8-bit espacial (Mega Man / Gradius):
+ *  - Passo = 0.125 s (1 compasso = 2.0 s exatos, alinhado com 12 colunas a 96 px/s).
+ *  - Parte A (cc. 1–8): F#m D E C#7 | F#m D Bm C#7 — travessia orbital misteriosa e propulsiva.
+ *  - Parte B (cc. 9–16): D E C#m F#m | Bm E D C#7 — voo épico nas alturas da órbita.
+ *  - Baixo arpejado pulsante em oitavas/quintas, arpejos cósmicos cristalinos,
+ *    melodia heroica em pulso 25% com eco curto e bateria eletrônica com viradas a cada 4 compassos.
+ * ------------------------------------------------------------------------- */
+
+const SPACE_BPM = 120;
+const SPACE_STEP = 60 / SPACE_BPM / 4; // 0.125 s (1 compasso = 2.0 s)
+const SPACE_BARS = 16;
+const SPACE_LOOP_STEPS = STEPS_PER_BAR * SPACE_BARS;
+
+type SpaceQuality = 'm' | 'M' | '7';
+
+/** F#m D E C#7 | F#m D Bm C#7 || D E C#m F#m | Bm E D C#7 */
+const SPACE_CHORDS: readonly (readonly [root: number, q: SpaceQuality])[] = [
+  [42, 'm'], [38, 'M'], [40, 'M'], [37, '7'],
+  [42, 'm'], [38, 'M'], [35, 'm'], [37, '7'],
+  [38, 'M'], [40, 'M'], [37, 'm'], [42, 'm'],
+  [35, 'm'], [40, 'M'], [38, 'M'], [37, '7'],
+];
+
+const SPACE_MELODY_BARS: readonly (readonly Note[])[] = [
+  // Parte A (cc. 1–8) — misteriosa e propulsiva
+  [[78, 3], [76, 1], [73, 4], [71, 2], [73, 2], [76, 4]],
+  [[74, 3], [73, 1], [69, 4], [73, 2], [74, 2], [76, 4]],
+  [[76, 2], [71, 2], [76, 2], [80, 4], [78, 2], [76, 4]],
+  [[77, 4], [73, 2], [77, 2], [80, 4], [0, 2], [73, 1], [76, 1]],
+  [[78, 2], [78, 1], [81, 1], [80, 3], [78, 1], [76, 2], [73, 2], [78, 4]],
+  [[81, 3], [80, 1], [78, 4], [74, 2], [76, 2], [78, 4]],
+  [[74, 2], [78, 2], [83, 4], [81, 2], [78, 2], [74, 4]],
+  [[77, 3], [76, 1], [73, 2], [77, 2], [80, 4], [0, 2], [78, 1], [80, 1]],
+  // Parte B (cc. 9–16) — épica nas alturas orbitais
+  [[81, 3], [81, 3], [80, 2], [78, 2], [81, 2], [85, 4]],
+  [[83, 3], [83, 3], [81, 2], [80, 2], [76, 2], [80, 4]],
+  [[85, 3], [80, 1], [83, 2], [85, 2], [88, 4], [85, 2], [83, 2]],
+  [[81, 2], [85, 2], [88, 4], [85, 2], [81, 2], [78, 4]],
+  [[83, 3], [86, 3], [83, 2], [81, 2], [78, 2], [83, 4]],
+  [[83, 2], [80, 2], [83, 2], [88, 4], [83, 2], [80, 4]],
+  [[81, 3], [85, 1], [86, 2], [85, 2], [81, 2], [78, 2], [81, 4]],
+  [[80, 3], [83, 1], [80, 2], [77, 2], [73, 4], [0, 2], [73, 1], [76, 1]],
+];
+
+/** Baixo arpejado synthwave em oitavas e quintas por semicolcheia (16 passos). */
+const SPACE_BASS_INTERVALS: readonly number[] = [
+  0, 0, 12, 0, 7, 12, 0, 12,
+  0, 0, 12, 0, 7, 12, 7, 12,
+];
+
+/** Arpejos cósmicos cristalinos em segundo plano por qualidade harmônica. */
+const SPACE_ARP_PATTERNS: Record<SpaceQuality, readonly number[]> = {
+  m: [0, 3, 7, 12, 15, 19, 12, 7],
+  M: [0, 4, 7, 12, 16, 19, 12, 7],
+  '7': [0, 4, 7, 10, 16, 19, 10, 7],
+};
+
+/** Tons eletrônicos descendentes da virada de bateria a cada 4 compassos (passos 12..15). */
+const SPACE_FILL_TOMS: readonly number[] = [420, 310, 220, 150];
+
+const SPACE_MELODY: (Note | undefined)[] = new Array<Note | undefined>(SPACE_LOOP_STEPS).fill(undefined);
+{
+  let pos = 0;
+  for (const bar of SPACE_MELODY_BARS) {
+    for (const [midi, steps] of bar) {
+      if (midi > 0) SPACE_MELODY[pos] = [midi, steps];
+      pos += steps;
+    }
+  }
+}
+
+function spaceBass(g: Graph, midi: number, t: number, accent: boolean): void {
+  const f = midiToHz(midi);
+  const dur = SPACE_STEP * 0.86;
+  osc(g, g.music, 'triangle', f, t, dur, accent ? 0.44 : 0.36);
+
+  const o = g.ctx.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(f, t);
+  const lp = g.ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 2.4;
+  lp.frequency.setValueAtTime(accent ? 1400 : 1050, t);
+  lp.frequency.exponentialRampToValueAtTime(240, t + dur);
+  const amp = g.ctx.createGain();
+  envelope(amp, t, accent ? 0.2 : 0.14, dur);
+  o.connect(lp);
+  lp.connect(amp);
+  amp.connect(g.music);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+}
+
+function spaceArp(g: Graph, midi: number, t: number, peak: number): void {
+  const f = midiToHz(midi);
+  osc(g, g.music, 'triangle', f, t, SPACE_STEP * 0.78, peak);
+  osc(g, g.music, 'square', f * 2, t, SPACE_STEP * 0.45, peak * 0.35);
+}
+
+function spaceKick(g: Graph, t: number, level: number): void {
+  osc(g, g.music, 'sine', 150, t, 0.16, 0.56 * level, 40);
+  osc(g, g.music, 'triangle', 260, t, 0.032, 0.18 * level, 65);
+}
+
+function spaceSnare(g: Graph, t: number, level: number): void {
+  osc(g, g.music, 'triangle', 225, t, 0.08, 0.22 * level, 110);
+  noise(g, g.music, t, 0.14, 0.26 * level, 'bandpass', 2100, 900, 0.9);
+  noise(g, g.music, t, 0.05, 0.13 * level, 'highpass', 4300);
+}
+
+function spaceHat(g: Graph, t: number, open: boolean, peak: number): void {
+  noise(g, g.music, t, open ? 0.06 : 0.024, peak, 'highpass', open ? 7200 : 8200);
+}
+
+function spaceTom(g: Graph, t: number, f0: number): void {
+  osc(g, g.music, 'triangle', f0, t, 0.11, 0.4, f0 * 0.46);
+  osc(g, g.music, 'square', f0, t, 0.06, 0.1, f0 * 0.5);
+  noise(g, g.music, t, 0.035, 0.12, 'bandpass', f0 * 3.8, f0 * 1.4, 1.3);
+}
+
+function spaceLead(
+  g: Graph,
+  midi: number,
+  t: number,
+  steps: number,
+  partB: boolean,
+  peakScale = 1,
+): void {
+  const dur = steps * SPACE_STEP;
+  const f = midiToHz(midi);
+  const o = g.ctx.createOscillator();
+  if (peakScale < 1) o.type = 'square';
+  else o.setPeriodicWave(g.pulse);
+  o.frequency.setValueAtTime(f, t);
+
+  if (steps >= 3 && peakScale === 1) {
+    const lfo = g.ctx.createOscillator();
+    lfo.frequency.value = 5.8;
+    const d = g.ctx.createGain();
+    d.gain.value = f * 0.01;
+    lfo.connect(d);
+    d.connect(o.frequency);
+    lfo.start(t);
+    lfo.stop(t + dur + 0.02);
+  }
+
+  const amp = g.ctx.createGain();
+  const peak = (partB ? 0.25 : 0.22) * peakScale;
+  amp.gain.setValueAtTime(FLOOR, t);
+  amp.gain.exponentialRampToValueAtTime(peak, t + ATTACK);
+  amp.gain.exponentialRampToValueAtTime(peak * 0.6, t + dur * 0.72);
+  amp.gain.exponentialRampToValueAtTime(FLOOR, t + dur * 0.95);
+
+  if (peakScale < 1) {
+    const lp = g.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1800;
+    o.connect(lp);
+    lp.connect(amp);
+  } else {
+    o.connect(amp);
+  }
+  amp.connect(g.music);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+
+  if (partB && peakScale === 1) {
+    osc(g, g.music, 'triangle', f / 2, t, dur * 0.9, 0.11);
+  }
+}
+
+function scheduleSpace(g: Graph, step: number, t: number): void {
+  const bar = Math.floor(step / STEPS_PER_BAR);
+  const s = step % STEPS_PER_BAR;
+  const [root, q] = SPACE_CHORDS[bar % SPACE_CHORDS.length] ?? [42, 'm'];
+  const isPartB = bar >= 8;
+  const isFillBar = bar % 4 === 3;
+
+  // 1. Baixo arpejado pulsante em oitavas/quintas
+  const bassInt = SPACE_BASS_INTERVALS[s] ?? 0;
+  spaceBass(g, root + bassInt, t, s % 4 === 0);
+
+  // 2. Arpejos cósmicos cristalinos em segundo plano
+  const arpOffsets = SPACE_ARP_PATTERNS[q];
+  const arpInt = arpOffsets[s % arpOffsets.length] ?? 0;
+  spaceArp(g, root + 24 + arpInt, t, isPartB ? 0.055 : 0.045);
+
+  // 3. Bateria eletrônica arcade marcando os 4 tempos + viradas a cada 4 compassos
+  if (isFillBar && s >= 12) {
+    if (s === 12) spaceSnare(g, t, 0.95);
+    spaceTom(g, t, SPACE_FILL_TOMS[s - 12] ?? 150);
+  } else {
+    if (s === 0 || s === 4 || s === 8 || s === 12) spaceKick(g, t, 1.0);
+    if (s === 4 || s === 12) spaceSnare(g, t, 1.0);
+    else if (isFillBar && s === 10) spaceSnare(g, t, 0.72);
+
+    if (s % 4 === 2) spaceHat(g, t, true, 0.072);
+    else if (s % 2 === 0) spaceHat(g, t, false, 0.04);
+    else spaceHat(g, t, false, 0.024);
+  }
+
+  // 4. Melodia heroica e espacial com eco curto sutil
+  const note = SPACE_MELODY[step];
+  if (note) {
+    spaceLead(g, note[0], t, note[1], isPartB);
+    if (note[1] >= 2) {
+      spaceLead(g, note[0], t + 2 * SPACE_STEP, Math.min(note[1], 2), false, 0.24);
+    }
+  }
+}
+
 interface Track {
   readonly stepDur: number;
   readonly loopSteps: number;
@@ -2129,8 +2429,7 @@ const TRACKS: Record<MusicTrack, Track> = {
   uber: { stepDur: UBER_STEP, loopSteps: UBER_LOOP_STEPS, scheduleStep: scheduleUber },
   sampa: { stepDur: SAMPA_STEP, loopSteps: SAMPA_LOOP_STEPS, scheduleStep: scheduleSampa },
   bonus: { stepDur: BONUS_STEP, loopSteps: BONUS_LOOP_STEPS, scheduleStep: scheduleBonus },
-  // Fase 7 — Espaço Sideral (stub 120 BPM da Etapa 1; AUDIO implementa na Etapa 2)
-  space: { stepDur: STEP, loopSteps: LOOP_STEPS, scheduleStep: () => {} },
+  space: { stepDur: SPACE_STEP, loopSteps: SPACE_LOOP_STEPS, scheduleStep: scheduleSpace },
 };
 
 function makeNoise(ctx: AudioContext): AudioBuffer {
@@ -2268,6 +2567,70 @@ export function createAudio(): AudioApi {
     }
   }
 
+  interface HumNodes {
+    readonly oscMain: OscillatorNode;
+    readonly oscSub: OscillatorNode;
+    readonly filter: BiquadFilterNode;
+    readonly gain: GainNode;
+  }
+  let hum: HumNodes | null = null;
+
+  function ensureHum(g: Graph): HumNodes {
+    if (hum) return hum;
+    const oscMain = g.ctx.createOscillator();
+    oscMain.type = 'sawtooth';
+    oscMain.frequency.value = 55;
+
+    const oscSub = g.ctx.createOscillator();
+    oscSub.type = 'triangle';
+    oscSub.frequency.value = 55;
+
+    const subGain = g.ctx.createGain();
+    subGain.gain.value = 0.65;
+
+    const filter = g.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 180;
+    filter.Q.value = 2.6;
+
+    const gain = g.ctx.createGain();
+    gain.gain.value = 0;
+
+    oscMain.connect(filter);
+    oscSub.connect(subGain);
+    subGain.connect(filter);
+    filter.connect(gain);
+    gain.connect(g.master);
+
+    oscMain.start();
+    oscSub.start();
+
+    hum = { oscMain, oscSub, filter, gain };
+    return hum;
+  }
+
+  function applyHum(intensity: number): void {
+    const g = graph;
+    if (!g) return;
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(intensity) ? intensity : 0));
+    if (clamped <= 0.01) {
+      if (!hum) return;
+      const now = g.ctx.currentTime;
+      hum.gain.gain.setTargetAtTime(0, now, 0.04);
+      hum.oscMain.frequency.setTargetAtTime(55, now, 0.06);
+      hum.oscSub.frequency.setTargetAtTime(55, now, 0.06);
+      return;
+    }
+    const h = ensureHum(g);
+    const now = g.ctx.currentTime;
+    const freq = 55 + clamped * 40; // 55..95 Hz
+    const targetGain = (0.04 + clamped * 0.14) * clamped;
+    h.oscMain.frequency.setTargetAtTime(freq, now, 0.04);
+    h.oscSub.frequency.setTargetAtTime(freq * 0.5, now, 0.04);
+    h.filter.frequency.setTargetAtTime(160 + clamped * 260, now, 0.04);
+    h.gain.gain.setTargetAtTime(targetGain, now, 0.04);
+  }
+
   // Aba escondida (em qualquer cena): congela o relógio do AudioContext e o agendador, de modo que a
   // música cala e, ao voltar, continua do mesmo ponto. Sem isso o setInterval segue agendando em segundo plano.
   if (typeof document !== 'undefined') {
@@ -2316,6 +2679,7 @@ export function createAudio(): AudioApi {
     stopMusic(): void {
       musicWanted = false;
       silenceMusic();
+      applyHum(0);
     },
 
     setMuted(m: boolean): void {
@@ -2330,6 +2694,8 @@ export function createAudio(): AudioApi {
       return muted;
     },
 
-    setHum(_intensity: number): void {},
+    setHum(intensity: number): void {
+      applyHum(intensity);
+    },
   };
 }

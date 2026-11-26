@@ -25,6 +25,7 @@ import {
 } from './objects5';
 import { UBER } from './uberRules';
 import { LEVEL7_PLANETS, LEVEL7_ROWS } from './level7';
+import { SPACE } from './spaceRules';
 import { createSpaceEnemy } from './enemies7';
 import {
   createBeacon, createBeamSatellite, createDebris, createHoloSign, createMothership, createPlanet, createSatellite,
@@ -126,12 +127,30 @@ export function buildLevel(def: LevelDef): Level {
 
   const spawnM = markers.find((m) => m.ch === 'P');
   // Autoscroller (Fase 5): spawn e checkpoints valem pela COLUNA; o Pardo sempre nasce em pé no teto do carro.
+  // Espaço (Fase 7): spawn usa o centro da célula de P para a hitbox espacial; checkpoints K guardam (cx, respawnScreenY).
   const footPos = (m: Marker): Vec2 => ({
     x: m.col * TILE + (TILE - PLAYER_W) / 2,
     y: def.autoscroll ? UBER.roofY - PLAYER_H : (m.row + 1) * TILE - PLAYER_H,
   });
-  const playerSpawn: Vec2 = spawnM ? footPos(spawnM) : { x: 16, y: 10 * TILE };
-  const cps = markers.filter((m) => m.ch === 'K').sort((a, b) => a.col - b.col).map(footPos);
+  const playerSpawn: Vec2 = def.space
+    ? spawnM
+      ? {
+          x: spawnM.col * TILE + TILE / 2 - SPACE.playerHitbox.w / 2,
+          y: spawnM.row * TILE + TILE / 2 - SPACE.playerHitbox.h / 2,
+        }
+      : {
+          x: SPACE.respawnScreenX - SPACE.playerHitbox.w / 2,
+          y: SPACE.respawnScreenY - SPACE.playerHitbox.h / 2,
+        }
+    : spawnM
+      ? footPos(spawnM)
+      : { x: 16, y: 10 * TILE };
+  const cps: Vec2[] = def.space
+    ? markers
+        .filter((m) => m.ch === 'K')
+        .sort((a, b) => a.col - b.col)
+        .map((m) => ({ x: m.col * TILE + TILE / 2, y: SPACE.respawnScreenY }))
+    : markers.filter((m) => m.ch === 'K').sort((a, b) => a.col - b.col).map(footPos);
 
   const tileAt = (tx: number, ty: number): TileId => {
     if (tx < 0 || tx >= cols) return Tile.Rock;
