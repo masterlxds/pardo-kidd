@@ -4,6 +4,19 @@ import { PALETTE as P } from '../gfx/palette';
 import { drawText, textWidth } from '../gfx/font';
 import { UBER, uberStars } from './uberRules';
 import { SPACE, spaceStars } from './spaceRules';
+import {
+  LEVEL_SELECT_ENTRIES,
+  LS_AMARO_RECT,
+  LS_BACK_RECT,
+  LS_DIFF_Y,
+  LS_LIST_W,
+  LS_LIST_X,
+  LS_LIST_Y,
+  LS_NORMAL_RECT,
+  LS_ROW_H,
+  PAUSE_LS_RECT,
+  TITLE_LS_RECT,
+} from './levelSelect';
 
 const pad6 = (n: number): string => String(Math.max(0, Math.floor(n))).padStart(6, '0');
 const blink = (t: number, period = 0.5): boolean => Math.floor(t / period) % 2 === 0;
@@ -198,12 +211,122 @@ export function drawTitle(ctx: CanvasRenderingContext2D, world: World): void {
     drawText(ctx, 'MODO TESTE:', 5, 149, { color: P.G });
     drawText(ctx, `FASE ${faseParam}`, 5, 157, { color: P.G });
   }
+
+  // selo clicável quando o Level Select secreto já foi desbloqueado na sessão
+  if (world.state.levelSelectUnlocked) {
+    const r = TITLE_LS_RECT;
+    ctx.fillStyle = P.k;
+    ctx.fillRect(r.x - 1, r.y - 1, r.w + 2, r.h + 2);
+    ctx.fillStyle = blink(t, 0.45) ? P.B : P.D;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    drawText(ctx, 'FASES', r.x + r.w / 2, r.y + 3, { color: P.y, align: 'center', shadow: P.k });
+  }
 }
 
-export function drawPaused(ctx: CanvasRenderingContext2D, _world: World): void {
+/** Tela secreta de seleção de fases (7 fases + Fase Bônus + dificuldade). */
+export function drawLevelSelect(ctx: CanvasRenderingContext2D, world: World): void {
+  const st = world.state;
+  const t = st.sceneTime;
+
+  // fundo e moldura no estilo cartucho 8-bit sobre papel quadriculado
+  ctx.fillStyle = P.B;
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  ctx.fillStyle = P.k;
+  ctx.fillRect(3, 2, 314, 177);
+  ctx.fillStyle = P.W;
+  ctx.fillRect(4, 3, 312, 175);
+  ctx.fillStyle = 'rgba(159,224,255,0.75)';
+  for (let x = 4 + 8; x < 316; x += 8) ctx.fillRect(x, 3, 1, 175);
+  for (let y = 3 + 8; y < 178; y += 8) ctx.fillRect(4, y, 312, 1);
+  ctx.fillStyle = P.B;
+  ctx.fillRect(4, 3, 312, 1);
+  ctx.fillRect(4, 177, 312, 1);
+
+  // botão VOLTAR (canto superior esquerdo)
+  ctx.fillStyle = P.k;
+  ctx.fillRect(LS_BACK_RECT.x - 1, LS_BACK_RECT.y - 1, LS_BACK_RECT.w + 2, LS_BACK_RECT.h + 2);
+  ctx.fillStyle = P.D;
+  ctx.fillRect(LS_BACK_RECT.x, LS_BACK_RECT.y, LS_BACK_RECT.w, LS_BACK_RECT.h);
+  drawText(ctx, 'VOLTAR', LS_BACK_RECT.x + LS_BACK_RECT.w / 2, LS_BACK_RECT.y + 3, {
+    color: P.w,
+    align: 'center',
+  });
+
+  // cabeçalho
+  drawText(ctx, 'SELECIONAR FASE', 184, 7, { scale: 2, color: P.B, align: 'center', shadow: P.c });
+  ctx.fillStyle = P.B;
+  ctx.fillRect(12, 25, 296, 1);
+
+  // lista das 7 fases + Fase Bônus
+  const cursor = st.levelSelectCursor;
+  LEVEL_SELECT_ENTRIES.forEach((entry, i) => {
+    const ry = LS_LIST_Y + i * LS_ROW_H;
+    const selected = i === cursor;
+    if (selected) {
+      ctx.fillStyle = P.k;
+      ctx.fillRect(LS_LIST_X - 1, ry, LS_LIST_W + 2, LS_ROW_H - 1);
+      ctx.fillStyle = blink(t, 0.35) ? P.r : P.R;
+      ctx.fillRect(LS_LIST_X, ry + 1, LS_LIST_W, LS_ROW_H - 3);
+      // indicador lateral piscante
+      ctx.fillStyle = P.y;
+      ctx.fillRect(LS_LIST_X + 3, ry + 4, 3, 5);
+      ctx.fillRect(LS_LIST_X + 6, ry + 5, 2, 3);
+    }
+
+    // selo colorido da fase
+    const bx = LS_LIST_X + 12;
+    const by = ry + 2;
+    ctx.fillStyle = P.k;
+    ctx.fillRect(bx - 1, by - 1, 20, 11);
+    ctx.fillStyle = entry.color;
+    ctx.fillRect(bx, by, 18, 9);
+    drawText(ctx, entry.code, bx + 9, by + 1, { color: P.w, align: 'center', shadow: P.k });
+
+    // nome da fase
+    drawText(ctx, entry.label, bx + 26, ry + 3, {
+      color: selected ? P.w : P.k,
+      shadow: selected ? P.k : undefined,
+    });
+  });
+
+  // divisor inferior + seletor de dificuldade
+  ctx.fillStyle = P.O;
+  ctx.fillRect(12, 142, 296, 1);
+  drawText(ctx, 'MODO:', 90, LS_DIFF_Y + 1, { color: P.B });
+  const amaro = st.difficulty === 'amaro';
+  const drawDiffBtn = (label: string, r: typeof LS_NORMAL_RECT, selected: boolean): void => {
+    if (selected) {
+      ctx.fillStyle = P.k;
+      ctx.fillRect(r.x - 1, r.y - 1, r.w + 2, r.h + 2);
+      ctx.fillStyle = P.B;
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+    }
+    drawText(ctx, label, r.x + r.w / 2, r.y + 3, {
+      color: selected ? P.y : P.G,
+      align: 'center',
+      shadow: selected ? P.k : undefined,
+    });
+  };
+  drawDiffBtn('NORMAL', LS_NORMAL_RECT, !amaro);
+  drawDiffBtn('AMARO', LS_AMARO_RECT, amaro);
+
+  // rodapé de controles
+  drawText(ctx, 'SETAS ESCOLHEM  ENTER/TOQUE JOGA  ESC VOLTA', 160, 165, { color: P.B, align: 'center' });
+}
+
+export function drawPaused(ctx: CanvasRenderingContext2D, world: World): void {
   veil(ctx, 0.6);
-  drawText(ctx, 'PAUSA', 160, 74, { scale: 3, color: P.y, align: 'center', shadow: P.k });
-  drawText(ctx, 'P, ESC OU TOQUE PARA CONTINUAR', 160, 104, { color: P.w, align: 'center', shadow: P.k });
+  drawText(ctx, 'PAUSA', 160, 68, { scale: 3, color: P.y, align: 'center', shadow: P.k });
+  drawText(ctx, 'P, ESC OU TOQUE PARA CONTINUAR', 160, 98, { color: P.w, align: 'center', shadow: P.k });
+  if (world.state.levelSelectUnlocked) {
+    const r = PAUSE_LS_RECT;
+    ctx.fillStyle = P.k;
+    ctx.fillRect(r.x - 1, r.y - 1, r.w + 2, r.h + 2);
+    ctx.fillStyle = P.B;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    drawText(ctx, 'SELECIONAR FASE', r.x + r.w / 2, r.y + 4, { color: P.y, align: 'center', shadow: P.k });
+    drawText(ctx, 'SETA BAIXO OU TOQUE ACIMA', 160, r.y + r.h + 5, { color: P.W, align: 'center', shadow: P.k });
+  }
 }
 
 export function drawGameOver(ctx: CanvasRenderingContext2D, world: World): void {

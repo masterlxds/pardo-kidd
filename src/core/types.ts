@@ -39,6 +39,7 @@ export interface Camera { x: number; y: number }
 /** 'intro' = cartão "FASE N · NOME" (~2.2s) antes de cada fase; o mundo já está montado por trás. */
 export type Scene =
   | 'title'
+  | 'level_select'
   | 'intro'
   | 'playing'
   | 'paused'
@@ -101,6 +102,10 @@ export interface GameState {
   rideHits: number;
   /** Fase 7: mortes gravitacionais (colisão com Yuri/Yumi; zera ao (re)iniciar a fase) */
   gravDeaths: number;
+  /** true após digitar a combinação secreta na tela de título (libera acesso ao seletor de fases) */
+  levelSelectUnlocked: boolean;
+  /** índice (0..LEVEL_SELECT_ENTRIES.length-1) atualmente destacado no seletor de fases */
+  levelSelectCursor: number;
 }
 
 export type Difficulty = 'normal' | 'amaro';

@@ -29,10 +29,20 @@ import {
   drawGameOver,
   drawHud,
   drawIntro,
+  drawLevelSelect,
   drawPaused,
   drawTitle,
   drawWin,
 } from './hud';
+import {
+  createSecretCodeTracker,
+  hitRect,
+  hitTestLevelSelect,
+  LEVEL_SELECT_ENTRIES,
+  PAUSE_LS_RECT,
+  TITLE_LS_RECT,
+  type CodeDir,
+} from './levelSelect';
 import { createBackground } from '../gfx/background';
 import { createAmazonBackground } from '../gfx/background2';
 import { createBahiaBackground } from '../gfx/background3';
@@ -147,6 +157,7 @@ export class GameWorld implements World {
   private startLevel: number;
   private startBonusMode: boolean;
   private pausedFrom: 'playing' | 'bonus' = 'playing';
+  private readonly secretCode = createSecretCodeTracker();
   private backgrounds = new Map<LevelTheme, Background>();
 
   readonly particles: Particle[] = [];
@@ -217,6 +228,8 @@ export class GameWorld implements World {
         cleared: false,
         endedByCheckpoint: false,
       },
+      levelSelectUnlocked: false,
+      levelSelectCursor: this.startBonusMode ? LEVEL_SELECT_ENTRIES.length - 1 : this.startLevel,
     };
     const sp = this.level.playerSpawn;
     this.player = createPlayer(sp.x, sp.y);
@@ -418,7 +431,44 @@ export class GameWorld implements World {
       sc === 'bonus' ||
       sc === 'bonus_end' ||
       (sc === 'paused' && this.pausedFrom === 'bonus');
-    document.body.classList.toggle('space', Boolean(this.level.space && !inBonus));
+    const inMenu = sc === 'title' || sc === 'level_select';
+    document.body.classList.toggle('space', Boolean(this.level.space && !inBonus && !inMenu));
+  }
+
+  /** Abre a tela secreta de seleção de fases (usada ao completar o código ou via atalho após desbloqueio). */
+  private openLevelSelect(justUnlocked: boolean): void {
+    const st = this.state;
+    st.levelSelectUnlocked = true;
+    const bonusIdx = LEVEL_SELECT_ENTRIES.findIndex((e) => e.target === 'bonus');
+    if (st.scene === 'paused' && this.pausedFrom === 'bonus' && bonusIdx >= 0) {
+      st.levelSelectCursor = bonusIdx;
+    } else if (st.scene === 'paused') {
+      st.levelSelectCursor = clamp(st.levelIndex, 0, LEVEL_SELECT_ENTRIES.length - 1);
+    }
+    this.pausedFrom = 'playing';
+    this.audio.stopMusic();
+    this.audio.setHum?.(0);
+    this.secretCode.reset();
+    this.setScene('level_select');
+    this.audio.play(justUnlocked ? 'oneup' : 'coin');
+  }
+
+  /** Inicia a fase ou Fase Bônus correspondente à entrada selecionada no Level Select. */
+  private launchLevelSelectEntry(index: number): void {
+    const entry = LEVEL_SELECT_ENTRIES[index] ?? LEVEL_SELECT_ENTRIES[0];
+    if (!entry) return;
+    this.startBonusMode = false;
+    this.startLevel = 0;
+    if (entry.target === 'bonus') {
+      const st = this.state;
+      st.score = 0;
+      st.lives = st.difficulty === 'amaro' ? EASY_LIVES : START_LIVES;
+      st.coins = 0;
+      this.pausedFrom = 'playing';
+      this.startBonus();
+    } else {
+      this.newGame(entry.target);
+    }
   }
 
   // ── Fluxo de jogo ──────────────────────────────────────────────────────────
@@ -643,14 +693,33 @@ export class GameWorld implements World {
     if (input.pressed('mute')) this.toggleMute();
 
     switch (st.scene) {
-      case 'title':
+      case 'title': {
         this.time += dt;
         this.updateParticles(dt);
+        this.secretCode.tick(dt);
+        if (st.levelSelectUnlocked && (input.pressed('up') || input.pressed('down'))) {
+          this.openLevelSelect(false);
+          break;
+        }
+        const dirs: readonly CodeDir[] = ['up', 'down', 'left', 'right'];
+        let unlockedNow = false;
+        for (const d of dirs) {
+          if (input.pressed(d) && this.secretCode.push(d)) {
+            this.openLevelSelect(true);
+            unlockedNow = true;
+            break;
+          }
+        }
+        if (unlockedNow) break;
         // seleção de dificuldade: ←/→ alternam; toque/clique numa metade da tela escolhe e inicia
         if (input.pressed('left')) this.setDifficulty('normal');
         if (input.pressed('right')) this.setDifficulty('amaro');
         if (input.pressed('confirm') || input.pressed('start')) {
           const tap = input.tapPos();
+          if (st.levelSelectUnlocked && tap && hitRect(tap.x, tap.y, TITLE_LS_RECT)) {
+            this.openLevelSelect(false);
+            break;
+          }
           if (tap) st.difficulty = tap.x < VIEW_W / 2 ? 'normal' : 'amaro';
           if (this.startBonusMode) {
             st.score = 0;
@@ -665,6 +734,46 @@ export class GameWorld implements World {
           }
         }
         break;
+      }
+
+      case 'level_select': {
+        this.time += dt;
+        this.updateParticles(dt);
+        const total = LEVEL_SELECT_ENTRIES.length;
+        if (input.pressed('pause')) {
+          this.setScene('title');
+          this.audio.play('coin');
+          break;
+        }
+        if (input.pressed('up')) {
+          st.levelSelectCursor = (st.levelSelectCursor - 1 + total) % total;
+          this.audio.play('coin');
+        }
+        if (input.pressed('down')) {
+          st.levelSelectCursor = (st.levelSelectCursor + 1) % total;
+          this.audio.play('coin');
+        }
+        if (input.pressed('left')) this.setDifficulty('normal');
+        if (input.pressed('right')) this.setDifficulty('amaro');
+        if (input.pressed('confirm') || input.pressed('start')) {
+          const tap = input.tapPos();
+          if (tap) {
+            const hit = hitTestLevelSelect(tap.x, tap.y);
+            if (hit?.kind === 'back') {
+              this.setScene('title');
+              this.audio.play('coin');
+            } else if (hit?.kind === 'difficulty') {
+              this.setDifficulty(hit.difficulty);
+            } else if (hit?.kind === 'entry') {
+              st.levelSelectCursor = hit.index;
+              this.launchLevelSelectEntry(hit.index);
+            }
+          } else {
+            this.launchLevelSelectEntry(st.levelSelectCursor);
+          }
+        }
+        break;
+      }
 
       case 'intro':
         // mundo parado por trás do cartão (sem simular o Pardo)
@@ -697,7 +806,14 @@ export class GameWorld implements World {
         }
         break;
 
-      case 'paused':
+      case 'paused': {
+        if (st.levelSelectUnlocked) {
+          const tap = input.tapPos();
+          if (input.pressed('down') || (tap && hitRect(tap.x, tap.y, PAUSE_LS_RECT))) {
+            this.openLevelSelect(false);
+            break;
+          }
+        }
         // 'confirm' cobre o toque na tela e os botões touch (PULO/SOCO), senão a pausa
         // automática por onHidden trava o jogo em mobile (sem teclado para retomar).
         // A borda é consumida no fim do passo, então o toque que retoma não vira pulo/soco.
@@ -713,6 +829,7 @@ export class GameWorld implements World {
           }
         }
         break;
+      }
 
       case 'dying':
         this.time += dt;
@@ -1218,6 +1335,9 @@ export class GameWorld implements World {
     switch (st.scene) {
       case 'title':
         drawTitle(ctx, this);
+        break;
+      case 'level_select':
+        drawLevelSelect(ctx, this);
         break;
       case 'intro':
         drawIntro(ctx, this);
