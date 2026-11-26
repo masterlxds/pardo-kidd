@@ -15,6 +15,7 @@ import type {
 } from '../core/types';
 import { AIR_BUBBLE_TIME, COINS_PER_LIFE, EASY_LIVES, AIR_COUNTDOWN, MAX_AIR, MAX_HYDRATION, RENDER_SCALE, START_LIVES, TILE, VIEW_H, VIEW_W } from '../core/constants';
 import { UBER, uberStars } from './uberRules';
+import { SPACE, SPACE_CAM_MAX, SPACE_STOP_CAM_X, scrollSpeedAt, spaceStars } from './spaceRules';
 import { overlaps } from '../core/physics';
 import type { Input } from '../core/input';
 import { ARRIVE_WIN_FALLBACK, createPlayer, LICK_STAFF_OFFSET, type PardoPlayer } from './player';
@@ -38,6 +39,7 @@ import { createBahiaBackground } from '../gfx/background3';
 import { createRioBackground } from '../gfx/background4';
 import { createSampaBackground } from '../gfx/background6';
 import { createUberBackground } from '../gfx/background5';
+import { createSpaceBackground } from '../gfx/background7';
 import { createAtlas } from '../gfx/atlas';
 import { createAudio } from '../audio/audio';
 import { drawText } from '../gfx/font';
@@ -53,12 +55,20 @@ const CAM_ANCHOR_Y = 0.58;
 /** Entidades além desta distância da câmera não são atualizadas. */
 const ACTIVE_MARGIN = VIEW_W * 1.5;
 /** Objetivos da fase: continuam animando (entrega/bebida) durante a cena 'winning'. */
-const GOAL_KINDS: ReadonlySet<string> = new Set(['mug', 'goal', 'staff', 'amaro', 'uber_goal', 'maia']);
+const GOAL_KINDS: ReadonlySet<string> = new Set(['mug', 'goal', 'staff', 'amaro', 'uber_goal', 'maia', 'eeiq_station']);
 /**
- * Entidades presas ao Pardo ou à tela no autoscroller (Fase 5): SEMPRE atualizadas e desenhadas, sem
+ * Entidades presas ao Pardo ou à tela nos autoscrollers (Fase 5 e Fase 7): SEMPRE atualizadas e desenhadas, sem
  * culling por distância (issue #10: o carro recriado longe da câmera congelava e sumia).
  */
-const NO_CULL_KINDS: ReadonlySet<string> = new Set(['uber_car', 'truck_bau']);
+const NO_CULL_KINDS: ReadonlySet<string> = new Set([
+  'uber_car',
+  'truck_bau',
+  'planet_yuri',
+  'planet_yumi',
+  'mothership',
+  'solar_wind',
+  'eeiq_station',
+]);
 /** Fase 5: x de tela em que a rolagem para com o desembarque (`uber_goal`) à vista. */
 const UBER_GOAL_SCREEN_X = 150;
 /** Fase 5, cutscene de chegada: o carro estaciona com o centro do Pardo esta distância antes do centro do totem. */
@@ -194,6 +204,7 @@ export class GameWorld implements World {
       levelIndex: this.startLevel,
       air: MAX_AIR,
       rideHits: 0,
+      gravDeaths: 0,
       maxAir: MAX_AIR,
       ribbons: 0,
       ribbonsTotal: 0,
@@ -209,9 +220,11 @@ export class GameWorld implements World {
     };
     const sp = this.level.playerSpawn;
     this.player = createPlayer(sp.x, sp.y);
+    if (this.level.space) this.player.respawn(sp.x, sp.y, true);
     this.replaceEntities();
     if (this.level.autoscroll) this.prepareRide();
     this.snapCamera();
+    this.syncSpaceBodyClass();
     input.onGesture(() => this.audio.unlock());
   }
 
@@ -334,12 +347,21 @@ export class GameWorld implements World {
         goal = e;
       }
     }
+    this.audio.setHum?.(0);
     if (goal && goal.kind === 'staff') {
       // Cajado Jailnesco: para de modo que o cajado do sprite pardo_lick caia sobre o centro do altar
       const cx = goal.x + goal.w / 2;
       this.player.startDrink(cx - LICK_STAFF_OFFSET, 'staff', 1);
       this.audio.stopMusic();
       this.audio.play('fanfare');
+      this.setScene('winning');
+      return;
+    }
+    if (goal && goal.kind === 'eeiq_station') {
+      // EEIQ (Fase 7): acoplado na escotilha da estação bebendo o sachê de água espacial em zero-G
+      this.player.startDrink(goal.x + 12, 'sache', 1, goal.y + goal.h / 2);
+      this.audio.stopMusic();
+      this.audio.play('win');
       this.setScene('winning');
       return;
     }
@@ -388,11 +410,24 @@ export class GameWorld implements World {
     this.audio.play('coin');
   }
 
+  private syncSpaceBodyClass(): void {
+    if (typeof document === 'undefined') return;
+    const sc = this.state.scene;
+    const inBonus =
+      sc === 'bonus_intro' ||
+      sc === 'bonus' ||
+      sc === 'bonus_end' ||
+      (sc === 'paused' && this.pausedFrom === 'bonus');
+    document.body.classList.toggle('space', Boolean(this.level.space && !inBonus));
+  }
+
   // ── Fluxo de jogo ──────────────────────────────────────────────────────────
   setScene(s: Scene): void {
     if (s !== 'playing') this.scrollSpeed = 0;
+    if (s !== 'playing') this.audio.setHum?.(0);
     this.state.scene = s;
     this.state.sceneTime = 0;
+    this.syncSpaceBodyClass();
   }
 
   /** Pausa a partida atual ('playing' ou 'bonus'), guardando a cena de origem. */
@@ -402,6 +437,7 @@ export class GameWorld implements World {
     this.pausedFrom = sc;
     this.setScene('paused');
     this.audio.stopMusic();
+    this.audio.setHum?.(0);
   }
 
   /** Inicia a Fase Bônus ("Tubo do Bonfim"), preservando pontos, moedas e vidas. */
@@ -451,28 +487,32 @@ export class GameWorld implements World {
     st.levelIndex = i;
     st.elapsed = 0;
     st.timeBonus = 0;
-    st.rideHits = 0; // avaliação da corrida (Fase 5): zera ao (re)iniciar a fase, não ao renascer
+    st.rideHits = 0; // avaliação da corrida (Fase 5/7): zera ao (re)iniciar a fase, não ao renascer
+    st.gravDeaths = 0;
     this.checkpoint = -1;
     this.time = 0;
     this.collectedRibbons.clear(); // fase nova (ou jogo novo): fitinhas voltam
     this.respawnAt(this.level.playerSpawn.x, this.level.playerSpawn.y);
+    this.syncSpaceBodyClass();
   }
 
   private backgroundFor(theme: LevelTheme): Background {
     let bg = this.backgrounds.get(theme);
     if (!bg) {
       bg =
-        theme === 'uber'
-          ? createUberBackground()
-          : theme === 'sampa'
-            ? createSampaBackground()
-            : theme === 'rio'
-              ? createRioBackground()
-              : theme === 'bahia'
-                ? createBahiaBackground()
-                : theme === 'amazonia'
-                  ? createAmazonBackground()
-                  : createBackground();
+        theme === 'space'
+          ? createSpaceBackground()
+          : theme === 'uber'
+            ? createUberBackground()
+            : theme === 'sampa'
+              ? createSampaBackground()
+              : theme === 'rio'
+                ? createRioBackground()
+                : theme === 'bahia'
+                  ? createBahiaBackground()
+                  : theme === 'amazonia'
+                    ? createAmazonBackground()
+                    : createBackground();
       this.backgrounds.set(theme, bg);
     }
     return bg;
@@ -489,7 +529,7 @@ export class GameWorld implements World {
   private respawnAt(x: number, y: number): void {
     this.level.reset();
     this.replaceEntities();
-    this.player.respawn(x, y);
+    this.player.respawn(x, y, Boolean(this.level.space));
     if (this.level.autoscroll) this.prepareRide();
     this.state.hydration = this.state.maxHydration;
     this.state.air = this.state.maxAir;
@@ -506,6 +546,16 @@ export class GameWorld implements World {
 
   private respawnAtCheckpoint(): void {
     const cp = this.checkpoint >= 0 ? this.level.checkpoints[this.checkpoint] : undefined;
+    if (this.level.space && cp) {
+      // D9: câmera em Kx - 64 e centro do Pardo em tela (80, 90)
+      const camX = clamp(cp.x - SPACE.checkpointCamOffset, 0, SPACE_CAM_MAX);
+      const px = camX + SPACE.respawnScreenX - SPACE.playerHitbox.w / 2;
+      const py = SPACE.respawnScreenY - SPACE.playerHitbox.h / 2;
+      this.respawnAt(px, py);
+      this.camera.x = camX;
+      this.camera.y = 0;
+      return;
+    }
     const p = cp ?? this.level.playerSpawn;
     this.respawnAt(p.x, p.y);
   }
@@ -626,6 +676,7 @@ export class GameWorld implements World {
         ) {
           this.setScene('playing');
           if (this.level.autoscroll) this.syncRideMusic();
+          else if (this.level.space) this.syncSpaceMusic();
         }
         break;
 
@@ -641,6 +692,7 @@ export class GameWorld implements World {
         if (this.player.dead && st.scene === 'playing') {
           st.lives = Math.max(0, st.lives - 1);
           this.audio.stopMusic();
+          this.audio.setHum?.(0);
           this.setScene('dying');
         }
         break;
@@ -656,6 +708,7 @@ export class GameWorld implements World {
           } else {
             this.setScene('playing');
             if (this.level.autoscroll) this.syncRideMusic();
+            else if (this.level.space) this.syncSpaceMusic();
             else this.audio.startMusic(this.level.theme);
           }
         }
@@ -672,9 +725,11 @@ export class GameWorld implements World {
             this.respawnAtCheckpoint();
             this.setScene('playing');
             if (this.level.autoscroll) this.syncRideMusic();
+            else if (this.level.space) this.syncSpaceMusic();
             else this.audio.startMusic(this.level.theme);
           } else {
             this.setScene('gameover');
+            this.audio.setHum?.(0);
             this.audio.play('gameover');
           }
         }
@@ -693,6 +748,9 @@ export class GameWorld implements World {
           st.score += st.timeBonus;
           // Fase 5: avaliação da corrida (bônus = UBER.starBonus × estrelas)
           if (this.level.autoscroll) st.score += UBER.starBonus * uberStars(st.rideHits);
+          // Fase 7: avaliação orbital (bônus = SPACE.starBonus × estrelas)
+          if (this.level.space) st.score += SPACE.starBonus * spaceStars(st.rideHits, st.gravDeaths);
+          this.audio.setHum?.(0);
           this.setScene('win');
         }
         break;
@@ -782,10 +840,20 @@ export class GameWorld implements World {
     this.audio.startMusic(this.level.theme, Math.max(0, this.camera.x) / UBER.speed);
   }
 
+  /** Fase 7: sincroniza a faixa 'space' (120 BPM) com a posição atual da câmera. */
+  private syncSpaceMusic(): void {
+    this.audio.stopMusic();
+    this.audio.startMusic('space', Math.max(0, this.camera.x) / SPACE.scrollSpeed);
+  }
+
   /** Ordem do PLAN §3. */
   private stepPlaying(dt: number): void {
     if (this.level.autoscroll) this.advanceScroll(dt);
-    else this.scrollSpeed = 0;
+    else if (this.level.space) {
+      this.scrollSpeed = scrollSpeedAt(this.camera.x);
+      this.camera.x = Math.min(SPACE_STOP_CAM_X, this.camera.x + this.scrollSpeed * dt);
+      this.camera.y = 0;
+    } else this.scrollSpeed = 0;
     this.updateEntities(dt);
     this.player.update(dt, this, this.input);
     if (!this.player.dead) {
@@ -860,7 +928,7 @@ export class GameWorld implements World {
       this.punchedEntities.clear();
       this.punchTileDone = false;
     }
-    const box = p.punchBox();
+    const box = p.punchBox(this.camera.x);
     if (!box) return;
     const dir = p.facing;
     let connected = false;
@@ -1027,6 +1095,13 @@ export class GameWorld implements World {
       this.clampCamera();
       return;
     }
+    if (this.level.space) {
+      // Fase 7: câmera Y travada em 0 (y de mundo = y de tela)
+      this.camera.x = 0;
+      this.camera.y = 0;
+      this.clampCamera();
+      return;
+    }
     const t = this.cameraTarget();
     this.camera.x = t.x;
     this.camera.y = t.y;
@@ -1039,6 +1114,12 @@ export class GameWorld implements World {
     if (this.level.autoscroll) {
       // X avança em advanceScroll (início do passo); Y travada
       c.y = UBER.camY;
+      this.clampCamera();
+      this.updateShake(dt);
+      return;
+    }
+    if (this.level.space) {
+      c.y = 0;
       this.clampCamera();
       this.updateShake(dt);
       return;

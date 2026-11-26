@@ -3,6 +3,19 @@ import { Tile } from '../core/types';
 import { PHYS, PLAYER_H, PLAYER_W, SWIM, TILE, SWIM_CEILING } from '../core/constants';
 import { UBER, uberRampOffset } from './uberRules';
 import { LEVEL5_RAMP_COLS } from './level5';
+import { LEVEL7_PLANETS } from './level7';
+import {
+  PLANET_GRAV,
+  SPACE,
+  SPACE_BRAKE_START_CAM_X,
+  SPACE_OBSTACLES,
+  SPACE_STOP_CAM_X,
+  createSpacePlayerState,
+  planetPos,
+  spacePunchBox,
+  stepPlayerSpace,
+  type SpacePlayerState,
+} from './spaceRules';
 import { moveBody } from '../core/physics';
 import type { Input } from '../core/input';
 
@@ -118,13 +131,20 @@ export function rideFloorY(centerX: number): number {
 /** Sprite do corpo 20x24 centralizado na base da hitbox. */
 const SPR_W = 20;
 const SPR_H = 24;
+/** Sprite do Pardo Astronauta (24×24; soco 28×24), centrado na hitbox 10×18. */
+const SPACE_SPR_W = 24;
+const SPACE_SPR_H = 24;
+/** Duração da animação de colapso gravitacional na cena 'dying' (s). */
+const GRAV_COLLAPSE_TIME = 0.6;
+/** Velocidade do voo automático até a doca da EEIQ após parar a rolagem (px/s). */
+const SPACE_DOCK_SPEED = 78;
 
 type DrinkPhase = 'walk' | 'sip' | 'done';
 /**
  * O que o Pardo bebe na vitória: caneca (Fase 1), mamadeira do alien (Fase 2), Cajado Jailnesco (Fase 3, lambida),
- * água mineral do Amaro (Fase 4) ou café do Renan Maia (Fase 6).
+ * água mineral do Amaro (Fase 4), café do Renan Maia (Fase 6) ou sachê de água espacial (Fase 7).
  */
-export type DrinkItem = 'mug' | 'bottle' | 'staff' | 'mineral' | 'coffee';
+export type DrinkItem = 'mug' | 'bottle' | 'staff' | 'mineral' | 'coffee' | 'sache';
 
 /** Sprite da lambida: 24x32, corpo do Pardo nas colunas 0-19 (como o quadro 20x24), cajado ~17-23. */
 const LICK_W = 24;
@@ -161,6 +181,7 @@ export class PardoPlayer implements Player {
   private standingOn: Entity | null = null;
   private drinkPhase: DrinkPhase = 'done';
   private drinkX = 0;
+  private drinkY = 0;
   private drinkT = 0;
   private drinkItem: DrinkItem = 'mug';
   private drinkFace: 1 | -1 = 1;
@@ -186,13 +207,26 @@ export class PardoPlayer implements Player {
   private dismountY = 0;
   /** chão (y) depois de descer do teto do carro; null = teto do carro (rideFloorY) */
   private dismountFloor: number | null = null;
+  /** Fase 7: estado de voo zero-G e telemetria visual */
+  private spaceState: SpacePlayerState = createSpacePlayerState();
+  private spaceInit = false;
+  private spaceThrusting = false;
+  private spaceCritical = false;
+  private spaceBoostTrailT = 0;
+  private spaceBubbleT = 0;
+  private gravCollapse: { startX: number; startY: number; planetWorldX: number; planetY: number } | null = null;
+  private spaceDead = false;
+  private isSpaceMode = false;
 
   constructor(x: number, y: number) {
     this.respawn(x, y);
   }
 
   /** Reinicia o Pardo em (x,y) = canto sup. esq. da hitbox. */
-  respawn(x: number, y: number): void {
+  respawn(x: number, y: number, space = false): void {
+    this.isSpaceMode = space;
+    this.w = space ? SPACE.playerHitbox.w : PLAYER_W;
+    this.h = space ? SPACE.playerHitbox.h : PLAYER_H;
     this.x = x;
     this.y = y;
     this.vx = 0;
@@ -213,6 +247,7 @@ export class PardoPlayer implements Player {
     this.animT = 0;
     this.standingOn = null;
     this.drinkPhase = 'done';
+    this.drinkY = 0;
     this.drinkItem = 'mug';
     this.sinkY = null;
     this.swimDead = false;
@@ -223,6 +258,14 @@ export class PardoPlayer implements Player {
     this.arriveT = 0;
     this.arriveV = 0;
     this.dismountFloor = null;
+    this.spaceState = createSpacePlayerState(x + this.w / 2, y + this.h / 2);
+    this.spaceInit = false;
+    this.spaceThrusting = false;
+    this.spaceCritical = false;
+    this.spaceBoostTrailT = 0;
+    this.spaceBubbleT = 0;
+    this.gravCollapse = null;
+    this.spaceDead = false;
   }
 
   /** Fase da sequência de vitória (lida pelo alien para esconder a mamadeira da mão). */
@@ -274,9 +317,13 @@ export class PardoPlayer implements Player {
     if (this.dead || this.invuln > 0 || this.state === 'drink' || this.arrive !== 'none' || world.state.scene !== 'playing') return;
     const st = world.state;
     st.hydration = Math.max(0, st.hydration - amount);
-    if (world.level.autoscroll) st.rideHits++;
+    if (world.level.autoscroll || world.level.space) st.rideHits += amount;
     if (st.hydration <= 0) {
       this.kill(world);
+      return;
+    }
+    if (world.level.space) {
+      this.hurtSpace(world, sourceX);
       return;
     }
     if (world.level.autoscroll) {
@@ -294,6 +341,19 @@ export class PardoPlayer implements Player {
     this.punchT = 0;
     this.hurtT = FEEL.hurtTime;
     this.invuln = FEEL.invulnTime;
+    this.setState('hurt');
+    world.audio.play('hurt');
+    world.shake(2, 0.15);
+  }
+
+  /** Dano comum na Fase 7: recuo suave em spaceState.vx afastando da fonte, invuln = SPACE.invuln. */
+  private hurtSpace(world: World, sourceX: number): void {
+    const dir: 1 | -1 = this.centerX >= sourceX ? 1 : -1;
+    this.facing = 1;
+    this.spaceState.vx = dir * 95;
+    this.vx = this.spaceState.vx;
+    this.hurtT = FEEL.hurtTime;
+    this.invuln = SPACE.invuln;
     this.setState('hurt');
     world.audio.play('hurt');
     world.shake(2, 0.15);
@@ -326,6 +386,16 @@ export class PardoPlayer implements Player {
     this.punchT = 0;
     this.invuln = 0;
     this.setState('dead');
+    if (world.level.space) {
+      this.spaceDead = true;
+      this.gravCollapse = null;
+      this.sinkY = null;
+      this.vy = -80;
+      world.audio.setHum?.(0);
+      world.audio.play('die');
+      world.shake(3, 0.25);
+      return;
+    }
     if (world.level.underwater) {
       // debaixo d'água: sem salto de morte — vira e afunda devagar
       this.swimDead = true;
@@ -374,6 +444,13 @@ export class PardoPlayer implements Player {
 
   shove(world: World, vx: number, vy: number, dt: number): void {
     if (this.dead) return;
+    if (world.level.space) {
+      this.spaceState.sx = Math.max(SPACE.bounds.minX, Math.min(SPACE.bounds.maxX, this.spaceState.sx + vx * dt));
+      this.spaceState.sy = Math.max(SPACE.bounds.minY, Math.min(SPACE.bounds.maxY, this.spaceState.sy + vy * dt));
+      this.x = world.camera.x + this.spaceState.sx - this.w / 2;
+      this.y = this.spaceState.sy - this.h / 2;
+      return;
+    }
     // mesmas regras da física do Pardo: tiles sólidos + topo dos one-way (padrão do moveBody, como em physics())
     const b = { x: this.x, y: this.y, w: this.w, h: this.h, vx, vy };
     moveBody(b, world.level, dt);
@@ -392,11 +469,12 @@ export class PardoPlayer implements Player {
   // ── Extras usados por game.ts ──────────────────────────────────────────────
   /**
    * Inicia a sequência de vitória: anda até targetX (centro) e bebe.
-   * item: 'mug' (pardo_drink), 'bottle' (pardo_drink_bottle), 'mineral' (pardo_drink_mineral), 'coffee' (pardo_drink_coffee, sfx 'sip') ou 'staff'; face: para onde olha ao beber.
+   * item: 'mug' (pardo_drink), 'bottle' (pardo_drink_bottle), 'mineral' (pardo_drink_mineral), 'coffee' (pardo_drink_coffee, sfx 'sip'), 'sache' (pardo_space_drink) ou 'staff'; face: para onde olha ao beber.
    */
-  startDrink(targetX: number, item: DrinkItem = 'mug', face: 1 | -1 = 1): void {
+  startDrink(targetX: number, item: DrinkItem = 'mug', face: 1 | -1 = 1, targetY = 0): void {
     if (this.dead) return;
     this.drinkX = targetX;
+    this.drinkY = targetY;
     this.drinkItem = item;
     this.drinkFace = face;
     this.drinkPhase = 'walk';
@@ -406,11 +484,19 @@ export class PardoPlayer implements Player {
     this.hurtT = 0;
     this.invuln = 0;
     this.jumping = false;
+    this.vx = 0;
+    this.vy = 0;
+    this.facing = face;
+    this.spaceBubbleT = 0;
     this.setState('drink');
   }
 
   /** Caixa de acerto do soco (só na fase ativa), senão null. */
-  punchBox(): Rect | null {
+  punchBox(camX = 0): Rect | null {
+    if (this.state === 'drink' || this.dead) return null;
+    if (this.isSpaceMode && this.spaceInit) {
+      return spacePunchBox(this.spaceState, camX);
+    }
     if (this.state !== 'punch') return null;
     const t = FEEL.punchTime - this.punchT;
     if (t < FEEL.punchWindup || t >= FEEL.punchWindup + FEEL.punchActive) return null;
@@ -427,6 +513,23 @@ export class PardoPlayer implements Player {
     if (this.invuln > 0) this.invuln = Math.max(0, this.invuln - dt);
 
     if (this.dead) {
+      if (this.gravCollapse) {
+        // Colapso gravitacional (D8): espirala até o centro do planeta nos primeiros ~0,6 s
+        const u = Math.min(1, this.stateT / GRAV_COLLAPSE_TIME);
+        const ease = u * u;
+        const cx = this.gravCollapse.startX + (this.gravCollapse.planetWorldX - this.gravCollapse.startX) * ease;
+        const cy = this.gravCollapse.startY + (this.gravCollapse.planetY - this.gravCollapse.startY) * ease;
+        this.x = cx - this.w / 2;
+        this.y = cy - this.h / 2;
+        return;
+      }
+      if (this.spaceDead) {
+        // Morte comum no espaço (hidratação zerada): gira/deriva devagar
+        this.x -= 24 * dt;
+        this.vy = Math.min(this.vy + 160 * dt, 90);
+        this.y += this.vy * dt;
+        return;
+      }
       if (this.swimDead) {
         // afogado/derrotado debaixo d'água: afunda devagar e para no fundo
         this.vx = 0;
@@ -458,6 +561,11 @@ export class PardoPlayer implements Player {
     if (world.level.autoscroll) {
       if (this.arrive !== 'none') this.updateArrive(dt, world);
       else this.updateRide(dt, world, input);
+      return;
+    }
+
+    if (world.level.space) {
+      this.updateSpace(dt, world, input);
       return;
     }
 
@@ -542,6 +650,155 @@ export class PardoPlayer implements Player {
       const next = this.locomotionState();
       if (next !== this.state) this.setState(next);
     }
+  }
+
+  /**
+   * Fase 7 (Espaço Sideral): voo livre em gravidade zero via `stepPlayerSpace`, gravidade dos planetas
+   * ativos de `LEVEL7_PLANETS`, limite da Nave-Mãe, boost, soco e voo automático até a EEIQ ao parar.
+   */
+  private updateSpace(dt: number, world: World, input: Input): void {
+    this.facing = 1;
+    const camX = world.camera.x;
+    if (!this.spaceInit) {
+      this.spaceState = createSpacePlayerState(this.x + this.w / 2 - camX, this.y + this.h / 2);
+      this.spaceInit = true;
+    }
+
+    if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
+    if (this.spaceBoostTrailT > 0) this.spaceBoostTrailT = Math.max(0, this.spaceBoostTrailT - dt);
+
+    // Cutscene automática ao parar a rolagem (compassos 64–65): pilota até a doca da EEIQ
+    if (camX >= SPACE_STOP_CAM_X) {
+      this.spaceThrusting = true;
+      this.spaceCritical = false;
+      this.spaceState.boostTimer = 0;
+      this.spaceState.punchTimer = 0;
+      world.audio.setHum?.(0);
+      if (this.x + this.w < camX) {
+        this.x = camX + this.spaceState.sx - this.w / 2;
+      }
+      const station = world.entities.find((e) => !e.dead && e.kind === 'eeiq_station');
+      const targetX = station ? station.x + 12 : camX + SPACE.viewW - SPACE_OBSTACLES.eeiq_station.w / 2;
+      const targetY = station ? station.y + station.h / 2 : SPACE.viewH / 2;
+      const cx = this.x + this.w / 2;
+      const cy = this.y + this.h / 2;
+      const dx = targetX - cx;
+      const dy = targetY - cy;
+      const d = Math.hypot(dx, dy);
+      if (d <= 2) {
+        this.x = targetX - this.w / 2;
+        this.y = targetY - this.h / 2;
+        this.vx = 0;
+        this.vy = 0;
+        world.win();
+      } else {
+        const step = Math.min(d, SPACE_DOCK_SPEED * dt);
+        this.vx = (dx / d) * SPACE_DOCK_SPEED;
+        this.vy = (dy / d) * SPACE_DOCK_SPEED;
+        this.x += (dx / d) * step;
+        this.y += (dy / d) * step;
+      }
+      this.spaceState.sx = this.x + this.w / 2 - camX;
+      this.spaceState.sy = this.y + this.h / 2;
+      this.setState('idle');
+      return;
+    }
+
+    const left = input.down('left');
+    const right = input.down('right');
+    const up = input.down('up');
+    const down = input.down('down');
+    this.spaceThrusting = left || right || up || down;
+
+    const activePlanets: { cx: number; cy: number; worldX: number; y: number }[] = [];
+    for (let i = 0; i < LEVEL7_PLANETS.length; i++) {
+      const def = LEVEL7_PLANETS[i];
+      if (!def) continue;
+      const pos = planetPos(camX, def);
+      if (pos.phase === 'active') {
+        activePlanets.push({ cx: pos.screenX, cy: pos.y, worldX: pos.worldX, y: pos.y });
+      }
+    }
+
+    const motherActive =
+      camX >= 49 * SPACE.barCols * SPACE.tile &&
+      camX < SPACE_BRAKE_START_CAM_X &&
+      world.entities.some((e) => !e.dead && e.kind === 'mothership');
+
+    const res = stepPlayerSpace(
+      this.spaceState,
+      {
+        left,
+        right,
+        up,
+        down,
+        boost: input.pressed('boost'),
+        punch: input.pressed('punch'),
+      },
+      dt,
+      activePlanets,
+      { motherActive },
+    );
+
+    this.x = camX + this.spaceState.sx - this.w / 2;
+    this.y = this.spaceState.sy - this.h / 2;
+    this.vx = this.spaceState.vx;
+    this.vy = this.spaceState.vy;
+
+    world.audio.setHum?.(res.maxGravIntensity);
+
+    if (res.boostTriggered) {
+      this.spaceBoostTrailT = SPACE.boost.t;
+      world.audio.play('jet_burst');
+      world.fx('sparkle', this.x - 4, this.y + this.h / 2, -1);
+      world.fx('dust', this.x - 4, this.y + this.h / 2, -1);
+    }
+    if (this.spaceState.boostTimer > 0 && Math.floor(this.animT * 30) % 2 === 0) {
+      world.fx('sparkle', this.x - 3, this.y + this.h / 2, -1);
+    }
+
+    if (res.punchTriggered) {
+      this.punchId++;
+      world.audio.play('punch');
+    }
+
+    // Zona de alerta crítico (d < 44 px de algum planeta ativo)
+    let critical = false;
+    for (let i = 0; i < activePlanets.length; i++) {
+      const pl = activePlanets[i];
+      if (!pl) continue;
+      if (Math.hypot(this.spaceState.sx - pl.cx, this.spaceState.sy - pl.cy) < PLANET_GRAV.critical) {
+        critical = true;
+        break;
+      }
+    }
+    this.spaceCritical = critical;
+
+    // Morte gravitacional (D8): ignora gotas e invulnerabilidade
+    if (res.gravKilled) {
+      const pl = activePlanets[res.killedByPlanet];
+      world.state.gravDeaths += 1;
+      world.audio.setHum?.(0);
+      world.audio.play('grav_kill');
+      world.shake(4, 0.35);
+      this.dead = true;
+      this.spaceDead = true;
+      this.invuln = 0;
+      this.vx = 0;
+      this.vy = 0;
+      this.gravCollapse = {
+        startX: this.x + this.w / 2,
+        startY: this.y + this.h / 2,
+        planetWorldX: pl ? pl.worldX : this.x + this.w / 2,
+        planetY: pl ? pl.y : this.y + this.h / 2,
+      };
+      this.setState('dead');
+      return;
+    }
+
+    if (this.hurtT > 0) this.setState('hurt');
+    else if (this.spaceState.punchTimer > 0) this.setState('punch');
+    else this.setState('idle');
   }
 
   /**
@@ -895,6 +1152,49 @@ export class PardoPlayer implements Player {
 
   private updateDrink(dt: number, world: World): void {
     this.drinkT += dt;
+    if (world.level.space) {
+      // Acoplagem suave na escotilha da EEIQ (walk) e flutuação bebendo o sachê em zero-G (sip)
+      this.facing = 1;
+      const targetY = this.drinkY || this.y + this.h / 2;
+      if (this.drinkPhase === 'walk') {
+        const cx = this.x + this.w / 2;
+        const cy = this.y + this.h / 2;
+        const dx = this.drinkX - cx;
+        const dy = targetY - cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= 1.5) {
+          this.x = this.drinkX - this.w / 2;
+          this.y = targetY - this.h / 2;
+          this.vx = 0;
+          this.vy = 0;
+          this.drinkPhase = 'sip';
+          this.drinkT = 0;
+        } else {
+          const step = Math.min(dist, SPACE_DOCK_SPEED * dt);
+          this.vx = (dx / dist) * SPACE_DOCK_SPEED;
+          this.vy = (dy / dist) * SPACE_DOCK_SPEED;
+          this.x += (dx / dist) * step;
+          this.y += (dy / dist) * step;
+        }
+        return;
+      }
+      this.vx = 0;
+      this.vy = 0;
+      if (this.drinkY > 0) {
+        this.y = this.drinkY - this.h / 2 + Math.sin(world.time * 2.5) * 1.5;
+      }
+      this.spaceBubbleT -= dt;
+      if (this.spaceBubbleT <= 0) {
+        this.spaceBubbleT = 0.22;
+        world.fx('bubble', this.x + this.w + 3, this.y + 4, 1);
+        world.fx('sparkle', this.x + this.w + 4, this.y + 2, 1);
+      }
+      if (this.drinkPhase === 'sip' && this.drinkT >= FEEL.drinkSip) {
+        this.drinkPhase = 'done';
+        this.drinkDone = true;
+      }
+      return;
+    }
     if (world.level.underwater) {
       this.updateDrinkSwim(dt, world);
       return;
@@ -971,6 +1271,10 @@ export class PardoPlayer implements Player {
   draw(ctx: CanvasRenderingContext2D, world: World): void {
     // pisca enquanto invulnerável
     if (this.invuln > 0 && !this.dead && Math.floor(this.invuln * 20) % 2 === 0) return;
+    if (world.level.space) {
+      this.drawSpace(ctx, world);
+      return;
+    }
     const sx = Math.round(this.x + this.w / 2 - SPR_W / 2);
     const sy = Math.round(this.y + this.h - SPR_H);
     const flip = this.facing === -1;
@@ -1036,6 +1340,98 @@ export class PardoPlayer implements Player {
     }
     if (spr.has(name)) spr.draw(ctx, name, frame, sx, sy, flip);
     this.drawFist(ctx, world, sx, sy, flip);
+  }
+
+  /** Render do Pardo Astronauta na Fase 7 (sprites pardo_space_* centrados na hitbox 10×18). */
+  private drawSpace(ctx: CanvasRenderingContext2D, world: World): void {
+    const spr = world.sprites;
+    const cx = this.x + this.w / 2;
+    const cy = this.y + this.h / 2;
+    const baseDrawX = cx - SPACE_SPR_W / 2;
+    const baseDrawY = cy - SPACE_SPR_H / 2;
+
+    if (this.dead) {
+      if (this.gravCollapse) {
+        const u = Math.min(1, this.stateT / GRAV_COLLAPSE_TIME);
+        const scale = Math.max(0.05, 1 - u);
+        if (u >= 1) return;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(u * Math.PI * 5);
+        ctx.scale(scale, scale);
+        if (spr.has('pardo_space_hurt')) {
+          spr.draw(ctx, 'pardo_space_hurt', 0, -SPACE_SPR_W / 2, -SPACE_SPR_H / 2);
+        }
+        ctx.restore();
+        return;
+      }
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(Math.min(Math.PI, this.stateT * 4));
+      if (spr.has('pardo_space_hurt')) {
+        spr.draw(ctx, 'pardo_space_hurt', 0, -SPACE_SPR_W / 2, -SPACE_SPR_H / 2);
+      }
+      ctx.restore();
+      return;
+    }
+
+    // Vibração determinística ±1 px quando dentro da zona crítica de um planeta (d < 44 px)
+    let jitterX = 0;
+    let jitterY = 0;
+    if (this.spaceCritical && world.state.scene === 'playing') {
+      const tick = Math.floor(world.time * 40);
+      jitterX = tick % 2 === 0 ? 1 : -1;
+      jitterY = Math.floor(tick / 2) % 2 === 0 ? 1 : -1;
+    }
+
+    const drawX = Math.round(baseDrawX + jitterX);
+    const drawY = Math.round(baseDrawY + jitterY);
+
+    // Rastro azul-ciano durante o Impulso de Escape
+    if (this.spaceBoostTrailT > 0 || this.spaceState.boostTimer > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = '#5ee6ff';
+      const trailLen = 10 + (Math.floor(world.time * 30) % 6);
+      ctx.fillRect(drawX - trailLen + 2, drawY + 11, trailLen, 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(drawX - Math.floor(trailLen * 0.6), drawY + 12, Math.floor(trailLen * 0.6), 1);
+      ctx.restore();
+    }
+
+    if (this.state === 'drink') {
+      if (this.drinkPhase === 'walk') {
+        if (spr.has('pardo_space_thrust')) {
+          spr.draw(ctx, 'pardo_space_thrust', Math.floor(this.animT * 10) & 1, drawX, drawY);
+        }
+        return;
+      }
+      const f = Math.floor(this.drinkT * 3) & 1;
+      if (spr.has('pardo_space_drink')) spr.draw(ctx, 'pardo_space_drink', f, drawX, drawY);
+      if (spr.has('water_pouch')) {
+        const bob = Math.round(Math.sin(world.time * 5));
+        spr.draw(ctx, 'water_pouch', 0, drawX + SPACE_SPR_W - 6, drawY + 5 + bob);
+      }
+      return;
+    }
+
+    let name = 'pardo_space_idle';
+    let frame = Math.floor(this.animT * 3) & 1;
+    if (this.hurtT > 0 || this.state === 'hurt') {
+      name = 'pardo_space_hurt';
+      frame = 0;
+    } else if (this.spaceState.punchTimer > 0 || this.state === 'punch') {
+      name = 'pardo_space_punch';
+      const elapsed = SPACE.punch.total - this.spaceState.punchTimer;
+      frame = elapsed < SPACE.punch.windup + SPACE.punch.active * 0.5 ? 0 : 1;
+    } else if (this.spaceState.boostTimer > 0) {
+      name = 'pardo_space_boost';
+      frame = Math.floor(this.animT * 16) & 1;
+    } else if (this.spaceThrusting) {
+      name = 'pardo_space_thrust';
+      frame = Math.floor(this.animT * 10) & 1;
+    }
+    if (spr.has(name)) spr.draw(ctx, name, frame, drawX, drawY);
   }
 
   /** Render em fase subaquática (sprites pardo_swim_* e a lambida pardo_lick). */

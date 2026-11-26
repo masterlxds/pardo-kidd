@@ -9,14 +9,16 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23ffd23f'/%3E%3Crect x='3' y='5' width='10' height='3' fill='%231a1423'/%3E%3Crect x='4' y='9' width='8' height='4' fill='%231a1423'/%3E%3C/svg%3E" />
   </head>
   <body>
-    <!-- CONTRATO DE DOM (não renomear ids): #stage, #game, #touch, #btn-left, #btn-right, #btn-jump, #btn-punch, #btn-mute -->
+    <!-- CONTRATO DE DOM (não renomear ids): #stage, #game, #touch, #btn-left, #btn-right, #btn-up, #btn-down, #btn-jump, #btn-punch, #btn-mute -->
     <div id="stage">
       <canvas id="game" width="640" height="360" aria-label="Pardo Kidd in Quixadá World"></canvas>
       <button id="btn-mute" type="button" aria-label="Som">♪</button>
       <div id="touch" aria-hidden="true">
         <div class="pad pad-left">
+          <button id="btn-up" type="button" aria-label="Cima">▲</button>
           <button id="btn-left" type="button" aria-label="Esquerda">◀</button>
           <button id="btn-right" type="button" aria-label="Direita">▶</button>
+          <button id="btn-down" type="button" aria-label="Baixo">▼</button>
         </div>
         <div class="pad pad-right">
           <button id="btn-punch" type="button" aria-label="Socar">SOCO</button>

@@ -523,6 +523,63 @@ export const SPRITE_SPEC = {
   street_light: [16, 48, 1],
   /** cone listrado da CET */
   traffic_cone: [8, 12, 1],
+
+  // ══════════ FASE 7 — ESPAÇO SIDERAL (ÓRBITA DE QUIXADÁ) ══════════ (PLAN-FASE7.md)
+  // ── Pardo Astronauta (art/pardoSpace.ts) — quadro 24x24 (soco 28x24), capacete transparente + jetpack
+  /** flutuação neutra em gravidade zero (2 frames) */
+  pardo_space_idle: [24, 24, 2],
+  /** empuxo ativo no direcional (2 frames) */
+  pardo_space_thrust: [24, 24, 2],
+  /** Impulso de Escape / Boost: jato azul-ciano intenso (2 frames) */
+  pardo_space_boost: [24, 24, 2],
+  /** Soco Espacial: punho estendido à frente + onda de choque (2 frames) */
+  pardo_space_punch: [28, 24, 2],
+  /** dano comum (-1 gota) */
+  pardo_space_hurt: [24, 24, 1],
+  /** cutscene final: visor levantado, máscara abaixada bebendo o sachê d'água (2 frames) */
+  pardo_space_drink: [24, 24, 2],
+
+  // ── Planetas, Objetos e Estação EEIQ (art/space.ts)
+  /** Planeta Yuri (tons quentes terracota/âmbar, anel dourado, 2 frames) */
+  planet_yuri: [48, 48, 2],
+  /** Planeta Yumi (tons cósmicos magenta/violeta/ciano, 2 frames) */
+  planet_yumi: [48, 48, 2],
+  /** Cápsula de Água Espacial (W): cilindro prateado com gota azul (2 frames) */
+  water_capsule: [16, 16, 2],
+  /** Boia de Checkpoint Orbital (K): antena que acende verde (2 frames) */
+  space_beacon: [16, 24, 2],
+  /** Estação Espacial de Quixadá (EEIQ, A): módulo orbital branco/dourado com bandeira do Ceará (2 frames) */
+  eeiq_station: [80, 64, 2],
+  /** Sachê de Água Espacial Gelada (item final) */
+  water_pouch: [12, 16, 1],
+  /** Holograma de Tutorial: 0 MOVA 2D, 1 IMPULSO, 2 GRAVIDADE */
+  holo_sign: [24, 24, 3],
+  /** faixa repetida horizontalmente da rajada de Vento Solar */
+  solar_wind_tile: [16, 24, 2],
+
+  // ── Inimigos, Obstáculos e Nave-Mãe (art/enemies7.ts)
+  /** Meteoro Comum (1 soco) */
+  meteor: [16, 16, 2],
+  /** Meteoro Flamejante com rastro de fogo (1 soco) */
+  meteor_fire: [20, 16, 2],
+  /** Cometa de Gelo diagonal (1 soco) */
+  comet_ice: [20, 16, 2],
+  /** OVNI Patrulheiro com cúpula verde-neon (1 soco) */
+  ufo: [24, 16, 2],
+  /** projétil de plasma disparado pelo OVNI (socável) */
+  plasma_orb: [8, 8, 2],
+  /** Alien de Jetpack perseguidor em Y (1 soco) */
+  alien_jet: [20, 24, 2],
+  /** Mina Orbital Magnética: 0 inativa, 1 armada/vermelha */
+  space_mine: [16, 16, 2],
+  /** Satélite em Órbita com painéis solares (indestrutível) */
+  satellite: [32, 20, 2],
+  /** Satélite de Varredura com lente laser (indestrutível) */
+  satellite_beam: [24, 20, 2],
+  /** Lixo Espacial girando (indestrutível) */
+  space_debris: [24, 24, 2],
+  /** Nave-Mãe Alienígena do Ato 4 */
+  mothership: [64, 56, 2],
 } as const satisfies Record<string, readonly [number, number, number]>;
 
 export type SpriteName = keyof typeof SPRITE_SPEC;
