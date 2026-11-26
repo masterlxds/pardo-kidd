@@ -402,9 +402,9 @@ export const LEVEL7_BARS: string[][] = [
   bloco({
     5: '....cc......',
   }),
-  // c.65 (cols 768–779): doca da Estação Espacial de Quixadá A (col 774, l.5)
+  // c.65 (cols 768–779): doca da Estação Espacial de Quixadá A (col 772, l.5 — 100% visível em tela)
   bloco({
-    5: '......A.....',
+    5: '....A.......',
   }),
 ];
 

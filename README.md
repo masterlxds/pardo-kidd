@@ -1,19 +1,19 @@
 # Pardo Kidd in Quixadá World
 
-Plataforma 2D retro 8-bit com seis fases e uma **Fase Bônus secreta ("Tubo do Bonfim")**, estágio especial pseudo-3D em meio-tubo desbloqueado após a Fase 3. **Fase 1, "Trilha dos Monólitos"** (sertão cearense): o Pardo sai do povoado, atravessa o Desfiladeiro Seco e a Subida da Galinha Choca, e chega à Capela do Horizonte para beber da Caneca Esmaltada. **Fase 2, "Coração da Amazônia"**: rio, cachoeiras e cipós até a aldeia, onde um alien de chapéu de explorador espera com a mamadeira do índio. **Fase 3, "Bahia World"** (subaquática): o sonho do Pardo no fundo da Baía de Todos-os-Santos, até o santuário da sereia Jandira e o Cajado Jailnesco — com todas as fitinhas coletadas, um vórtice leva à **Fase Bônus, "Tubo do Bonfim"** (corrida pseudo-3D em meio-tubo com o parceiro **Caramelo-Tails**). **Fase 4, "Favela do Rio"** (do morro ao Tribunal): sob um sol de 40°C, o Pardo sobe a favela carioca até o pátio do Tribunal, onde **Amaro**, o faxineiro, o espera com uma **Garrafa de Água Mineral**. **Fase 5, "Marginal de São Paulo"** (De Uber até o Galpão): autoscroller noturno onde o Pardo vai em pé no teto de um sedã preto escrito `UBER` (com o motorista visível), só com pulo e soco: pulando obstáculos, socando o trânsito paulistano (motoboys e patinetes que vêm pelo asfalto e saltam sobre o carro) e voando sobre rampas de obra até a cutscene de chegada na portaria da transportadora, com avaliação da corrida em estrelas. **Fase 6, "Transportadora de São Paulo"** (Hora do Café): após desembarcar do Uber de madrugada, o Pardo atravessa o pátio, as docas e o galpão até a copa, onde o conferente **Renan Maia** lhe entrega um café. Detalhes em `lore.md`.
+Plataforma 2D retro 8-bit com sete fases e uma **Fase Bônus secreta ("Tubo do Bonfim")**, estágio especial pseudo-3D em meio-tubo desbloqueado após a Fase 3. **Fase 1, "Trilha dos Monólitos"** (sertão cearense): o Pardo sai do povoado, atravessa o Desfiladeiro Seco e a Subida da Galinha Choca, e chega à Capela do Horizonte para beber da Caneca Esmaltada. **Fase 2, "Coração da Amazônia"**: rio, cachoeiras e cipós até a aldeia, onde um alien de chapéu de explorador espera com a mamadeira do índio. **Fase 3, "Bahia World"** (subaquática): o sonho do Pardo no fundo da Baía de Todos-os-Santos, até o santuário da sereia Jandira e o Cajado Jailnesco — com todas as fitinhas coletadas, um vórtice leva à **Fase Bônus, "Tubo do Bonfim"** (corrida pseudo-3D em meio-tubo com o parceiro **Caramelo-Tails**). **Fase 4, "Favela do Rio"** (do morro ao Tribunal): sob um sol de 40°C, o Pardo sobe a favela carioca até o pátio do Tribunal, onde **Amaro**, o faxineiro, o espera com uma **Garrafa de Água Mineral**. **Fase 5, "Marginal de São Paulo"** (De Uber até o Galpão): autoscroller noturno onde o Pardo vai em pé no teto de um sedã preto escrito `UBER` (com o motorista visível), só com pulo e soco: pulando obstáculos, socando o trânsito paulistano e voando sobre rampas de obra até a cutscene de chegada. **Fase 6, "Transportadora de São Paulo"** (Hora do Café): após desembarcar do Uber, o Pardo atravessa o pátio, as docas e o galpão até a copa, onde o conferente **Renan Maia** lhe entrega um café extraforte. **Fase 7, "Espaço Sideral"** (Órbita de Quixadá): após o café do Renan Maia, o Pardo é catapultado para a órbita terrestre, onde flutua em gravidade zero (com amortecimento), contorna os planetas gravitacionais **Yuri** e **Yumi**, defende-se de destroços e escolta a Nave-Mãe no Ato 4 até acoplar na **Estação Espacial de Quixadá (EEIQ)** para saborear o **Sachê de Água Espacial Gelada**. Detalhes em `lore.md`.
 
 ## Controles
 
 **Teclado**
 
-- `←` `→` ou `A` `D`: mover (na Fase 5 não fazem nada: lá só existem pulo e soco)
-- `↑` ou `W`: pular (segure para pular mais alto)
-- `Espaço`, `Z` ou `J`: socar (Soco da Caatinga)
+- `←` `→` `↑` `↓` ou `A` `S` `W` `D`: mover em 8 direções (na Fase 5 o direcional não faz nada; na Fase 7 controla o voo do jetpack em zero-G)
+- `X`, `K` ou `Shift`: **Impulso de Escape (Boost)** do jetpack (apenas na Fase 7)
+- `Espaço`, `Z` ou `J`: socar (Soco Espacial / Soco da Caatinga)
 - `Enter`: começar / jogar novamente
 - `P` ou `Esc`: pausa · `M`: som
 
 **Toque**
-- Botões ◀ ▶ no canto inferior esquerdo; SOCO e PULO no canto inferior direito.
+- D-pad completo em cruz (`▲ ▼ ◀ ▶`) no canto inferior esquerdo; SOCO e PULO (aciona o Impulso na Fase 7) no canto inferior direito.
 - O botão ♪ no canto superior direito liga/desliga o som.
 
 ## Regras gerais
@@ -73,11 +73,20 @@ Inimigos:
 - **Empilhadeira:** indestrutível. O soco só rebate nela. Telegrafa com um alerta antes de arrancar em alta velocidade.
 - **Arremessador de encomendas:** fica no alto e joga pacotes em arco na direção do Pardo. Os pacotes podem ser socados (+10 pontos).
 
-Objetivo: encontrar o **Renan Maia** na copa e tomar o café que encerra a campanha.
+Objetivo: encontrar o **Renan Maia** na copa e tomar o café extraforte que antecede a viagem espacial.
+
+## Fase 7 — "Espaço Sideral" (Órbita de Quixadá)
+
+Após tomar o café de Renan Maia na Fase 6, o Pardo é catapultado para a órbita da Terra. É a fase final da jornada em **gravidade zero 2D com amortecimento**:
+
+- **Movimentação do Jetpack:** voo em 8 direções usando `←` `→` `↑` `↓` (`A` `S` `W` `D`), complementado pelo **Impulso de Escape (Boost)** via `X`, `K` ou `Shift`.
+- **Planeta Yuri e Planeta Yumi:** corpos celestes com puxão gravitacional (`R_grav = 92 px`), telegraph de 1,2 s e morte instantânea se tocar o núcleo (`R_kill = 21 px`).
+- **Ataque e Obstáculos:** Soco Espacial contra destroços destrutíveis; desvio de asteróides indestrutíveis; e escolta da Nave-Mãe no Ato 4.
+- **Conclusão:** acoplagem final na **Estação Espacial de Quixadá (EEIQ)** para beber o **Sachê de Água Espacial Gelada**.
 
 ## Como rodar
 
-Requer Node.js 20+.
+Requer Node.js 22.15+.
 
 ```bash
 npm install
@@ -86,7 +95,7 @@ npm run build      # checagem de tipos + build de produção em dist/
 npm run preview    # serve o dist/ localmente
 ```
 
-Atalhos de teste: `http://localhost:5173/?fase=2`, `?fase=3`, `?fase=4`, `?fase=5`, `?fase=6` ou `?fase=bonus` (ou `?bonus=1`) na URL começam direto na fase correspondente ou na Fase Bônus (porta padrão do Vite).
+Atalhos de teste: `http://localhost:5173/?fase=2`, `?fase=3`, `?fase=4`, `?fase=5`, `?fase=6`, `?fase=7` ou `?fase=bonus` (ou `?bonus=1`) na URL começam direto na fase correspondente ou na Fase Bônus (porta padrão do Vite).
 
 Checagens de fases e bônus:
 
@@ -97,6 +106,7 @@ node scripts/check-level3.mjs       # valida o mapa da Fase 3 (dimensões, conta
 node scripts/check-level4.mjs       # valida o mapa da Fase 4 (dimensões, contagens, alcançabilidade)
 node scripts/check-level5.mjs       # valida a Fase 5 — Marginal de São Paulo (compassos, regras de `uberRules.ts` e bot determinístico)
 node scripts/check-level6.mjs       # valida o mapa da Fase 6 — Transportadora de São Paulo
+node scripts/check-level7.mjs       # valida o mapa da Fase 7 — Espaço Sideral
 node scripts/check-bonus.mjs        # valida a Fase Bônus (3 trechos, metas 20/45/70, ondas de moedas/bombas e simulação)
 ```
 

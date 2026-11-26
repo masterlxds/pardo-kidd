@@ -250,17 +250,18 @@ export function drawIntro(ctx: CanvasRenderingContext2D, world: World): void {
   const rio = world.level.theme === 'rio';
   const uber = world.level.theme === 'uber';
   const sampa = world.level.theme === 'sampa';
+  const space = world.level.theme === 'space';
 
   // cores por tema
-  const veilRgb = sampa ? '14,18,28' : uber ? '8,12,28' : rio ? '36,18,12' : bahia ? '4,18,40' : amazon ? '10,26,12' : '26,20,35';
-  const panelBg = sampa ? '#d3d8de' : uber ? '#dce4f2' : rio ? '#fff3c4' : bahia ? '#bfe9f5' : amazon ? '#d4efb8' : P.p;
-  const grid = sampa ? 'rgba(60,70,90,0.25)' : uber ? 'rgba(36,65,143,0.24)' : rio ? 'rgba(181,83,42,0.28)' : bahia ? 'rgba(36,65,143,0.25)' : amazon ? 'rgba(47,107,30,0.3)' : 'rgba(201,120,46,0.35)';
-  const border = sampa ? P.K : uber ? P.D : rio ? P.t : bahia ? P.B : amazon ? P.d : P.T;
-  const titleCol = sampa ? P.K : uber ? P.D : rio ? P.B : bahia ? P.B : amazon ? P.d : P.t;
-  const titleSh = sampa ? P.y : uber ? P['8'] : rio ? P.c : bahia ? P.c : amazon ? P.j : P.T;
-  const nameCol = sampa ? P.D : uber ? P.k : rio ? P.r : bahia ? P.C : amazon ? P.E : P.r;
-  const nameSh = sampa ? P.y : uber ? P.c : rio ? P.k : bahia ? P.B : amazon ? P.J : P.R;
-  const divider = sampa ? P.Y : uber ? P['8'] : rio ? P.t : bahia ? P.C : amazon ? P.I : P.O;
+  const veilRgb = space ? '4,8,24' : sampa ? '14,18,28' : uber ? '8,12,28' : rio ? '36,18,12' : bahia ? '4,18,40' : amazon ? '10,26,12' : '26,20,35';
+  const panelBg = space ? '#dce8f8' : sampa ? '#d3d8de' : uber ? '#dce4f2' : rio ? '#fff3c4' : bahia ? '#bfe9f5' : amazon ? '#d4efb8' : P.p;
+  const grid = space ? 'rgba(47,155,224,0.25)' : sampa ? 'rgba(60,70,90,0.25)' : uber ? 'rgba(36,65,143,0.24)' : rio ? 'rgba(181,83,42,0.28)' : bahia ? 'rgba(36,65,143,0.25)' : amazon ? 'rgba(47,107,30,0.3)' : 'rgba(201,120,46,0.35)';
+  const border = space ? P.D : sampa ? P.K : uber ? P.D : rio ? P.t : bahia ? P.B : amazon ? P.d : P.T;
+  const titleCol = space ? P.D : sampa ? P.K : uber ? P.D : rio ? P.B : bahia ? P.B : amazon ? P.d : P.t;
+  const titleSh = space ? P.c : sampa ? P.y : uber ? P['8'] : rio ? P.c : bahia ? P.c : amazon ? P.j : P.T;
+  const nameCol = space ? P.B : sampa ? P.D : uber ? P.k : rio ? P.r : bahia ? P.C : amazon ? P.E : P.r;
+  const nameSh = space ? P.c : sampa ? P.y : uber ? P.c : rio ? P.k : bahia ? P.B : amazon ? P.J : P.R;
+  const divider = space ? P.C : sampa ? P.Y : uber ? P['8'] : rio ? P.t : bahia ? P.C : amazon ? P.I : P.O;
 
   // entrada: desliza de cima nos primeiros 0.4s; véu surge junto
   const ease = Math.min(1, t / 0.4);
@@ -298,6 +299,8 @@ export function drawIntro(ctx: CanvasRenderingContext2D, world: World): void {
 
   if (bahia) {
     drawText(ctx, 'UM SONHO NO FUNDO DO MAR', cx, py + 58, { color: P.B, align: 'center' });
+  } else if (space) {
+    drawText(ctx, 'ÓRBITA DE QUIXADÁ', cx, py + 58, { color: P.D, align: 'center' });
   } else if (uber) {
     drawText(ctx, 'DE UBER ATÉ O GALPÃO', cx, py + 65, { color: P.B, align: 'center' });
   } else if (sampa) {
@@ -315,7 +318,8 @@ export function drawIntro(ctx: CanvasRenderingContext2D, world: World): void {
   const groupW = 40 + 14 + 16 + 6 + textWidth(lifeTxt, 2);
   const gx = Math.round(cx - groupW / 2);
   const footY = py + 76 + extra;
-  spr(ctx, world, 'pardo_idle', Math.floor(t * 2) % 2, gx, footY, 2);
+  if (space) spr(ctx, world, 'pardo_space_thrust', Math.floor(t * 4) % 2, gx - 4, footY, 2);
+  else spr(ctx, world, 'pardo_idle', Math.floor(t * 2) % 2, gx, footY, 2);
   spr(ctx, world, 'icon_life', 0, gx + 40 + 14, footY + 16, 2);
   drawText(ctx, lifeTxt, gx + 40 + 14 + 16 + 6, footY + 17, { scale: 2, color: P.k, shadow: P.W });
 
@@ -332,10 +336,11 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
   const rio = idx === 3;
   const uber = idx === 4;
   const sp = idx === 5;
-  const tall = sea || sp;
-  const last = idx >= 5;
+  const space = idx === 6;
+  const tall = sea || sp || space;
+  const last = idx >= 6;
   const unlockBonus = sea && st.ribbonsTotal > 0 && st.ribbons >= st.ribbonsTotal;
-  veil(ctx, Math.min(0.55, t * 1.5), sp ? '14,18,28' : uber ? '8,12,28' : rio ? '36,18,12' : sea ? '4,18,40' : '26,20,35');
+  veil(ctx, Math.min(0.55, t * 1.5), space ? '4,8,24' : sp ? '14,18,28' : uber ? '8,12,28' : rio ? '36,18,12' : sea ? '4,18,40' : '26,20,35');
   const ease = Math.min(1, t / 0.5);
   const slide = Math.round((1 - ease * (2 - ease)) * -170);
   ctx.save();
@@ -345,9 +350,9 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
   const py = unlockBonus ? 2 : tall ? 5 : 12;
   const pw = 264;
   const ph = unlockBonus ? 176 : tall ? 170 : 156;
-  const bg = sp ? '#d3d8de' : uber ? '#dce4f2' : rio ? '#fff3c4' : sea ? '#bfe9f5' : phase2 ? '#d4efb8' : P.W;
-  const grid = sp ? 'rgba(60,70,90,0.22)' : uber ? 'rgba(36,65,143,0.24)' : rio ? 'rgba(181,83,42,0.25)' : sea ? 'rgba(36,65,143,0.25)' : phase2 ? 'rgba(47,107,30,0.3)' : 'rgba(159,224,255,0.75)';
-  const edge = sp ? P.K : uber ? P.D : rio ? P.t : sea ? P.B : phase2 ? P.d : P.B;
+  const bg = space ? '#dce8f8' : sp ? '#d3d8de' : uber ? '#dce4f2' : rio ? '#fff3c4' : sea ? '#bfe9f5' : phase2 ? '#d4efb8' : P.W;
+  const grid = space ? 'rgba(47,155,224,0.25)' : sp ? 'rgba(60,70,90,0.22)' : uber ? 'rgba(36,65,143,0.24)' : rio ? 'rgba(181,83,42,0.25)' : sea ? 'rgba(36,65,143,0.25)' : phase2 ? 'rgba(47,107,30,0.3)' : 'rgba(159,224,255,0.75)';
+  const edge = space ? P.D : sp ? P.K : uber ? P.D : rio ? P.t : sea ? P.B : phase2 ? P.d : P.B;
   const ink = edge;
   ctx.fillStyle = P.k;
   ctx.fillRect(px - 1, py - 1, pw + 2, ph + 2);
@@ -362,7 +367,8 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
 
   const titleY = unlockBonus ? py + 4 : py + 8;
   const subTitleY = unlockBonus ? py + 24 : py + 27;
-  if (sp) drawText(ctx, 'FASE 6', 160, titleY, { scale: 2, color: P.K, align: 'center', shadow: P.y });
+  if (space) drawText(ctx, 'FASE 7', 160, titleY, { scale: 2, color: P.D, align: 'center', shadow: P.c });
+  else if (sp) drawText(ctx, 'FASE 6', 160, titleY, { scale: 2, color: P.K, align: 'center', shadow: P.y });
   else if (uber) drawText(ctx, 'FASE 5', 160, titleY, { scale: 2, color: P.D, align: 'center', shadow: P['8'] });
   else if (rio) drawText(ctx, 'FASE 4', 160, titleY, { scale: 2, color: P.B, align: 'center', shadow: P.c });
   else if (sea) drawText(ctx, `FASE ${idx + 1}`, 160, titleY, { scale: 2, color: P.B, align: 'center', shadow: P.c });
@@ -370,7 +376,13 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
   else drawText(ctx, 'FASE 1', 160, titleY, { scale: 2, color: P.B, align: 'center', shadow: P.c });
   drawText(ctx, 'CONCLUÍDA!', 160, subTitleY, { scale: 3, color: P.r, align: 'center', shadow: P.R });
 
-  if (sp) {
+  if (space) {
+    const floatY = Math.round(Math.sin(t * 4) * 2);
+    spr(ctx, world, 'pardo_space_drink', Math.floor(t * 3) % 2, px + 14, py + 48 + floatY, 2);
+    spr(ctx, world, 'water_pouch', 0, px + 64, py + 60 - floatY, 2);
+    spr(ctx, world, 'sparkle', Math.floor(t * 6) % 2, px + 8, py + 50);
+    spr(ctx, world, 'sparkle', Math.floor(t * 6 + 1) % 2, px + 92, py + 58);
+  } else if (sp) {
     // Maia (34x36, 2x = 68x72) na coluna esquerda; Pardo e xícara ao lado; frase abaixo, em largura total
     spr(ctx, world, 'maia_cheer', Math.floor(t * 2) % 2, px + 2, py + 50, 2, true);
     spr(ctx, world, 'pardo_drink_coffee', Math.floor(t * 3) % 2, px + 76, py + 68, 2);
@@ -398,7 +410,7 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
 
   const k = Math.max(0, Math.min(1, (t - 0.6) / 1.2));
   const cnt = (v: number): number => Math.floor(v * k);
-  const lx = tall ? px + 150 : (phase2 || rio || uber) ? px + 128 : px + 100, rx = px + pw - 12;
+  const lx = space ? px + 136 : tall ? px + 150 : (phase2 || rio || uber) ? px + 128 : px + 100, rx = px + pw - 12;
   const row = (label: string, value: string, y: number, col: string): void => {
     drawText(ctx, label, lx, y, { color: ink });
     drawText(ctx, value, rx, y, { color: col, align: 'right', shadow: P.W });
@@ -410,7 +422,14 @@ export function drawWin(ctx: CanvasRenderingContext2D, world: World): void {
   row(tall ? 'BÔNUS' : 'BÔNUS DE TEMPO', `+${cnt(st.timeBonus)}`, y0 + dy * 2, P.R);
   if (sea) row('FITINHAS', `${cnt(st.ribbons)}/${st.ribbonsTotal}`, y0 + dy * 3, P.C);
 
-  if (sp) {
+  if (space) {
+    const stars = spaceStars(st.rideHits, st.gravDeaths);
+    const shown = Math.ceil(stars * k);
+    drawText(ctx, 'AVALIAÇÃO DA MISSÃO', 160, py + 98, { color: P.D, align: 'center' });
+    for (let i = 0; i < SPACE.maxStars; i++) drawStar(ctx, 160 + (i - 2) * 14, py + 112, 5, i < shown);
+    drawText(ctx, `BÔNUS +${cnt(SPACE.starBonus * stars)}`, 160, py + 122, { color: P.B, align: 'center' });
+    drawText(ctx, 'O PARDO ZEROU A GRAVIDADE EM ÓRBITA', 160, py + 136, { color: P.D, align: 'center' });
+  } else if (sp) {
     drawText(ctx, 'O PARDO TOMOU O CAFÉ', 160, py + 128, { color: P.R, align: 'center' });
     drawText(ctx, 'NA TRANSPORTADORA', 160, py + 138, { color: P.R, align: 'center' });
   } else if (uber) {

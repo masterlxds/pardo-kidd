@@ -1,3 +1,4 @@
+import { STEP } from '../core/constants';
 import type { Entity, Rect, World } from '../core/types';
 import { overlaps } from '../core/physics';
 import { drawText, textWidth } from '../gfx/font';
@@ -14,6 +15,7 @@ import {
   SPACE,
   SPACE_BRAKE_START_CAM_X,
   SPACE_OBSTACLES,
+  SPACE_STOP_CAM_X,
   type BeamPhase,
   type PlanetDef,
   type PlanetPhase,
@@ -313,6 +315,10 @@ export function createStation(cx: number, cy: number): Entity {
     },
     onTouchPlayer(world) {
       if (won) return;
+      if (world.camera.x < SPACE_STOP_CAM_X) return;
+      const px = world.player.x + world.player.w / 2;
+      const py = world.player.y + world.player.h / 2;
+      if (Math.hypot(px - (e.x + 12), py - cy) > 14) return;
       world.win();
       won = world.state.scene === 'winning';
     },
@@ -569,7 +575,7 @@ export function createSolarWind(cx: number, cy: number): Entity {
     },
     onTouchPlayer(world) {
       if (wind.phase !== 'active' || e.dead) return;
-      world.player.shove(world, V.pushVx, 0, 1 / 60);
+      world.player.shove(world, V.pushVx, 0, STEP);
       world.player.hurt(world, world.camera.x + SPACE.viewW);
     },
   };

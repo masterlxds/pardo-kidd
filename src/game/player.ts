@@ -216,6 +216,7 @@ export class PardoPlayer implements Player {
   private spaceBubbleT = 0;
   private gravCollapse: { startX: number; startY: number; planetWorldX: number; planetY: number } | null = null;
   private spaceDead = false;
+  private isSpaceMode = false;
 
   constructor(x: number, y: number) {
     this.respawn(x, y);
@@ -223,6 +224,7 @@ export class PardoPlayer implements Player {
 
   /** Reinicia o Pardo em (x,y) = canto sup. esq. da hitbox. */
   respawn(x: number, y: number, space = false): void {
+    this.isSpaceMode = space;
     this.w = space ? SPACE.playerHitbox.w : PLAYER_W;
     this.h = space ? SPACE.playerHitbox.h : PLAYER_H;
     this.x = x;
@@ -475,7 +477,7 @@ export class PardoPlayer implements Player {
     this.drinkY = targetY;
     this.drinkItem = item;
     this.drinkFace = face;
-    this.drinkPhase = item === 'sache' ? 'sip' : 'walk';
+    this.drinkPhase = 'walk';
     this.drinkT = 0;
     this.drinkDone = false;
     this.punchT = 0;
@@ -492,7 +494,7 @@ export class PardoPlayer implements Player {
   /** Caixa de acerto do soco (só na fase ativa), senão null. */
   punchBox(camX = 0): Rect | null {
     if (this.state === 'drink' || this.dead) return null;
-    if (this.w === SPACE.playerHitbox.w && this.h === SPACE.playerHitbox.h && this.spaceInit) {
+    if (this.isSpaceMode && this.spaceInit) {
       return spacePunchBox(this.spaceState, camX);
     }
     if (this.state !== 'punch') return null;
@@ -672,6 +674,9 @@ export class PardoPlayer implements Player {
       this.spaceState.boostTimer = 0;
       this.spaceState.punchTimer = 0;
       world.audio.setHum?.(0);
+      if (this.x + this.w < camX) {
+        this.x = camX + this.spaceState.sx - this.w / 2;
+      }
       const station = world.entities.find((e) => !e.dead && e.kind === 'eeiq_station');
       const targetX = station ? station.x + 12 : camX + SPACE.viewW - SPACE_OBSTACLES.eeiq_station.w / 2;
       const targetY = station ? station.y + station.h / 2 : SPACE.viewH / 2;
@@ -1148,10 +1153,33 @@ export class PardoPlayer implements Player {
   private updateDrink(dt: number, world: World): void {
     this.drinkT += dt;
     if (world.level.space) {
-      // Acoplado à EEIQ flutuando em zero-G com gotinhas/bolhas espaciais ao redor
+      // Acoplagem suave na escotilha da EEIQ (walk) e flutuação bebendo o sachê em zero-G (sip)
+      this.facing = 1;
+      const targetY = this.drinkY || this.y + this.h / 2;
+      if (this.drinkPhase === 'walk') {
+        const cx = this.x + this.w / 2;
+        const cy = this.y + this.h / 2;
+        const dx = this.drinkX - cx;
+        const dy = targetY - cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= 1.5) {
+          this.x = this.drinkX - this.w / 2;
+          this.y = targetY - this.h / 2;
+          this.vx = 0;
+          this.vy = 0;
+          this.drinkPhase = 'sip';
+          this.drinkT = 0;
+        } else {
+          const step = Math.min(dist, SPACE_DOCK_SPEED * dt);
+          this.vx = (dx / dist) * SPACE_DOCK_SPEED;
+          this.vy = (dy / dist) * SPACE_DOCK_SPEED;
+          this.x += (dx / dist) * step;
+          this.y += (dy / dist) * step;
+        }
+        return;
+      }
       this.vx = 0;
       this.vy = 0;
-      this.facing = 1;
       if (this.drinkY > 0) {
         this.y = this.drinkY - this.h / 2 + Math.sin(world.time * 2.5) * 1.5;
       }
@@ -1372,6 +1400,12 @@ export class PardoPlayer implements Player {
     }
 
     if (this.state === 'drink') {
+      if (this.drinkPhase === 'walk') {
+        if (spr.has('pardo_space_thrust')) {
+          spr.draw(ctx, 'pardo_space_thrust', Math.floor(this.animT * 10) & 1, drawX, drawY);
+        }
+        return;
+      }
       const f = Math.floor(this.drinkT * 3) & 1;
       if (spr.has('pardo_space_drink')) spr.draw(ctx, 'pardo_space_drink', f, drawX, drawY);
       if (spr.has('water_pouch')) {
