@@ -97,14 +97,16 @@ export interface GameState {
   difficulty: Difficulty;
   /** estado da Fase Bônus ("Tubo do Bonfim") */
   bonus: BonusState;
-  /** Fase 5: gotas perdidas na fase atual (avaliação em estrelas da corrida; zera ao (re)iniciar a fase, não ao renascer) */
+  /** Fase 5/7: gotas perdidas na fase atual (avaliação em estrelas; zera ao (re)iniciar a fase, não ao renascer) */
   rideHits: number;
+  /** Fase 7: mortes gravitacionais (colisão com Yuri/Yumi; zera ao (re)iniciar a fase) */
+  gravDeaths: number;
 }
 
 export type Difficulty = 'normal' | 'amaro';
 
 /** Tema visual/sonoro de uma fase. */
-export type LevelTheme = 'sertao' | 'amazonia' | 'bahia' | 'rio' | 'uber' | 'sampa';
+export type LevelTheme = 'sertao' | 'amazonia' | 'bahia' | 'rio' | 'uber' | 'sampa' | 'space';
 export type MusicTrack = LevelTheme | 'bonus';
 
 export type SfxName =
@@ -137,7 +139,17 @@ export type SfxName =
   /** arremesso do pacote (arremessador) */ | 'throw'
   // Fase Bônus — Tubo do Bonfim
   /** explosão da mina/bomba no meio-tubo */ | 'bomb'
-  /** captura da Esmeralda do Bonfim */ | 'emerald';
+  /** captura da Esmeralda do Bonfim */ | 'emerald'
+  // Fase 7 — Espaço Sideral (Órbita de Quixadá)
+  /** jato agudo do Impulso de Escape */ | 'jet_burst'
+  /** alerta de radar orbital na entrada de Yuri/Yumi */ | 'grav_warn'
+  /** zumbido grave do campo gravitacional */ | 'grav_hum'
+  /** implosão grave na colisão fatal com planeta */ | 'grav_kill'
+  /** estalo rochoso ao socar meteoro/cometa */ | 'meteor_break'
+  /** carregamento do laser do satélite de varredura */ | 'laser_charge'
+  /** disparo do laser do satélite de varredura */ | 'laser_fire'
+  /** disparo de plasma do OVNI */ | 'ufo_zap'
+  /** ricochete metálico em obstáculo rígido */ | 'clang';
 
 export interface AudioApi {
   /** Chamar no primeiro gesto do usuário (cria/resume o AudioContext). Idempotente. */
@@ -152,6 +164,8 @@ export interface AudioApi {
   stopMusic(): void;
   setMuted(muted: boolean): void;
   readonly muted: boolean;
+  /** Fase 7: controla intensidade contínua (0..1) do zumbido gravitacional (`grav_hum`). */
+  setHum?(intensity: number): void;
 }
 
 export interface SpriteAtlas {
@@ -224,7 +238,9 @@ export type EnemyKind = 'calango' | 'carcara' | 'palma' | 'tatu'
   // Fase 5 — Marginal de São Paulo / Autoscroller no Uber (src/game/enemies5.ts)
   | 'motoboy' | 'motoboy_fast' | 'drone' | 'patinete' | 'pichador'
   // Fase 6 — Transportadora de São Paulo (src/game/enemies6.ts)
-  | 'rato' | 'carregador' | 'empilhadeira' | 'arremessador';
+  | 'rato' | 'carregador' | 'empilhadeira' | 'arremessador'
+  // Fase 7 — Espaço Sideral (src/game/enemies7.ts)
+  | 'meteor' | 'meteor_fire' | 'comet_ice' | 'ufo' | 'alien_jet' | 'space_mine' | 'plasma_orb';
 
 export interface Level {
   /** índice (0-based) em LEVELS */
@@ -236,6 +252,8 @@ export interface Level {
   readonly underwater: boolean;
   /** fase autoscroller sobre o carro preto da Uber (Fase 5 — Marginal de São Paulo) */
   readonly autoscroll?: boolean;
+  /** fase espacial zero-G com autoscroll (Fase 7 — Espaço Sideral) */
+  readonly space?: boolean;
   readonly cols: number;
   readonly rows: number;
   readonly widthPx: number;

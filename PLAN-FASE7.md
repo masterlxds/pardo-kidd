@@ -2,7 +2,7 @@
 
 Leia antes: [`level-7-refs/gdd_fase7_espaco.md`](level-7-refs/gdd_fase7_espaco.md) (GDD), [`level-7-refs/gdd_bestiario_fase7.md`](level-7-refs/gdd_bestiario_fase7.md) (bestiário + `SPRITE_SPEC`), [`AGENTS.md`](AGENTS.md) (arquitetura), [`PLAN-FASE5.md`](PLAN-FASE5.md) (o outro autoscroller: compassos, regras puras sem imports, validador com bot) e [`PLAN-FASE6.md`](PLAN-FASE6.md) (molde de delegação).
 
-**Status (26/11/2026): Etapa 0 concluída (GDD, bestiário e este plano commitados na branch `fase-7-espaco`). Próximo: Etapa 1.**
+**Status (26/11/2026): Etapa 1 concluída (contratos em `spaceRules.ts`/`types.ts`/`spec.ts` e stubs validados na branch `fase-7-espaco`). Próximo: Etapa 2.**
 
 Este plano foi escrito para ser executado **AFK em cloud**: um **orquestrador (Claude Opus)** coordena e revisa; o código é escrito por **subagentes Gemini 4** escolhidos pela dificuldade (§6). Tudo o que o GDD deixou ambíguo já está decidido na §2 — o orquestrador **não deve parar para perguntar**; se surgir uma ambiguidade nova, decide pelo caminho mais conservador (menor regressão nas Fases 1–6), registra em §11 e segue.
 
@@ -181,4 +181,5 @@ Iguais às dos planos anteriores: edite **só** os seus arquivos; não altere co
 
 ## 11. Registro de decisões durante a execução
 
-*(O orquestrador acrescenta aqui toda decisão nova tomada durante a execução AFK, com data e motivo.)*
+- **26/11/2026 (Etapa 1 — Referencial de velocidades em `spaceRules.ts`):** as velocidades de inimigos/obstáculos não reativos do bestiário (`meteor: 35`, `meteor_fire: 95`, `comet_ice: 110` a 45°, `ufo: 40`, `satellite: 15`, `space_debris: 20`) são velocidades próprias para a esquerda no referencial do mundo; nas funções puras de tela (`meteorPos`, `cometPos`, `ufoPos`, `satellitePos`, `debrisPos`) soma-se `SPACE.scrollSpeed` (96 px/s) para obter o deslocamento horizontal em tela — consistente com a mina (`0` presa ao mundo → −96 px/s em tela) e permitindo travessias de 1,7–3,3 s compatíveis com R2 e com cometas 45° alcançando `sx ≈ 80`. Planetas (`planetPos`) mantêm 72 px/s relativos à tela conforme GDD §4.3 (~5,1 s na tela).
+- **26/11/2026 (Etapa 1 — Helpers puros de obstáculos e `AudioApi.setHum?`):** adicionadas `satellitePos`, `debrisPos`, `beamSatellitePos` e `solarWindAt` em `spaceRules.ts` para evitar duplicação entre `objects7.ts` e `check-level7.mjs`, além de `setHum?(intensity: number): void` em `AudioApi` (§7) e `'clang'` em `SfxName` (§3.2).

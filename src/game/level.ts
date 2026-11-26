@@ -24,6 +24,12 @@ import {
   createIsopor, createObstaculo, createRampa, createSaco, createTruckBau, createTutorialSign, createUberCar, createUberGoal,
 } from './objects5';
 import { UBER } from './uberRules';
+import { LEVEL7_PLANETS, LEVEL7_ROWS } from './level7';
+import { createSpaceEnemy } from './enemies7';
+import {
+  createBeacon, createBeamSatellite, createDebris, createHoloSign, createMothership, createPlanet, createSatellite,
+  createSolarWind, createStation, createWaterCapsule,
+} from './objects7';
 
 type SpriteName = keyof typeof SPRITE_SPEC;
 
@@ -49,6 +55,8 @@ export interface LevelDef {
   underwater?: boolean;
   /** fase autoscroller sobre o carro preto da Uber */
   autoscroll?: boolean;
+  /** fase espacial zero-G com autoscroll (Fase 7 — Espaço Sideral) */
+  space?: boolean;
   rows: string[];
   movers: Record<string, { range: number; speed: number }>;
   /** caractere → tile */
@@ -166,6 +174,7 @@ export function buildLevel(def: LevelDef): Level {
     theme: def.theme,
     underwater: def.underwater ?? false,
     autoscroll: def.autoscroll ?? false,
+    space: def.space ?? false,
     cols,
     rows,
     widthPx: cols * TILE,
@@ -203,7 +212,8 @@ export function buildLevel(def: LevelDef): Level {
     createEntities() {
       const out: Entity[] = [];
       for (const m of markers) {
-        if (m.ch === 'P' || m.ch === 'K') continue;
+        if (m.ch === 'P') continue;
+        if (m.ch === 'K' && !def.space) continue;
         const left = m.col * TILE, top = m.row * TILE;
         const mover = def.movers[`${m.col},${m.row}`] ?? { range: 4, speed: 30 };
         const e = def.marker(m.ch, { left, top, cx: left + TILE / 2, mover });
@@ -220,21 +230,23 @@ export function buildLevel(def: LevelDef): Level {
       const sp = world.sprites;
 
       // sombra dos abismos: colunas sem chão até a base ficam escuras (senão o chão do
-      // parallax faz o buraco parecer chão). Nunca em colunas de água.
+      // parallax faz o buraco parecer chão). Nunca em colunas de água ou no espaço (Fase 7).
       const pitTop = groundRow * TILE;
-      for (let tx = x0; tx <= x1; tx++) {
-        if (waterCol[tx]) continue;
-        if (!isOpen(grid[(rows - 1) * cols + tx] ?? 0)) continue;
-        // topo da sombra = primeira linha vazia contínua acima da base, limitada à linha do chão
-        let top = rows - 1;
-        while (top > groundRow && isOpen(grid[(top - 1) * cols + tx] ?? 0)) top--;
-        const y = Math.max(pitTop, top * TILE);
-        ctx.fillStyle = pitEdge;
-        ctx.fillRect(tx * TILE, y, TILE, 6);
-        ctx.fillStyle = pitMid;
-        ctx.fillRect(tx * TILE, y + 6, TILE, 10);
-        ctx.fillStyle = pitDeep;
-        ctx.fillRect(tx * TILE, y + 16, TILE, rows * TILE - y - 16);
+      if (!def.space) {
+        for (let tx = x0; tx <= x1; tx++) {
+          if (waterCol[tx]) continue;
+          if (!isOpen(grid[(rows - 1) * cols + tx] ?? 0)) continue;
+          // topo da sombra = primeira linha vazia contínua acima da base, limitada à linha do chão
+          let top = rows - 1;
+          while (top > groundRow && isOpen(grid[(top - 1) * cols + tx] ?? 0)) top--;
+          const y = Math.max(pitTop, top * TILE);
+          ctx.fillStyle = pitEdge;
+          ctx.fillRect(tx * TILE, y, TILE, 6);
+          ctx.fillStyle = pitMid;
+          ctx.fillRect(tx * TILE, y + 6, TILE, 10);
+          ctx.fillStyle = pitDeep;
+          ctx.fillRect(tx * TILE, y + 16, TILE, rows * TILE - y - 16);
+        }
       }
       // decoração (atrás dos tiles), ancorada pela base da célula
       for (const d of decor) {
@@ -245,8 +257,8 @@ export function buildLevel(def: LevelDef): Level {
         if (px + w < camX || px > camX + VIEW_W) continue;
         sp.draw(ctx, name, 0, px, (d.row + 1) * TILE - h);
       }
-      // checkpoints (no autoscroller são por passagem de coluna: o mapa põe a decoração própria, sem bandeira)
-      for (const cp of def.autoscroll ? [] : cps) {
+      // checkpoints (autoscroller e espaço usam boia/decoração própria, sem bandeira genérica)
+      for (const cp of def.autoscroll || def.space ? [] : cps) {
         const cx = cp.x + PLAYER_W / 2, by = cp.y + PLAYER_H;
         if (cx < camX - 16 || cx > camX + VIEW_W + 16) continue;
         const reached = world.player.x >= cp.x - 4;
@@ -570,6 +582,64 @@ export function createLevel6(): Level {
         case 'M':
           return createMovingPlatform(left, top, ch === 'm' ? 'x' : 'y', mover.range * TILE, mover.speed, 'platform_dock');
         case 'A': return createMaiaGoal(cx, top + TILE);
+        default: return null;
+      }
+    },
+  });
+}
+
+// ── Fase 7 — Espaço Sideral (Órbita de Quixadá) ─────────────────────────────
+export function createLevel7(): Level {
+  const holoCoords: string[] = [];
+  for (let x = 0; x < (LEVEL7_ROWS[0]?.length ?? 0); x++) {
+    for (let y = 0; y < LEVEL7_ROWS.length; y++) {
+      if (LEVEL7_ROWS[y]?.[x] === 't') holoCoords.push(`${x},${y}`);
+    }
+  }
+  return buildLevel({
+    index: 6,
+    name: 'ESPAÇO SIDERAL',
+    theme: 'space',
+    space: true,
+    rows: LEVEL7_ROWS,
+    movers: {},
+    tileChars: {},
+    dropBlockChars: '',
+    decor: {},
+    tileSprites: {},
+    tileVariants: [],
+    pitColors: ['#07091a', '#07091a', '#07091a'],
+    flagColors: ['#c9c1a9', '#4fc65a'],
+    marker(ch, { left, top, cx }) {
+      const cy = top + TILE / 2;
+      const col = Math.floor(left / TILE);
+      const row = Math.floor(top / TILE);
+      switch (ch) {
+        case 'c': return createCoin(left + 4, top + 4);
+        case 'W': return createWaterCapsule(cx, cy);
+        case 'K': return createBeacon(cx, cy);
+        case 't': {
+          const idx = holoCoords.indexOf(`${col},${row}`);
+          return createHoloSign(cx, cy, Math.min(2, Math.max(0, idx)));
+        }
+        case 'A': return createStation(cx, cy);
+        case 'Y':
+        case 'U': {
+          const kind = ch === 'Y' ? 'yuri' : 'yumi';
+          const meta = LEVEL7_PLANETS.find((p) => p.col === col && p.kind === kind) ?? { col, kind, y: cy };
+          return createPlanet(meta);
+        }
+        case 'm': return createSpaceEnemy('meteor', cx, cy);
+        case 'M': return createSpaceEnemy('meteor_fire', cx, cy);
+        case 'g': return createSpaceEnemy('comet_ice', cx, cy, row);
+        case 'u': return createSpaceEnemy('ufo', cx, cy);
+        case 'a': return createSpaceEnemy('alien_jet', cx, cy);
+        case 'b': return createSpaceEnemy('space_mine', cx, cy);
+        case 's': return createSatellite(cx, cy);
+        case 'S': return createBeamSatellite(cx, cy);
+        case 'd': return createDebris(cx, cy);
+        case 'v': return createSolarWind(cx, cy);
+        case 'N': return createMothership(cx);
         default: return null;
       }
     },

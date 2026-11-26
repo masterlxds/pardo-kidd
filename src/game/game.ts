@@ -38,6 +38,7 @@ import { createBahiaBackground } from '../gfx/background3';
 import { createRioBackground } from '../gfx/background4';
 import { createSampaBackground } from '../gfx/background6';
 import { createUberBackground } from '../gfx/background5';
+import { createSpaceBackground } from '../gfx/background7';
 import { createAtlas } from '../gfx/atlas';
 import { createAudio } from '../audio/audio';
 import { drawText } from '../gfx/font';
@@ -194,6 +195,7 @@ export class GameWorld implements World {
       levelIndex: this.startLevel,
       air: MAX_AIR,
       rideHits: 0,
+      gravDeaths: 0,
       maxAir: MAX_AIR,
       ribbons: 0,
       ribbonsTotal: 0,
@@ -451,7 +453,8 @@ export class GameWorld implements World {
     st.levelIndex = i;
     st.elapsed = 0;
     st.timeBonus = 0;
-    st.rideHits = 0; // avaliação da corrida (Fase 5): zera ao (re)iniciar a fase, não ao renascer
+    st.rideHits = 0; // avaliação da corrida (Fase 5/7): zera ao (re)iniciar a fase, não ao renascer
+    st.gravDeaths = 0;
     this.checkpoint = -1;
     this.time = 0;
     this.collectedRibbons.clear(); // fase nova (ou jogo novo): fitinhas voltam
@@ -462,17 +465,19 @@ export class GameWorld implements World {
     let bg = this.backgrounds.get(theme);
     if (!bg) {
       bg =
-        theme === 'uber'
-          ? createUberBackground()
-          : theme === 'sampa'
-            ? createSampaBackground()
-            : theme === 'rio'
-              ? createRioBackground()
-              : theme === 'bahia'
-                ? createBahiaBackground()
-                : theme === 'amazonia'
-                  ? createAmazonBackground()
-                  : createBackground();
+        theme === 'space'
+          ? createSpaceBackground()
+          : theme === 'uber'
+            ? createUberBackground()
+            : theme === 'sampa'
+              ? createSampaBackground()
+              : theme === 'rio'
+                ? createRioBackground()
+                : theme === 'bahia'
+                  ? createBahiaBackground()
+                  : theme === 'amazonia'
+                    ? createAmazonBackground()
+                    : createBackground();
       this.backgrounds.set(theme, bg);
     }
     return bg;
@@ -1027,6 +1032,13 @@ export class GameWorld implements World {
       this.clampCamera();
       return;
     }
+    if (this.level.space) {
+      // Fase 7: câmera Y travada em 0 (y de mundo = y de tela)
+      this.camera.x = 0;
+      this.camera.y = 0;
+      this.clampCamera();
+      return;
+    }
     const t = this.cameraTarget();
     this.camera.x = t.x;
     this.camera.y = t.y;
@@ -1039,6 +1051,12 @@ export class GameWorld implements World {
     if (this.level.autoscroll) {
       // X avança em advanceScroll (início do passo); Y travada
       c.y = UBER.camY;
+      this.clampCamera();
+      this.updateShake(dt);
+      return;
+    }
+    if (this.level.space) {
+      c.y = 0;
       this.clampCamera();
       this.updateShake(dt);
       return;

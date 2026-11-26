@@ -461,6 +461,15 @@ export class PardoPlayer implements Player {
       return;
     }
 
+    if (world.level.space) {
+      // Stub da Etapa 1: mantém o Pardo parado sem gravidade (CORE implementa a física completa na Etapa 2)
+      this.facing = 1;
+      this.vx = 0;
+      this.vy = 0;
+      this.setState('idle');
+      return;
+    }
+
     const left = input.down('left');
     const right = input.down('right');
     const dirIn = (right ? 1 : 0) - (left ? 1 : 0);

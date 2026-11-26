@@ -6,7 +6,7 @@
 
 import { VIEW_H, VIEW_W } from './constants';
 
-export type Action = 'left' | 'right' | 'jump' | 'punch' | 'start' | 'confirm' | 'pause' | 'mute';
+export type Action = 'left' | 'right' | 'up' | 'down' | 'jump' | 'boost' | 'punch' | 'start' | 'confirm' | 'pause' | 'mute';
 
 export interface Input {
   down(a: Action): boolean;
@@ -24,7 +24,7 @@ export interface Input {
   readonly touch: boolean;
 }
 
-const ACTIONS: readonly Action[] = ['left', 'right', 'jump', 'punch', 'start', 'confirm', 'pause', 'mute'];
+const ACTIONS: readonly Action[] = ['left', 'right', 'up', 'down', 'jump', 'boost', 'punch', 'start', 'confirm', 'pause', 'mute'];
 
 /** Mapeamento de teclado por `KeyboardEvent.code`. */
 const KEYMAP: Readonly<Record<string, readonly Action[]>> = {
@@ -32,8 +32,14 @@ const KEYMAP: Readonly<Record<string, readonly Action[]>> = {
   KeyA: ['left'],
   ArrowRight: ['right'],
   KeyD: ['right'],
-  ArrowUp: ['jump'],
-  KeyW: ['jump'],
+  ArrowUp: ['jump', 'up'],
+  KeyW: ['jump', 'up'],
+  ArrowDown: ['down'],
+  KeyS: ['down'],
+  KeyX: ['boost'],
+  KeyK: ['boost'],
+  ShiftLeft: ['boost'],
+  ShiftRight: ['boost'],
   Space: ['punch', 'confirm'],
   KeyZ: ['punch'],
   KeyJ: ['punch'],
@@ -44,13 +50,13 @@ const KEYMAP: Readonly<Record<string, readonly Action[]>> = {
   KeyM: ['mute'],
 };
 /** Teclas sem ação, mas cujo comportamento padrão (rolar a página) bloqueamos. */
-const SWALLOW = new Set(['ArrowDown', 'KeyS', 'PageUp', 'PageDown']);
+const SWALLOW = new Set(['PageUp', 'PageDown']);
 
-/** Botões touch → ações (pulo/soco também confirmam nas telas de título/fim). */
+/** Botões touch → ações (pulo/soco também confirmam nas telas de título/fim; pulo também aciona boost na Fase 7). */
 const BUTTONS: ReadonlyArray<readonly [string, readonly Action[]]> = [
   ['btn-left', ['left']],
   ['btn-right', ['right']],
-  ['btn-jump', ['jump', 'confirm']],
+  ['btn-jump', ['jump', 'confirm', 'boost']],
   ['btn-punch', ['punch', 'confirm']],
 ];
 

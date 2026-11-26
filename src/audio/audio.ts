@@ -835,6 +835,16 @@ const SFX: Record<SfxName, (g: Graph, t: number) => void> = {
       osc(g, g.sfx, 'sine', midiToHz(m), chordAt + 0.05 + i * 0.07, 0.12, 0.06);
     });
   },
+  // Fase 7 — Espaço Sideral (stubs no-op da Etapa 1; AUDIO implementa na Etapa 2)
+  jet_burst: () => {},
+  grav_warn: () => {},
+  grav_hum: () => {},
+  grav_kill: () => {},
+  meteor_break: () => {},
+  laser_charge: () => {},
+  laser_fire: () => {},
+  ufo_zap: () => {},
+  clang: () => {},
 };
 
 /* ----------------------------------------------------------------------------
@@ -2119,6 +2129,8 @@ const TRACKS: Record<MusicTrack, Track> = {
   uber: { stepDur: UBER_STEP, loopSteps: UBER_LOOP_STEPS, scheduleStep: scheduleUber },
   sampa: { stepDur: SAMPA_STEP, loopSteps: SAMPA_LOOP_STEPS, scheduleStep: scheduleSampa },
   bonus: { stepDur: BONUS_STEP, loopSteps: BONUS_LOOP_STEPS, scheduleStep: scheduleBonus },
+  // Fase 7 — Espaço Sideral (stub 120 BPM da Etapa 1; AUDIO implementa na Etapa 2)
+  space: { stepDur: STEP, loopSteps: LOOP_STEPS, scheduleStep: () => {} },
 };
 
 function makeNoise(ctx: AudioContext): AudioBuffer {
@@ -2317,5 +2329,7 @@ export function createAudio(): AudioApi {
     get muted(): boolean {
       return muted;
     },
+
+    setHum(_intensity: number): void {},
   };
 }
