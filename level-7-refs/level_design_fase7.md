@@ -53,7 +53,7 @@
 | **R4** | Nada nos 1,8 s iniciais (`col 0..31`) nem nos 1,8 s após cada `K` (`Ck .. Ck + 27` para ameaças; `Ck .. Ck + 34` para planetas; nada anterior ativo no respawn `Kx − 64`) | Primeiro `m` em `col 33`; `K` em `col 204, 384, 576`; ameaças retomam só em `col ≥ Ck + 29`; planeta anterior termina ≥ 15 cols antes de `K` |
 | **R5** | Telegraph de planeta (`1,2 s`) nunca coincide com telegraph de `v` ou `S` | Nenhuma sobreposição entre avisos de `Y`/`U` e de `v`/`S` |
 | **R6** | No máximo 2 planetas simultâneos na tela, e só nos Atos 3–4 | Atos 1, 2 e 4: no máximo 1 planeta por vez (≥ 38 cols entre centros). Ato 3: apenas o par escalonado em "S" (`U` #3 col 538 + `Y` #5 col 556) |
-| **R7** | Contagens mínimas: ≥ 6 planetas (alvo 9+), 3 `K`, ≥ 4 `W`, ≥ 120 moedas, ≥ 1 de cada inimigo/obstáculo | **10 planetas** (6 Yuri + 4 Yumi), **3 `K`**, **6 `W`**, **288 moedas**, todos os 6 inimigos, 4 obstáculos e `N` presentes |
+| **R7** | Contagens mínimas: ≥ 6 planetas (alvo 9+), 3 `K`, ≥ 4 `W`, ≥ 120 moedas, ≥ 1 de cada inimigo/obstáculo | **10 planetas** (6 Yuri + 4 Yumi), **3 `K`**, **6 `W`**, **159 moedas**, `m=8, M=3, g=3, u=3, a=3, b=3, s=3, S=2, d=3, v=2`, `N` e **9 ondas** |
 | **R8** | Hologramas `t` só no Embarque e antes do 1º Yuri | Exatamente 3 `t`: c.1 (`col 9`), c.2 (`col 14`) e c.11 (`col 126`, antes do `Y` #1 na `col 146`) |
 
 ---
@@ -62,17 +62,17 @@
 
 | Ordem | Compasso (Coluna) | Marcador | Elemento | Janela de isolamento (`camX` em colunas) |
 |---|---|---|---|---|
-| 1 | c.3 col 7 (`31`) | `m` | Meteoro Comum | `11,5 .. 26,3` (após grace inicial `0 .. 10,8`) |
-| 2 | c.6 col 9 (`69`) | `M` | Meteoro Flamejante | `warn 46,5 .. done 59,9` |
-| 3 | c.7 col 9 (`81`) | `s` | Satélite em Órbita | `61,5 .. 80,6` |
-| 4 | c.9 col 4 (`100`) | `d` | Lixo Espacial | `80,5 .. 98,5` |
+| 1 | c.3 col 7 (`31`) | `m` | Meteoro Comum | `11,5 .. 26,7` (após grace inicial `0 .. 10,8`) |
+| 2 | c.6 col 9 (`69`) | `M` | Meteoro Flamejante | `warn 46,5 .. done 60,0` |
+| 3 | c.7 col 9 (`81`) | `s` | Satélite em Órbita | `61,5 .. 80,3` |
+| 4 | c.9 col 4 (`100`) | `d` | Lixo Espacial | `80,5 .. 98,0` |
 | 5 | c.13 col 2 (`146`) | `Y` | Planeta Yuri (solo) | `warn 119,3 .. done 157,2` (`t` GRAVIDADE na `col 126`) |
 | 6 | c.20 col 5 (`233`) | `u` | OVNI Patrulheiro | `213,5 .. 228,4` (após grace de `K` #1 `200,5 .. 211,3`) |
-| 7 | c.21 col 11 (`251`) | `a` | Alien de Jetpack | `231,5 .. ~251,5` |
-| 8 | c.24 col 10 (`286`) | `g` | Cometa de Gelo | `warn 262,3 .. done 278,0` |
+| 7 | c.21 col 11 (`251`) | `a` | Alien de Jetpack | `231,5 .. 258,7` |
+| 8 | c.24 col 10 (`286`) | `g` | Cometa de Gelo | `warn 262,3 .. done 278,1` |
 | 9 | c.26 col 8 (`308`) | `U` | Planeta Yumi (limpo) | `warn 281,3 .. done 319,2` |
-| 10 | c.35 col 4 (`412`) | `b` | Mina Orbital Magnética | `392,5 .. 413,3` (após grace de `K` #2 `380,5 .. 391,3`) |
-| 11 | c.37 col 1 (`433`) | `S` | Satélite de Varredura | `413,5 .. 434,8` |
+| 10 | c.35 col 4 (`412`) | `b` | Mina Orbital Magnética | `392,5 .. 412,9` (após grace de `K` #2 `380,5 .. 391,3`) |
+| 11 | c.37 col 1 (`433`) | `S` | Satélite de Varredura | `413,5 .. 434,1` |
 | 12 | c.38 col 11 (`455`) | `v` | Rajada de Vento Solar | `435,5 .. 449,9` |
 
 ---
@@ -88,25 +88,25 @@ Notação por tempo (`1`–`4`, 3 colunas cada). `·` = vazio. Moedas `c` indica
 | 1 | · | P | c | t+c | Spawn `P` (col 4, l.5); `t` `MOVA 2D` (col 9, l.2); linha inicial de moedas |
 | 2 | t | c | c | · | `t` `IMPULSO` (col 14, l.2); moedas na linha 4 (1,8 s iniciais livres) |
 | 3 | c | c | m | · | **Estreia `m`** (col 31, l.5) isolada após o grace inicial |
-| 4 | c | c | · | · | Moedas baixas pós-meteoro (isolamento R2) |
+| 4 | c | c | · | m | Moedas baixas pós-meteoro + `m` #2 no fim do compasso (col 47, l.4) |
 
 ### Ato 1 — Cinturão de Sucata (c.5–17)
 
 | C. | 1 | 2 | 3 | 4 | Nota |
 |---|---|---|---|---|---|
-| 5 | m | c | · | · | 2º `m` (col 48, l.3) + moedas de transição |
+| 5 | c | c | · | · | Transição de moedas antes da estreia de `M` |
 | 6 | c | c | · | M | **Estreia `M`** (col 69, l.5, aviso 0,5 s na borda) |
 | 7 | c | c | · | s | **Estreia `s`** (col 81, l.5); moedas por baixo |
 | 8 | c | c | · | · | Respiro com moedas altas |
 | 9 | · | d+c | c | · | **Estreia `d`** (col 100, l.5); moedas por cima |
-| 10 | c | c | · | m | Combo leve `m` (col 118, l.7) após saída de `d` |
+| 10 | c | c | · | m | Combo leve `m` #3 (col 118, l.7) após saída de `d` |
 | 11 | c | c | t | · | `t` `GRAVIDADE` (col 126, l.2) antes do 1º Yuri |
 | 12 | c | c | · | · | Corredor limpo preparando a chegada de Yuri |
 | 13 | Y | c | c | · | **Estreia `Y` #1 solo** (col 146, `y=52`); moedas no corredor inferior |
 | 14 | c | c | · | · | Passagem limpa sob `Y` #1 |
-| 15 | c | c | · | · | Respiro entre planetas (R6) |
+| 15 | c | · | · | m | `m` #4 (col 178, l.5) entre `Y` #1 e `Y` #2 |
 | 16 | · | · | Y | c | **`Y` #2** (col 186, `y=132`) + início do arco de estilingue (`d ≈ 60–76 px`) |
-| 17 | c | c | · | · | Fecho do arco de moedas e saída limpa antes de CP1 |
+| 17 | c | c | M | · | Fecho do arco de moedas + `M` #2 alto (col 198, l.3) no corredor livre |
 
 ### Checkpoint 1 (c.18)
 
@@ -118,7 +118,7 @@ Notação por tempo (`1`–`4`, 3 colunas cada). `·` = vazio. Moedas `c` indica
 
 | C. | 1 | 2 | 3 | 4 | Nota |
 |---|---|---|---|---|---|
-| 19 | c | c | c | · | Respiro de segurança pós-CP1 (sem ameaças) |
+| 19 | c | c | · | · | Respiro de segurança pós-CP1 (sem ameaças) |
 | 20 | · | u | c | c | **Estreia `u`** (col 233, l.5, senoide + plasma) |
 | 21 | c | c | · | a | **Estreia `a`** (col 251, l.4, persegue Y e avança) |
 | 22 | · | c | c | · | Respiro acompanhando esquiva do alien |
@@ -128,10 +128,10 @@ Notação por tempo (`1`–`4`, 3 colunas cada). `·` = vazio. Moedas `c` indica
 | 26 | · | · | U+c | c | **Estreia `U` #1 limpo** (col 308, `y=130`) |
 | 27 | c | c | · | · | Arco de moedas de estilingue acima de `U` #1 |
 | 28 | · | W | c | · | `W` #2 (col 328) + saída limpa de `U` #1 |
-| 29 | · | u | m | c | Combo `u` (col 339, l.7) + `m` (col 342, l.2) |
-| 30 | c | c | · | · | Preparação limpa para `Y` #3 |
-| 31 | · | Y+c | c | m | **`Y` #3** (col 364, `y=50`) + `m` baixo fora do crítico (col 371, l.9) |
-| 32 | · | c | c | · | Saída limpa antes de CP2 |
+| 29 | · | u | s | d+c | Combo `u` #2 (col 339, l.7) + `s` #2 (col 342, l.3) + `d` #2 (col 345, l.7) |
+| 30 | · | M | c | · | `M` #3 alto (col 352, l.3) antes do aviso de `Y` #3 |
+| 31 | · | Y+c | c | m | **`Y` #3** (col 364, `y=50`) + `m` #5 baixo fora do crítico (col 371, l.9) |
+| 32 | g | c | · | · | `g` #2 ascendente (col 374, l.9) na saída de `Y` #3 antes de CP2 |
 
 ### Checkpoint 2 (c.33)
 
@@ -143,18 +143,18 @@ Notação por tempo (`1`–`4`, 3 colunas cada). `·` = vazio. Moedas `c` indica
 
 | C. | 1 | 2 | 3 | 4 | Nota |
 |---|---|---|---|---|---|
-| 34 | c | c | c | · | Respiro de segurança pós-CP2 (sem ameaças) |
+| 34 | c | c | · | · | Respiro de segurança pós-CP2 (sem ameaças) |
 | 35 | · | b | c | c | **Estreia `b`** (col 412, l.5, mina desarmada/armada) |
 | 36 | c | c | · | · | Respiro após mina |
 | 37 | S | c | c | · | **Estreia `S`** (col 433, l.1, satélite de varredura superior) |
 | 38 | c | c | · | v | **Estreia `v`** (col 455, l.5, rajada de vento solar telegrafada 1,0 s) |
 | 39 | · | · | W | · | `W` #4 (col 464, l.3) preparando `U` #2 |
 | 40 | · | · | c | U+c | **`U` #2** (col 478, `y=136`) |
-| 41 | c | c | · | · | Moedas no corredor seguro superior de `U` #2 |
-| 42 | · | c | c | · | Respiro antes do planeta em onda |
-| 43 | · | · | c | c | Preparação do corredor inferior para `Y` #4 |
+| 41 | c | c | b | · | Moedas no corredor seguro superior de `U` #2 + mina `b` #2 (col 486, l.3) |
+| 42 | · | m+c | c | · | `m` #6 (col 496, l.4) antes do planeta em onda |
+| 43 | a | c | c | · | `a` #2 (col 506, l.7) preparando corredor inferior para `Y` #4 |
 | 44 | Y+c | c | · | · | **`Y` #4 (`wave: true`)** (col 516, `y=46 ± 16`); moedas embaixo |
-| 45 | c | c | · | · | Transição antes do par escalonado em "S" |
+| 45 | c | m | · | · | `m` #7 (col 532, l.7) na transição antes do par escalonado em "S" |
 | 46 | · | · | U+c | c | **Par em "S" — parte 1: `U` #3** (col 548, `y=46`) |
 | 47 | · | c | c | Y+c | **Par em "S" — parte 2: `Y` #5** (col 561, `y=136`); moedas guiando subida |
 | 48 | c | c | · | · | Saída limpa antes de CP3 |
@@ -170,15 +170,15 @@ Notação por tempo (`1`–`4`, 3 colunas cada). `·` = vazio. Moedas `c` indica
 | C. | 1 | 2 | 3 | 4 | Nota |
 |---|---|---|---|---|---|
 | 50 | c | c | · | N | Respiro pós-CP3 + chegada da **Nave-Mãe `N`** (col 599, fim do c.50) |
-| 51 | c | c | · | · | Início da escolta (ondas disparam a partir de c.52) |
-| 52 | Onda | b | Onda+c | · | **Onda 1** (`ufo`, `y=58`) + mina `b` (col 616) + **Onda 2** (`meteor_fire`, `y=120`) |
-| 53 | Onda+a | c | c | · | **Onda 3** (`plasma_orb`, `y=54`) + `a` (col 626, l.4) |
-| 54 | c | c | · | · | Janela limpa preparando Yuri final |
-| 55 | Y | c | c | · | **`Y` #6** (col 650, `y=48`), corredor inferior limpo |
-| 56 | c | Onda+c | · | · | **Onda 4** (`meteor_fire`, `y=54`) após passagem de `Y` #6 |
-| 57 | c | c | · | · | Corredor entre os dois planetas finais |
-| 58 | Onda+c | g+c | Onda | · | **Onda 5** (`ufo`, `y=130`) + cometa `g` ascendente (col 688, l.9) + **Onda 6** (`plasma_orb`, `y=130`) |
-| 59 | · | · | c | U+c | **`U` #4 (`wave: true`)** (col 706, `y=132 ± 16`), clímax final |
+| 51 | c | S+Onda | · | · | `S` #2 inferior (col 604, l.9) + **Onda 1** (`meteor_fire`, `y=50`) |
+| 52 | Onda | b | Onda+c | · | **Onda 2** (`ufo`, `y=58`) + mina `b` #3 (col 616) + **Onda 3** (`plasma_orb`, `y=120`) |
+| 53 | d+Onda | c | · | v | `d` #3 (col 626, l.7) + **Onda 4** (`plasma_orb`, `y=54`) + `v` #2 alto (col 634, l.3) |
+| 54 | a | c | c | · | `a` #3 (col 638, l.7) + transição para Yuri final |
+| 55 | Y | c | Onda+c | · | **`Y` #6** (col 650, `y=48`), corredor inferior limpo + **Onda 5** (`plasma_orb`, `y=126`) |
+| 56 | c | Onda | m | · | **Onda 6** (`meteor_fire`, `y=54`) + `m` #8 (col 668, l.7) após saída de `Y` #6 |
+| 57 | c | Onda | · | s | **Onda 7** (`ufo`, `y=128`) + satélite `s` #3 (col 681, l.5) entre planetas finais |
+| 58 | Onda+c | g | · | u | **Onda 8** (`plasma_orb`, `y=130`) + cometa `g` #3 (col 688, l.9) + `u` #3 (col 693, l.4) |
+| 59 | Onda | · | c | U+c | **Onda 9** (`meteor_fire`, `y=48`) + **`U` #4 (`wave: true`)** (col 706, `y=132 ± 16`) |
 | 60 | c | c | · | · | Arco alto de estilingue acima de `U` #4 |
 | 61 | c | · | W | c | `W` #6 (col 726, l.5); encerramento da escolta |
 
@@ -188,5 +188,5 @@ Notação por tempo (`1`–`4`, 3 colunas cada). `·` = vazio. Moedas `c` indica
 |---|---|---|---|---|---|
 | 62 | c | c | c | · | Nave-Mãe recua; início da desaceleração; zero ameaças |
 | 63 | c | c | c | · | Desaceleração suave até a EEIQ |
-| 64 | · | c | c | · | Rolagem para em `SPACE_STOP_CAM_X` (EEIQ à vista) |
+| 64 | · | c | · | · | Rolagem para em `SPACE_STOP_CAM_X` (EEIQ à vista) |
 | 65 | · | · | A | · | **Doca EEIQ `A`** (col 774, l.5) — cutscene do Sachê de Água |

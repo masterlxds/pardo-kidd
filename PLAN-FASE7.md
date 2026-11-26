@@ -2,7 +2,7 @@
 
 Leia antes: [`level-7-refs/gdd_fase7_espaco.md`](level-7-refs/gdd_fase7_espaco.md) (GDD), [`level-7-refs/gdd_bestiario_fase7.md`](level-7-refs/gdd_bestiario_fase7.md) (bestiário + `SPRITE_SPEC`), [`AGENTS.md`](AGENTS.md) (arquitetura), [`PLAN-FASE5.md`](PLAN-FASE5.md) (o outro autoscroller: compassos, regras puras sem imports, validador com bot) e [`PLAN-FASE6.md`](PLAN-FASE6.md) (molde de delegação).
 
-**Status (26/11/2026): Etapa 2 concluída (implementação dos 12 módulos entregue e tipada na branch `fase-7-espaco`). Próximo: Etapa 2b.**
+**Status (26/11/2026): Etapa 2b concluída (`level7.ts` e `level_design_fase7.md` validados em `check-level7.mjs` → `level7 OK`). Próximo: Etapa 3.**
 
 Este plano foi escrito para ser executado **AFK em cloud**: um **orquestrador (Claude Opus)** coordena e revisa; o código é escrito por **subagentes Gemini 4** escolhidos pela dificuldade (§6). Tudo o que o GDD deixou ambíguo já está decidido na §2 — o orquestrador **não deve parar para perguntar**; se surgir uma ambiguidade nova, decide pelo caminho mais conservador (menor regressão nas Fases 1–6), registra em §11 e segue.
 
